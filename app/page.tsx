@@ -1,14 +1,14 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import Image from 'next/image';
 import Navigation from '../components/Navigation';
 import MetricCard from '../components/MetricCard';
 import Chart from '../components/Chart';
 import Typed from 'typed.js';
-const anime = require('animejs');
 
 export default function Dashboard() {
+  const animeRef = useRef<any>(null);
   const [metrics, setMetrics] = useState({
     outstanding: 0,
     pending: 0,
@@ -17,6 +17,21 @@ export default function Dashboard() {
   });
 
   useEffect(() => {
+    // Dynamically import anime.js to avoid SSR issues
+    import('animejs').then((animeModule: any) => {
+      animeRef.current = animeModule.default || animeModule;
+      
+      // Animate metric cards
+      animeRef.current({
+        targets: '.metric-card',
+        translateY: [20, 0],
+        opacity: [0, 1],
+        delay: animeRef.current.stagger(100),
+        duration: 600,
+        easing: 'easeOutQuart'
+      });
+    });
+
     // Initialize typed text
     const typed = new Typed('#typed-text', {
       strings: ['Accounting Workflow', 'Payment Processing', 'Invoice Management', 'Financial Reporting'],
@@ -26,16 +41,6 @@ export default function Dashboard() {
       loop: true,
       showCursor: true,
       cursorChar: '|'
-    });
-
-    // Animate metric cards
-    anime({
-      targets: '.metric-card',
-      translateY: [20, 0],
-      opacity: [0, 1],
-      delay: anime.stagger(100),
-      duration: 600,
-      easing: 'easeOutQuart'
     });
 
     // Load metrics

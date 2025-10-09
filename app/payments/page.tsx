@@ -1,10 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Navigation from '../../components/Navigation';
-
-// @ts-ignore
-const anime = require('animejs') as any;
 
 interface PaymentSource {
   id: string;
@@ -18,17 +15,23 @@ interface PaymentSource {
 }
 
 export default function PaymentsPage() {
+  const animeRef = useRef<any>(null);
   const [processedToday, setProcessedToday] = useState(0);
 
   useEffect(() => {
-    // Animate payment source cards
-    anime({
-      targets: '.card-hover',
-      translateY: [20, 0],
-      opacity: [0, 1],
-      delay: anime.stagger(100),
-      duration: 600,
-      easing: 'easeOutQuart'
+    // Dynamically import anime.js
+    import('animejs').then((animeModule: any) => {
+      animeRef.current = animeModule.default || animeModule;
+      
+      // Animate payment source cards
+      animeRef.current({
+        targets: '.card-hover',
+        translateY: [20, 0],
+        opacity: [0, 1],
+        delay: animeRef.current.stagger(100),
+        duration: 600,
+        easing: 'easeOutQuart'
+      });
     });
   }, []);
 

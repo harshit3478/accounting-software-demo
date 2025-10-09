@@ -1,10 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Navigation from '../../components/Navigation';
-
-// @ts-ignore
-const anime = require('animejs') as any;
 
 interface Invoice {
   id: string;
@@ -16,12 +13,18 @@ interface Invoice {
 }
 
 export default function InvoicesPage() {
+  const animeRef = useRef<any>(null);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [filter, setFilter] = useState<'all' | 'pending' | 'paid' | 'overdue'>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState('date-desc');
 
   useEffect(() => {
+    // Dynamically import anime.js
+    import('animejs').then((animeModule: any) => {
+      animeRef.current = animeModule.default || animeModule;
+    });
+
     // Generate mock invoices
     const mockInvoices: Invoice[] = [];
     const clients = ['Acme Corporation', 'TechStart Inc', 'Global Solutions Ltd', 'Creative Agency', 'Smart Systems', 'Digital Pro', 'Cloud Tech', 'Innovation Labs'];
@@ -85,26 +88,30 @@ export default function InvoicesPage() {
 
   useEffect(() => {
     // Animate statistics cards
-    anime({
-      targets: '.card-hover',
-      translateY: [20, 0],
-      opacity: [0, 1],
-      delay: anime.stagger(100),
-      duration: 600,
-      easing: 'easeOutQuart'
-    });
+    if (animeRef.current) {
+      animeRef.current({
+        targets: '.card-hover',
+        translateY: [20, 0],
+        opacity: [0, 1],
+        delay: animeRef.current.stagger(100),
+        duration: 600,
+        easing: 'easeOutQuart'
+      });
+    }
   }, []);
 
   useEffect(() => {
     // Animate table rows when invoices change
-    anime({
-      targets: '#invoice-table-body tr',
-      translateX: [-20, 0],
-      opacity: [0, 1],
-      delay: anime.stagger(50),
-      duration: 400,
-      easing: 'easeOutQuart'
-    });
+    if (animeRef.current) {
+      animeRef.current({
+        targets: '#invoice-table-body tr',
+        translateX: [-20, 0],
+        opacity: [0, 1],
+        delay: animeRef.current.stagger(50),
+        duration: 400,
+        easing: 'easeOutQuart'
+      });
+    }
   }, [filteredInvoices]);
 
   const formatDate = (dateString: string) => {

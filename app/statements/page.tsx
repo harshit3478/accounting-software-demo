@@ -1,10 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Navigation from '../../components/Navigation';
-
-// @ts-ignore
-const anime = require('animejs') as any;
 
 interface Customer {
   id: number;
@@ -15,6 +12,7 @@ interface Customer {
 }
 
 export default function StatementsPage() {
+  const animeRef = useRef<any>(null);
   const [activeCustomers, setActiveCustomers] = useState(0);
   const [selectedCustomers, setSelectedCustomers] = useState<Set<number>>(new Set());
   const [searchTerm, setSearchTerm] = useState('');
@@ -33,15 +31,24 @@ export default function StatementsPage() {
   );
 
   useEffect(() => {
-    // Animate customer cards
-    anime({
-      targets: '.customer-card',
-      translateY: [20, 0],
-      opacity: [0, 1],
-      delay: anime.stagger(50),
-      duration: 600,
-      easing: 'easeOutQuart'
+    // Dynamically import anime.js
+    import('animejs').then((animeModule: any) => {
+      animeRef.current = animeModule.default || animeModule;
     });
+  }, []);
+
+  useEffect(() => {
+    // Animate customer cards
+    if (animeRef.current) {
+      animeRef.current({
+        targets: '.customer-card',
+        translateY: [20, 0],
+        opacity: [0, 1],
+        delay: animeRef.current.stagger(50),
+        duration: 600,
+        easing: 'easeOutQuart'
+      });
+    }
   }, [filteredCustomers]);
 
   const toggleCustomer = (id: number) => {
