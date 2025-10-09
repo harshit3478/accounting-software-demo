@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import Navigation from '../../components/Navigation';
 
 interface Customer {
@@ -12,7 +12,6 @@ interface Customer {
 }
 
 export default function StatementsPage() {
-  const animeRef = useRef<any>(null);
   const [activeCustomers, setActiveCustomers] = useState(0);
   const [selectedCustomers, setSelectedCustomers] = useState<Set<number>>(new Set());
   const [searchTerm, setSearchTerm] = useState('');
@@ -29,27 +28,6 @@ export default function StatementsPage() {
     customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     customer.email.toLowerCase().includes(searchTerm.toLowerCase())
   );
-
-  useEffect(() => {
-    // Dynamically import anime.js
-    import('animejs').then((animeModule: any) => {
-      animeRef.current = animeModule.default || animeModule;
-    });
-  }, []);
-
-  useEffect(() => {
-    // Animate customer cards
-    if (animeRef.current) {
-      animeRef.current({
-        targets: '.customer-card',
-        translateY: [20, 0],
-        opacity: [0, 1],
-        delay: animeRef.current.stagger(50),
-        duration: 600,
-        easing: 'easeOutQuart'
-      });
-    }
-  }, [filteredCustomers]);
 
   const toggleCustomer = (id: number) => {
     const newSelected = new Set(selectedCustomers);
@@ -156,10 +134,10 @@ export default function StatementsPage() {
                 </div>
 
                 <div className="space-y-3 max-h-96 overflow-y-auto">
-                  {filteredCustomers.map((customer) => (
+                  {filteredCustomers.map((customer, index) => (
                     <div
                       key={customer.id}
-                      className={`customer-card border border-gray-200 rounded-lg p-4 cursor-pointer transition-colors ${
+                      className={`customer-card border border-gray-200 rounded-lg p-4 cursor-pointer transition-colors animate-fade-in-up stagger-fast-${Math.min(index + 1, 8)} ${
                         selectedCustomers.has(customer.id) ? 'selected' : ''
                       }`}
                       onClick={() => toggleCustomer(customer.id)}

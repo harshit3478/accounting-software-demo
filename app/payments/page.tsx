@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import Navigation from '../../components/Navigation';
 
 interface PaymentSource {
@@ -15,25 +15,7 @@ interface PaymentSource {
 }
 
 export default function PaymentsPage() {
-  const animeRef = useRef<any>(null);
   const [processedToday, setProcessedToday] = useState(0);
-
-  useEffect(() => {
-    // Dynamically import anime.js
-    import('animejs').then((animeModule: any) => {
-      animeRef.current = animeModule.default || animeModule;
-      
-      // Animate payment source cards
-      animeRef.current({
-        targets: '.card-hover',
-        translateY: [20, 0],
-        opacity: [0, 1],
-        delay: animeRef.current.stagger(100),
-        duration: 600,
-        easing: 'easeOutQuart'
-      });
-    });
-  }, []);
 
   const paymentSources: PaymentSource[] = [
     {
@@ -144,10 +126,10 @@ export default function PaymentsPage() {
       {/* Payment Sources */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          {paymentSources.map((source) => (
+          {paymentSources.map((source, index) => (
             <div
               key={source.id}
-              className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 card-hover cursor-pointer"
+              className={`bg-white p-6 rounded-xl shadow-lg border border-gray-200 card-hover cursor-pointer animate-fade-in-up stagger-${index + 1}`}
             >
               <div className="flex items-center justify-between mb-4">
                 <div className={`p-3 ${source.iconBg} rounded-full`}>
