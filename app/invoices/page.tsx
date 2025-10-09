@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import Navigation from '../../components/Navigation';
 
 interface Invoice {
@@ -13,18 +13,12 @@ interface Invoice {
 }
 
 export default function InvoicesPage() {
-  const animeRef = useRef<any>(null);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [filter, setFilter] = useState<'all' | 'pending' | 'paid' | 'overdue'>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState('date-desc');
 
   useEffect(() => {
-    // Dynamically import anime.js
-    import('animejs').then((animeModule: any) => {
-      animeRef.current = animeModule.default || animeModule;
-    });
-
     // Generate mock invoices
     const mockInvoices: Invoice[] = [];
     const clients = ['Acme Corporation', 'TechStart Inc', 'Global Solutions Ltd', 'Creative Agency', 'Smart Systems', 'Digital Pro', 'Cloud Tech', 'Innovation Labs'];
@@ -85,34 +79,6 @@ export default function InvoicesPage() {
     overdue: invoices.filter(inv => inv.status === 'overdue').length,
     pending: invoices.filter(inv => inv.status === 'pending').length,
   };
-
-  useEffect(() => {
-    // Animate statistics cards
-    if (animeRef.current) {
-      animeRef.current({
-        targets: '.card-hover',
-        translateY: [20, 0],
-        opacity: [0, 1],
-        delay: animeRef.current.stagger(100),
-        duration: 600,
-        easing: 'easeOutQuart'
-      });
-    }
-  }, []);
-
-  useEffect(() => {
-    // Animate table rows when invoices change
-    if (animeRef.current) {
-      animeRef.current({
-        targets: '#invoice-table-body tr',
-        translateX: [-20, 0],
-        opacity: [0, 1],
-        delay: animeRef.current.stagger(50),
-        duration: 400,
-        easing: 'easeOutQuart'
-      });
-    }
-  }, [filteredInvoices]);
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -222,7 +188,7 @@ export default function InvoicesPage() {
 
         {/* Invoice Statistics */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 card-hover">
+          <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 card-hover animate-fade-in-up stagger-1">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Total Invoices</p>
@@ -236,7 +202,7 @@ export default function InvoicesPage() {
             </div>
           </div>
 
-          <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 card-hover">
+          <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 card-hover animate-fade-in-up stagger-2">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Paid This Month</p>
@@ -250,7 +216,7 @@ export default function InvoicesPage() {
             </div>
           </div>
 
-          <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 card-hover">
+          <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 card-hover animate-fade-in-up stagger-3">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Overdue</p>
@@ -264,7 +230,7 @@ export default function InvoicesPage() {
             </div>
           </div>
 
-          <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 card-hover">
+          <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 card-hover animate-fade-in-up stagger-4">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Pending Review</p>
@@ -311,8 +277,8 @@ export default function InvoicesPage() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {filteredInvoices.map((invoice) => (
-                  <tr key={invoice.id} className="hover:bg-gray-50 transition-colors">
+                {filteredInvoices.map((invoice, index) => (
+                  <tr key={invoice.id} className={`hover:bg-gray-50 transition-colors animate-fade-in-left stagger-fast-${Math.min(index + 1, 8)}`}>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <input type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
                     </td>
