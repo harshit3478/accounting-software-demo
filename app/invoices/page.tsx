@@ -4,12 +4,13 @@ import { useState, useEffect } from 'react';
 import Navigation from '../../components/Navigation';
 
 interface Invoice {
-  id: string;
-  client: string;
+  id: number;
+  clientName: string;
   amount: number;
   dueDate: string;
   status: 'paid' | 'pending' | 'overdue' | 'partial';
-  createdDate: string;
+  createdAt: string;
+  description?: string;
 }
 
 export default function InvoicesPage() {
@@ -19,51 +20,40 @@ export default function InvoicesPage() {
   const [sortBy, setSortBy] = useState('date-desc');
 
   useEffect(() => {
-    // Generate mock invoices
-    const mockInvoices: Invoice[] = [];
-    const clients = ['Acme Corporation', 'TechStart Inc', 'Global Solutions Ltd', 'Creative Agency', 'Smart Systems', 'Digital Pro', 'Cloud Tech', 'Innovation Labs'];
-    const statuses: ('paid' | 'pending' | 'overdue' | 'partial')[] = ['paid', 'pending', 'overdue', 'partial'];
-
-    for (let i = 1; i <= 50; i++) {
-      const client = clients[Math.floor(Math.random() * clients.length)];
-      const amount = Math.floor(Math.random() * 10000) + 500;
-      const status = statuses[Math.floor(Math.random() * statuses.length)];
-      const daysOffset = Math.floor(Math.random() * 60) - 30;
-      const dueDate = new Date();
-      dueDate.setDate(dueDate.getDate() + daysOffset);
-
-      mockInvoices.push({
-        id: `INV-2024-${String(i).padStart(4, '0')}`,
-        client,
-        amount,
-        dueDate: dueDate.toISOString().split('T')[0],
-        status,
-        createdDate: new Date(Date.now() - Math.random() * 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-      });
-    }
-
-    setInvoices(mockInvoices.sort((a, b) => new Date(b.createdDate).getTime() - new Date(a.createdDate).getTime()));
+    fetchInvoices();
   }, []);
+
+  const fetchInvoices = async () => {
+    const res = await fetch('/api/invoices');
+    if (res.ok) {
+      const data = await res.json();
+      setInvoices(data.map((inv: any) => ({
+        ...inv,
+        dueDate: new Date(inv.dueDate).toISOString().split('T')[0],
+        createdAt: new Date(inv.createdAt).toISOString().split('T')[0],
+      })));
+    }
+  };
 
   const filteredInvoices = invoices
     .filter(invoice => {
       if (filter !== 'all' && invoice.status !== filter) return false;
-      if (searchTerm && !invoice.client.toLowerCase().includes(searchTerm.toLowerCase()) &&
-          !invoice.id.toLowerCase().includes(searchTerm.toLowerCase())) return false;
+      if (searchTerm && !invoice.clientName.toLowerCase().includes(searchTerm.toLowerCase()) &&
+          !String(invoice.id).toLowerCase().includes(searchTerm.toLowerCase())) return false;
       return true;
     })
     .sort((a, b) => {
       switch (sortBy) {
         case 'date-desc':
-          return new Date(b.createdDate).getTime() - new Date(a.createdDate).getTime();
+          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
         case 'date-asc':
-          return new Date(a.createdDate).getTime() - new Date(b.createdDate).getTime();
+          return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
         case 'amount-desc':
           return b.amount - a.amount;
         case 'amount-asc':
           return a.amount - b.amount;
         case 'client-asc':
-          return a.client.localeCompare(b.client);
+          return a.clientName.localeCompare(b.clientName);
         default:
           return 0;
       }
@@ -286,7 +276,7 @@ export default function InvoicesPage() {
                       {invoice.id}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {invoice.client}
+                      {invoice.clientName}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                       ${invoice.amount.toLocaleString()}
