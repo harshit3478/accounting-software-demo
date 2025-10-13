@@ -15,6 +15,14 @@ export default function Dashboard() {
     customers: 0,
   });
 
+  const fetchMetrics = async () => {
+    const res = await fetch('/api/dashboard');
+    if (res.ok) {
+      const data = await res.json();
+      setMetrics(data);
+    }
+  };
+
   useEffect(() => {
     // Initialize typed text
     const typed = new Typed('#typed-text', {
@@ -28,14 +36,7 @@ export default function Dashboard() {
     });
 
     // Load metrics
-    setTimeout(() => {
-      setMetrics({
-        outstanding: 124750,
-        pending: 23,
-        revenue: 89200,
-        customers: 156,
-      });
-    }, 500);
+    fetchMetrics();
 
     return () => {
       typed.destroy();

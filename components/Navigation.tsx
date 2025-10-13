@@ -2,16 +2,24 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useAuth } from '../lib/AuthContext';
 
 export default function Navigation() {
   const pathname = usePathname();
+  const { logout } = useAuth();
 
   const navItems = [
     { href: '/', label: 'Dashboard', active: pathname === '/' },
     { href: '/invoices', label: 'Invoices', active: pathname === '/invoices' },
     { href: '/payments', label: 'Payments', active: pathname === '/payments' },
-    { href: '/statements', label: 'Statements', active: pathname === '/statements' },
+    { href: '/documents', label: 'Documents', active: pathname === '/documents' },
+    // { href: '/statements', label: 'Statements', active: pathname === '/statements' },
   ];
+
+  const handleLogout = async () => {
+    await fetch('/api/logout', { method: 'POST' });
+    logout();
+  };
 
   return (
     <nav className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-50">
@@ -42,9 +50,15 @@ export default function Navigation() {
               ))}
             </div>
           </div>
-          <div className="flex items-center">
+          <div className="flex items-center space-x-4">
             <button className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
               + New Invoice
+            </button>
+            <button
+              onClick={handleLogout}
+              className="bg-gray-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors"
+            >
+              Logout
             </button>
           </div>
         </div>

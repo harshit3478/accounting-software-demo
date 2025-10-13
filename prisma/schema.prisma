@@ -1,0 +1,96 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  admin
+  user
+  viewer
+}
+
+enum InvoiceStatus {
+  paid
+  pending
+  overdue
+  partial
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  email        String   @unique
+  passwordHash String?
+  role         Role     @default(user)
+  name         String
+  googleId     String?  @unique
+  resetToken   String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  invoices  Invoice[]
+  payments  Payment[]
+  documents Document[]
+
+  @@map("users")
+}
+
+model Invoice {
+  id         Int            @id @default(autoincrement())
+  userId     Int
+  clientName String
+  amount     Decimal        @db.Decimal(10, 2)
+  dueDate    DateTime
+  status     InvoiceStatus  @default(pending)
+  createdAt  DateTime       @default(now())
+  description String?
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  payments Payment[]
+
+  @@map("invoices")
+}
+
+model Payment {
+  id         Int      @id @default(autoincrement())
+  invoiceId  Int
+  amount     Decimal  @db.Decimal(10, 2)
+  paymentDate DateTime @default(now())
+  method     String
+  userId     Int
+  createdAt  DateTime @default(now())
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("payments")
+}
+
+model Document {
+  id           Int      @id @default(autoincrement())
+  userId       Int
+  fileName     String   // Unique filename stored in R2
+  originalName String   // Original filename from user
+  fileSize     BigInt   // File size in bytes
+  fileType     String   // MIME type
+  fileUrl      String   // Public R2 URL
+  uploadedAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("documents")
+}
+
+model SystemFolder {
+  id        Int     @id @default(autoincrement())
+  name      String
+  isDefault Boolean @default(false)
+
+  @@map("system_folders")
+}
