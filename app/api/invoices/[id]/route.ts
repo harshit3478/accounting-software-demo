@@ -33,19 +33,28 @@ export async function PUT(
     const discountAmount = discount || 0;
     const totalAmount = parseFloat(subtotal) + parseFloat(taxAmount) - parseFloat(discountAmount);
 
+    // Prepare update data with proper typing
+    const updateData: Prisma.InvoiceUpdateInput = {
+      clientName,
+      subtotal: parseFloat(subtotal),
+      tax: parseFloat(taxAmount),
+      discount: parseFloat(discountAmount),
+      amount: totalAmount,
+      dueDate: new Date(dueDate),
+      description,
+      isLayaway: isLayaway || false,
+    };
+
+    // Add items separately with proper JSON typing
+    if (items) {
+      updateData.items = items as Prisma.InputJsonValue;
+    } else {
+      updateData.items = Prisma.DbNull;
+    }
+
     const invoice = await prisma.invoice.update({
       where: { id: invoiceId },
-      data: {
-        clientName,
-        items: items ? (items as Prisma.InputJsonValue) : Prisma.DbNull,
-        subtotal: parseFloat(subtotal),
-        tax: parseFloat(taxAmount),
-        discount: parseFloat(discountAmount),
-        amount: totalAmount,
-        dueDate: new Date(dueDate),
-        description,
-        isLayaway: isLayaway || false,
-      },
+      data: updateData,
     });
 
     // Convert Decimal to number for response
