@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
-import { requireAdmin } from '@/lib/auth';
+import { requirePermission } from '@/lib/auth';
 import { uploadToR2 } from '@/lib/r2-client';
 import {
   MAX_FILE_SIZE,
@@ -15,8 +15,8 @@ const prisma = new PrismaClient();
 
 export async function POST(request: NextRequest) {
   try {
-    // Check if user is admin
-    const user = await requireAdmin();
+    // Check if user has upload permission
+    const user = await requirePermission('documents.upload');
 
     // Parse the form data
     const formData = await request.formData();

@@ -6,7 +6,10 @@ interface User {
   id: number;
   email: string;
   name: string;
-  role: 'admin' | 'user' | 'viewer';
+  role: 'admin' | 'accountant';
+  canUploadDocuments: boolean;
+  canRenameDocuments: boolean;
+  canDeleteDocuments: boolean;
 }
 
 interface AuthContextType {
@@ -14,6 +17,10 @@ interface AuthContextType {
   isAuthenticated: boolean;
   user: User | null;
   isAdmin: boolean;
+  canUpload: boolean;
+  canRename: boolean;
+  canDelete: boolean;
+  hasPermission: (permission: string) => boolean;
   logout: () => void;
 }
 
@@ -22,6 +29,10 @@ const AuthContext = createContext<AuthContextType>({
   isAuthenticated: false,
   user: null,
   isAdmin: false,
+  canUpload: false,
+  canRename: false,
+  canDelete: false,
+  hasPermission: () => false,
   logout: () => {},
 });
 
@@ -58,12 +69,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     window.location.href = '/login';
   };
 
+  const isAdmin = user?.role === 'admin';
+  
+  // Permission helpers
+  const canUpload = isAdmin || (user?.canUploadDocuments ?? false);
+  const canRename = isAdmin || (user?.canRenameDocuments ?? false);
+  const canDelete = isAdmin || (user?.canDeleteDocuments ?? false);
+  
+  const hasPermission = (permission: string): boolean => {
+    if (isAdmin) return true;
+    
+    switch (permission) {
+      case 'documents.upload':
+        return user?.canUploadDocuments ?? false;
+      case 'documents.rename':
+        return user?.canRenameDocuments ?? false;
+      case 'documents.delete':
+        return user?.canDeleteDocuments ?? false;
+      default:
+        return false;
+    }
+  };
+
   return (
     <AuthContext.Provider value={{ 
       token, 
       isAuthenticated: !!token, 
       user,
-      isAdmin: user?.role === 'admin',
+      isAdmin,
+      canUpload,
+      canRename,
+      canDelete,
+      hasPermission,
       logout 
     }}>
       {children}

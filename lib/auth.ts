@@ -30,3 +30,12 @@ export async function requireAdmin() {
   if (user.role !== 'admin') throw new Error('Forbidden');
   return user;
 }
+
+export async function requirePermission(permission: string) {
+  const user = await requireAuth();
+  if (user.role === 'admin') return user; // Admins have all permissions
+
+  const privileges = user.privileges as any;
+  if (!privileges?.documents?.[permission]) throw new Error('Forbidden');
+  return user;
+}

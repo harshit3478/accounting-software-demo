@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
     const decoded = jwt.verify(token, process.env.JWT_SECRET!) as any;
     return NextResponse.json({ 
       authenticated: true, 
-      user: { id: decoded.userId, email: decoded.email, role: decoded.role }
+      user: { id: decoded.userId, email: decoded.email, role: decoded.role, name : decoded.name }
     });
   } catch (error: any) {
     return NextResponse.json({ 

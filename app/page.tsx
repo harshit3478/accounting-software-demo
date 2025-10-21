@@ -2,24 +2,101 @@
 
 import { useEffect, useState } from 'react';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import Navigation from '../components/Navigation';
 import MetricCard from '../components/MetricCard';
 import Chart from '../components/Chart';
 import Typed from 'typed.js';
+import { CreateInvoiceModal } from '../components/invoices';
+import { RecordPaymentModal } from '../components/payments';
+import { ToastProvider, useToastContext } from '../components/ToastContext';
 
-export default function Dashboard() {
+function DashboardContent() {
+  const router = useRouter();
+  const { showSuccess } = useToastContext();
+  
   const [metrics, setMetrics] = useState({
     outstanding: 0,
     pending: 0,
     revenue: 0,
     customers: 0,
   });
+  const [todayStats, setTodayStats] = useState({
+    todayRevenue: 0,
+    overdueInvoices: 0,
+    overdueAmount: 0,
+    layawayPlans: 0,
+  });
+  const [recentPayments, setRecentPayments] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Modal states
+  const [showCreateInvoiceModal, setShowCreateInvoiceModal] = useState(false);
+  const [showRecordPaymentModal, setShowRecordPaymentModal] = useState(false);
 
   const fetchMetrics = async () => {
-    const res = await fetch('/api/dashboard');
-    if (res.ok) {
-      const data = await res.json();
-      setMetrics(data);
+    setIsLoading(true);
+    try {
+      // Fetch dashboard metrics
+      const dashboardRes = await fetch('/api/dashboard');
+      if (dashboardRes.ok) {
+        const data = await dashboardRes.json();
+        setMetrics(data);
+      }
+
+      // Fetch invoices for additional stats
+      const invoicesRes = await fetch('/api/invoices');
+      if (invoicesRes.ok) {
+        const invoices = await invoicesRes.json();
+        
+        // Calculate overdue invoices
+        const today = new Date();
+        const overdue = invoices.filter((inv: any) => 
+          inv.status !== 'paid' && new Date(inv.dueDate) < today
+        );
+        
+        const overdueAmount = overdue.reduce((sum: number, inv: any) => 
+          sum + (inv.amount - inv.paidAmount), 0
+        );
+
+        // Count layaway plans
+        const layawayPlans = invoices.filter((inv: any) => inv.isLayaway && inv.status !== 'paid').length;
+
+        setTodayStats({
+          todayRevenue: 0, // Will be calculated from payments
+          overdueInvoices: overdue.length,
+          overdueAmount,
+          layawayPlans,
+        });
+      }
+
+      // Fetch payments for today's revenue and recent activity
+      const paymentsRes = await fetch('/api/payments');
+      if (paymentsRes.ok) {
+        const payments = await paymentsRes.json();
+        
+        // Calculate today's revenue
+        const todayStr = new Date().toISOString().split('T')[0];
+        const todayPayments = payments.filter((p: any) => {
+          const paymentDate = p.paymentDate ? new Date(p.paymentDate).toISOString().split('T')[0] : null;
+          return paymentDate === todayStr;
+        });
+        
+        const todayRevenue = todayPayments.reduce((sum: number, p: any) => sum + p.amount, 0);
+        
+        setTodayStats(prev => ({ ...prev, todayRevenue }));
+        
+        // Get last 5 payments for recent activity
+        const sortedPayments = payments
+          .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+          .slice(0, 5);
+        
+        setRecentPayments(sortedPayments);
+      }
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -173,11 +250,23 @@ export default function Dashboard() {
                 Transform your accounting workflow with our comprehensive solution.
               </p>
               <div className="flex flex-col sm:flex-row gap-4">
-                <button className="bg-blue-600 text-white px-8 py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors card-hover">
-                  Upload Payments
+                <button 
+                  onClick={() => setShowRecordPaymentModal(true)}
+                  className="bg-blue-600 text-white px-8 py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors card-hover flex items-center justify-center gap-2"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path>
+                  </svg>
+                  Record Payment
                 </button>
-                <button className="border border-gray-300 text-gray-700 px-8 py-3 rounded-lg font-medium hover:bg-gray-50 transition-colors card-hover">
-                  Manage Invoices
+                <button 
+                  onClick={() => setShowCreateInvoiceModal(true)}
+                  className="border border-gray-300 text-gray-700 px-8 py-3 rounded-lg font-medium hover:bg-gray-50 transition-colors card-hover flex items-center justify-center gap-2"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                  </svg>
+                  Create Invoice
                 </button>
               </div>
             </div>
@@ -197,68 +286,118 @@ export default function Dashboard() {
 
       {/* Key Metrics */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
-          <div className="animate-fade-in-up stagger-1">
-            <MetricCard
-              title="Total Outstanding"
-              value={`$${metrics.outstanding.toLocaleString()}`}
-              change="+12% from last month"
-              changeType="positive"
-              icon={
-                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
-                </svg>
-              }
-              iconBgColor="bg-blue-100"
-              iconColor="text-blue-600"
-            />
+        {isLoading ? (
+          <div className="flex justify-center items-center py-12">
+            <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
           </div>
-          <div className="animate-fade-in-up stagger-2">
-            <MetricCard
-              title="Pending Payments"
-              value={metrics.pending.toString()}
-              change="Requires attention"
-              changeType="neutral"
-              icon={
-                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                </svg>
-              }
-              iconBgColor="bg-amber-100"
-              iconColor="text-amber-600"
-            />
-          </div>
-          <div className="animate-fade-in-up stagger-3">
-            <MetricCard
-              title="Monthly Revenue"
-              value={`$${metrics.revenue.toLocaleString()}`}
-              change="+8% this month"
-              changeType="positive"
-              icon={
-                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
-                </svg>
-              }
-              iconBgColor="bg-green-100"
-              iconColor="text-green-600"
-            />
-          </div>
-          <div className="animate-fade-in-up stagger-4">
-            <MetricCard
-              title="Active Customers"
-              value={metrics.customers.toString()}
-              change="+5 new this month"
-              changeType="positive"
-              icon={
-                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
-                </svg>
-              }
-              iconBgColor="bg-purple-100"
-              iconColor="text-purple-600"
-            />
-          </div>
-        </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
+              <div className="animate-fade-in-up stagger-1">
+                <MetricCard
+                  title="Today's Revenue"
+                  value={`$${todayStats.todayRevenue.toLocaleString()}`}
+                  change="Payments received today"
+                  changeType="positive"
+                  icon={
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"></path>
+                    </svg>
+                  }
+                  iconBgColor="bg-green-100"
+                  iconColor="text-green-600"
+                />
+              </div>
+              <div className="animate-fade-in-up stagger-2">
+                <MetricCard
+                  title="Pending Invoices"
+                  value={metrics.pending.toString()}
+                  change="Awaiting payment"
+                  changeType="neutral"
+                  icon={
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                  }
+                  iconBgColor="bg-amber-100"
+                  iconColor="text-amber-600"
+                />
+              </div>
+              <div className="animate-fade-in-up stagger-3">
+                <MetricCard
+                  title="Overdue Invoices"
+                  value={todayStats.overdueInvoices.toString()}
+                  change={`$${todayStats.overdueAmount.toLocaleString()} overdue`}
+                  changeType={todayStats.overdueInvoices > 0 ? "negative" : "positive"}
+                  icon={
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                  }
+                  iconBgColor="bg-red-100"
+                  iconColor="text-red-600"
+                />
+              </div>
+              <div className="animate-fade-in-up stagger-4">
+                <MetricCard
+                  title="Layaway Plans"
+                  value={todayStats.layawayPlans.toString()}
+                  change="Active payment plans"
+                  changeType="neutral"
+                  icon={
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path>
+                    </svg>
+                  }
+                  iconBgColor="bg-purple-100"
+                  iconColor="text-purple-600"
+                />
+              </div>
+            </div>
+
+            {/* Additional Stats Row */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+              <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 card-hover">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-medium text-gray-600">Total Outstanding</h3>
+                  <div className="p-2 bg-blue-100 rounded-lg">
+                    <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
+                    </svg>
+                  </div>
+                </div>
+                <p className="text-3xl font-bold text-gray-900">${metrics.outstanding.toLocaleString()}</p>
+                <p className="text-sm text-gray-500 mt-2">Unpaid invoices</p>
+              </div>
+
+              <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 card-hover">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-medium text-gray-600">Total Revenue</h3>
+                  <div className="p-2 bg-green-100 rounded-lg">
+                    <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
+                    </svg>
+                  </div>
+                </div>
+                <p className="text-3xl font-bold text-gray-900">${metrics.revenue.toLocaleString()}</p>
+                <p className="text-sm text-gray-500 mt-2">All-time payments</p>
+              </div>
+
+              <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 card-hover">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-medium text-gray-600">Active Clients</h3>
+                  <div className="p-2 bg-purple-100 rounded-lg">
+                    <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                    </svg>
+                  </div>
+                </div>
+                <p className="text-3xl font-bold text-gray-900">{metrics.customers}</p>
+                <p className="text-sm text-gray-500 mt-2">Unique clients</p>
+              </div>
+            </div>
+          </>
+        )}
 
         {/* Charts Section */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
@@ -275,33 +414,73 @@ export default function Dashboard() {
         {/* Recent Activity */}
         <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
           <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-semibold text-gray-900">Recent Activity</h3>
-            <button className="text-blue-600 hover:text-blue-700 text-sm font-medium">View All</button>
+            <h3 className="text-lg font-semibold text-gray-900">Recent Payments</h3>
+            <a href="/payments" className="text-blue-600 hover:text-blue-700 text-sm font-medium">View All</a>
           </div>
-          <div className="space-y-4">
-            {/* Mock activity items */}
-            <div className="flex items-center space-x-4">
-              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-              <div className="flex-1">
-                <p className="text-sm text-gray-900">Payment received from ABC Corp - $2,450</p>
-                <p className="text-xs text-gray-500">2 hours ago</p>
-              </div>
+          {isLoading ? (
+            <div className="flex justify-center py-8">
+              <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
             </div>
-            <div className="flex items-center space-x-4">
-              <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-              <div className="flex-1">
-                <p className="text-sm text-gray-900">Invoice #1234 sent to XYZ Ltd</p>
-                <p className="text-xs text-gray-500">4 hours ago</p>
-              </div>
+          ) : recentPayments.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              <svg className="w-12 h-12 mx-auto mb-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+              </svg>
+              <p className="text-sm">No recent payments</p>
             </div>
-            <div className="flex items-center space-x-4">
-              <div className="w-2 h-2 bg-amber-500 rounded-full"></div>
-              <div className="flex-1">
-                <p className="text-sm text-gray-900">Overdue payment reminder sent</p>
-                <p className="text-xs text-gray-500">1 day ago</p>
-              </div>
+          ) : (
+            <div className="space-y-4">
+              {recentPayments.map((payment: any) => {
+                const methodColors: Record<string, { bg: string; text: string; dot: string }> = {
+                  cash: { bg: 'bg-green-100', text: 'text-green-800', dot: 'bg-green-500' },
+                  zelle: { bg: 'bg-blue-100', text: 'text-blue-800', dot: 'bg-blue-500' },
+                  quickbooks: { bg: 'bg-purple-100', text: 'text-purple-800', dot: 'bg-purple-500' },
+                  layaway: { bg: 'bg-amber-100', text: 'text-amber-800', dot: 'bg-amber-500' }
+                };
+                const colors = methodColors[payment.method] || { bg: 'bg-gray-100', text: 'text-gray-800', dot: 'bg-gray-500' };
+                
+                // Calculate time ago
+                const timeAgo = (() => {
+                  const now = new Date();
+                  const paymentDate = new Date(payment.createdAt);
+                  const diffMs = now.getTime() - paymentDate.getTime();
+                  const diffMins = Math.floor(diffMs / 60000);
+                  const diffHours = Math.floor(diffMs / 3600000);
+                  const diffDays = Math.floor(diffMs / 86400000);
+                  
+                  if (diffMins < 1) return 'Just now';
+                  if (diffMins < 60) return `${diffMins} minutes ago`;
+                  if (diffHours < 24) return `${diffHours} hours ago`;
+                  if (diffDays < 7) return `${diffDays} days ago`;
+                  return paymentDate.toLocaleDateString();
+                })();
+
+                return (
+                  <div key={payment.id} className="flex items-center space-x-4">
+                    <div className={`w-2 h-2 ${colors.dot} rounded-full`}></div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <p className="text-sm text-gray-900">
+                          Payment received from <span className="font-semibold">{payment.invoice?.clientName || 'Unknown Client'}</span> - ${payment.amount.toLocaleString()}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${colors.bg} ${colors.text}`}>
+                          {payment.method.charAt(0).toUpperCase() + payment.method.slice(1)}
+                        </span>
+                        {payment.invoice && (
+                          <span className="text-xs text-gray-500">
+                            {payment.invoice.invoiceNumber}
+                          </span>
+                        )}
+                        <span className="text-xs text-gray-500">{timeAgo}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-          </div>
+          )}
         </div>
       </div>
 
@@ -313,6 +492,39 @@ export default function Dashboard() {
           </div>
         </div>
       </footer>
+
+      {/* Modals */}
+      <CreateInvoiceModal
+        isOpen={showCreateInvoiceModal}
+        onClose={() => setShowCreateInvoiceModal(false)}
+        onSuccess={() => {
+          setShowCreateInvoiceModal(false);
+          showSuccess('Invoice created successfully!');
+          fetchMetrics(); // Refresh dashboard metrics
+          // Optionally redirect to invoices page
+          // router.push('/invoices');
+        }}
+      />
+
+      <RecordPaymentModal
+        isOpen={showRecordPaymentModal}
+        onClose={() => setShowRecordPaymentModal(false)}
+        onSuccess={() => {
+          setShowRecordPaymentModal(false);
+          showSuccess('Payment recorded successfully!');
+          fetchMetrics(); // Refresh dashboard metrics
+          // Optionally redirect to payments page
+          // router.push('/payments');
+        }}
+      />
     </div>
+  );
+}
+
+export default function Dashboard() {
+  return (
+    <ToastProvider>
+      <DashboardContent />
+    </ToastProvider>
   );
 }

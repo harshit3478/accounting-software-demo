@@ -13,12 +13,41 @@ async function main() {
     create: {
       email: 'admin@example.com',
       passwordHash: hashedPassword,
-      name: 'Admin User',
+      name: 'Super Admin',
       role: 'admin',
+      privileges: {
+        documents: {
+          upload: true,
+          delete: true,
+          rename: true,
+        },
+      },
     },
   });
 
   console.log('Created admin user:', admin);
+
+  // Create a default accountant
+  const accountantPassword = await bcrypt.hash('accountant123', 10);
+  const accountant = await prisma.user.upsert({
+    where: { email: 'accountant@example.com' },
+    update: {},
+    create: {
+      email: 'accountant@example.com',
+      passwordHash: accountantPassword,
+      name: 'Default Accountant',
+      role: 'accountant',
+      privileges: {
+        documents: {
+          upload: false,
+          delete: false,
+          rename: false,
+        },
+      },
+    },
+  });
+
+  console.log('Created accountant user:', accountant);
 
   // Create default system folder for documents
   const defaultFolder = await prisma.systemFolder.upsert({

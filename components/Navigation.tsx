@@ -6,8 +6,8 @@ import { useAuth } from '../lib/AuthContext';
 
 export default function Navigation() {
   const pathname = usePathname();
-  const { logout } = useAuth();
-
+  const { logout, isAdmin, user } = useAuth();
+  console.log('User in Navigation:', user);
   const navItems = [
     { href: '/', label: 'Dashboard', active: pathname === '/' },
     { href: '/invoices', label: 'Invoices', active: pathname === '/invoices' },
@@ -15,6 +15,10 @@ export default function Navigation() {
     { href: '/documents', label: 'Documents', active: pathname === '/documents' },
     // { href: '/statements', label: 'Statements', active: pathname === '/statements' },
   ];
+
+  if (isAdmin) {
+    navItems.push({ href: '/admin/users', label: 'User Management', active: pathname === '/admin/users' });
+  }
 
   const handleLogout = async () => {
     await fetch('/api/logout', { method: 'POST' });
@@ -51,15 +55,23 @@ export default function Navigation() {
             </div>
           </div>
           <div className="flex items-center space-x-4">
-            <button className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
+            {/* <button className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
               + New Invoice
-            </button>
-            <button
-              onClick={handleLogout}
-              className="bg-gray-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors"
-            >
-              Logout
-            </button>
+            </button> */}
+            {user && (
+              <div className="flex items-center space-x-3">
+                <div className="text-right">
+                  <p className="text-sm font-medium text-gray-900">Welcome {user.name}!</p>
+                  <p className="text-xs text-gray-500 capitalize">{user.role}</p>
+                </div>
+                <button
+                  onClick={handleLogout}
+                  className="bg-gray-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors"
+                >
+                  Logout
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>

@@ -17,11 +17,12 @@ interface Document {
 
 interface FileListProps {
   documents: Document[];
-  isAdmin: boolean;
+  canRename: boolean;
+  canDelete: boolean;
   onRefresh: () => void;
 }
 
-export default function FileList({ documents, isAdmin, onRefresh }: FileListProps) {
+export default function FileList({ documents, canRename, canDelete, onRefresh }: FileListProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [previewFile, setPreviewFile] = useState<Document | null>(null);
   const [renamingId, setRenamingId] = useState<number | null>(null);
@@ -129,7 +130,7 @@ export default function FileList({ documents, isAdmin, onRefresh }: FileListProp
             placeholder="Search files..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="pl-10 pr-4 py-2 border text-gray-900 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           />
         </div>
       </div>
@@ -236,8 +237,8 @@ export default function FileList({ documents, isAdmin, onRefresh }: FileListProp
                           <FiDownload />
                         </button>
 
-                        {/* Rename (Admin only) */}
-                        {isAdmin && !isRenaming && (
+                        {/* Rename */}
+                        {canRename && !isRenaming && (
                           <button
                             onClick={() => startRename(doc)}
                             className="p-2 text-yellow-600 hover:bg-yellow-50 rounded-lg transition-colors"
@@ -247,8 +248,8 @@ export default function FileList({ documents, isAdmin, onRefresh }: FileListProp
                           </button>
                         )}
 
-                        {/* Delete (Admin only) */}
-                        {isAdmin && (
+                        {/* Delete */}
+                        {canDelete && (
                           <button
                             onClick={() => handleDelete(doc.id, doc.fileName)}
                             className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"

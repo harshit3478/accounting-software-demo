@@ -27,12 +27,14 @@ interface Folder {
 
 export default function DocumentsPage() {
   const router = useRouter();
-  const { isAuthenticated, isAdmin } = useAuth();
+  const { isAuthenticated, canUpload, canRename, canDelete } = useAuth();
   const [documents, setDocuments] = useState<Document[]>([]);
   const [folder, setFolder] = useState<Folder | null>(null);
   const [loading, setLoading] = useState(true);
   const [isEditingFolder, setIsEditingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
+  const [sortBy, setSortBy] = useState<'date' | 'name'>('date');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -66,6 +68,37 @@ export default function DocumentsPage() {
       console.error('Error fetching data:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const sortDocuments = (docs: Document[]) => {
+    const sorted = [...docs].sort((a, b) => {
+      if (sortBy === 'date') {
+        const dateA = new Date(a.uploadedAt).getTime();
+        const dateB = new Date(b.uploadedAt).getTime();
+        return sortOrder === 'asc' ? dateA - dateB : dateB - dateA;
+      } else {
+        // Sort by name
+        const nameA = a.fileName.toLowerCase();
+        const nameB = b.fileName.toLowerCase();
+        if (sortOrder === 'asc') {
+          return nameA.localeCompare(nameB);
+        } else {
+          return nameB.localeCompare(nameA);
+        }
+      }
+    });
+    return sorted;
+  };
+
+  const sortedDocuments = sortDocuments(documents);
+
+  const toggleSort = (type: 'date' | 'name') => {
+    if (sortBy === type) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(type);
+      setSortOrder('desc');
     }
   };
 
@@ -150,7 +183,7 @@ export default function DocumentsPage() {
                   <h1 className="text-3xl font-bold text-gray-900">
                     {folder?.name || 'Documents'}
                   </h1>
-                  {isAdmin && (
+                  {canRename && (
                     <button
                       onClick={startEditingFolder}
                       className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg"
@@ -177,15 +210,43 @@ export default function DocumentsPage() {
             {/* Storage Indicator */}
             <StorageIndicator />
 
-            {/* File Upload (Admin Only) */}
-            {isAdmin && (
+            {/* File Upload */}
+            {canUpload && (
               <FileUpload onUploadComplete={fetchData} />
             )}
 
+            {/* Sort Controls */}
+            <div className="bg-white rounded-lg shadow-sm p-4 flex items-center justify-between">
+              <span className="text-sm font-medium text-gray-700">Sort by:</span>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => toggleSort('date')}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    sortBy === 'date'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  Date {sortBy === 'date' && (sortOrder === 'asc' ? '↑' : '↓')}
+                </button>
+                <button
+                  onClick={() => toggleSort('name')}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    sortBy === 'name'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  Name {sortBy === 'name' && (sortOrder === 'asc' ? '↑' : '↓')}
+                </button>
+              </div>
+            </div>
+
             {/* File List */}
             <FileList
-              documents={documents}
-              isAdmin={isAdmin}
+              documents={sortedDocuments}
+              canRename={canRename}
+              canDelete={canDelete}
               onRefresh={fetchData}
             />
           </div>

@@ -12,8 +12,7 @@ datasource db {
 
 enum Role {
   admin
-  user
-  viewer
+  accountant
 }
 
 enum InvoiceStatus {
@@ -23,11 +22,19 @@ enum InvoiceStatus {
   partial
 }
 
+enum PaymentMethod {
+  cash
+  zelle
+  quickbooks
+  layaway
+}
+
 model User {
   id           Int      @id @default(autoincrement())
   email        String   @unique
   passwordHash String?
-  role         Role     @default(user)
+  role         Role     @default(accountant)
+  privileges   Json?
   name         String
   googleId     String?  @unique
   resetToken   String?
@@ -37,37 +44,66 @@ model User {
   invoices  Invoice[]
   payments  Payment[]
   documents Document[]
+  paymentMatches PaymentInvoiceMatch[]
 
   @@map("users")
 }
 
 model Invoice {
-  id         Int            @id @default(autoincrement())
-  userId     Int
-  clientName String
-  amount     Decimal        @db.Decimal(10, 2)
-  dueDate    DateTime
-  status     InvoiceStatus  @default(pending)
-  createdAt  DateTime       @default(now())
-  description String?
+  id              Int            @id @default(autoincrement())
+  userId          Int
+  invoiceNumber   String         @unique
+  clientName      String
+  
+  // Item details (stored as JSON for simplicity)
+  items           Json?          // [{name, quantity, pricePerItem}]
+  
+  // Financial details
+  subtotal        Decimal        @db.Decimal(10, 2)
+  tax             Decimal        @db.Decimal(10, 2) @default(0)
+  discount        Decimal        @db.Decimal(10, 2) @default(0)
+  amount          Decimal        @db.Decimal(10, 2) // Total amount
+  paidAmount      Decimal        @db.Decimal(10, 2) @default(0) // Track partial payments
+  
+  dueDate         DateTime
+  status          InvoiceStatus  @default(pending)
+  isLayaway       Boolean        @default(false)
+  
+  description     String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 
-  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  payments Payment[]
+  user            User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  payments        Payment[]
+  paymentMatches  PaymentInvoiceMatch[]
 
   @@map("invoices")
 }
 
 model Payment {
-  id         Int      @id @default(autoincrement())
-  invoiceId  Int
-  amount     Decimal  @db.Decimal(10, 2)
-  paymentDate DateTime @default(now())
-  method     String
-  userId     Int
-  createdAt  DateTime @default(now())
+  id                 Int           @id @default(autoincrement())
+  invoiceId          Int?          // Nullable for unmatched payments
+  amount             Decimal       @db.Decimal(10, 2)
+  paymentDate        DateTime      @default(now())
+  method             PaymentMethod
+  
+  // QuickBooks integration fields
+  quickbooksId       String?       @unique
+  quickbooksSyncedAt DateTime?
+  
+  // Manual entry tracking
+  userId             Int           // Who recorded this payment
+  notes              String?       @db.Text
+  
+  // Matching status
+  isMatched          Boolean       @default(true)
+  
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
 
-  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  invoice            Invoice?              @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  user               User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  paymentMatches     PaymentInvoiceMatch[]
 
   @@map("payments")
 }
@@ -93,4 +129,20 @@ model SystemFolder {
   isDefault Boolean @default(false)
 
   @@map("system_folders")
+}
+
+model PaymentInvoiceMatch {
+  id        Int      @id @default(autoincrement())
+  paymentId Int
+  invoiceId Int
+  amount    Decimal  @db.Decimal(10, 2) // How much of this payment goes to this invoice
+  createdAt DateTime @default(now())
+  
+  payment   Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  invoice   Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    Int      // Who created this match
+  
+  @@unique([paymentId, invoiceId])
+  @@map("payment_invoice_matches")
 }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
-import { requireAdmin } from '@/lib/auth';
+import { requireAdmin, requirePermission } from '@/lib/auth';
 import { deleteFromR2, extractFileNameFromUrl } from '@/lib/r2-client';
 
 const prisma = new PrismaClient();
@@ -10,8 +10,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Check if user is admin
-    await requireAdmin();
+    // Check if user has delete permission
+    await requirePermission('documents.delete');
 
     const { id } = await params;
     const documentId = parseInt(id);
@@ -50,21 +50,6 @@ export async function DELETE(
     });
   } catch (error: any) {
     console.error('Error deleting document:', error);
-
-    if (error.message === 'Forbidden') {
-      return NextResponse.json(
-        { error: 'Only admins can delete files' },
-        { status: 403 }
-      );
-    }
-
-    if (error.message === 'Unauthorized') {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -159,6 +144,51 @@ export async function PATCH(
       );
     }
 
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    // Check if user has rename permission
+    await requirePermission('documents.rename');
+
+    const { id } = await params;
+    const documentId = parseInt(id);
+
+    if (isNaN(documentId)) {
+      return NextResponse.json(
+        { error: 'Invalid document ID' },
+        { status: 400 }
+      );
+    }
+
+    const { originalName } = await request.json();
+
+    if (!originalName) {
+      return NextResponse.json(
+        { error: 'New name is required' },
+        { status: 400 }
+      );
+    }
+
+    const document = await prisma.document.update({
+      where: { id: documentId },
+      data: { originalName },
+    });
+
+    return NextResponse.json({
+      success: true,
+      document,
+    });
+  } catch (error: any) {
+    console.error('Error renaming document:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

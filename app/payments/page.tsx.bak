@@ -2,15 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import Navigation from '../../components/Navigation';
-import Pagination from '../../components/Pagination';
-import { RecordPaymentModal, ViewPaymentModal } from '../../components/payments';
-import { ToastProvider, useToastContext } from '../../components/ToastContext';
 
 interface Payment {
   id: number;
   amount: number;
   method: 'cash' | 'zelle' | 'quickbooks' | 'layaway';
-  paymentDate: string;
+  date: string;
   notes: string | null;
   createdAt: string;
   invoice: {
@@ -33,16 +30,7 @@ interface PaymentStats {
   totalToday: number;
 }
 
-interface Invoice {
-  id: number;
-  invoiceNumber: string;
-  clientName: string;
-  amount: number;
-  paidAmount: number;
-  status: string;
-}
-
-function PaymentsPageContent() {
+export default function PaymentsPage() {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [stats, setStats] = useState<PaymentStats>({
     cashToday: 0,
@@ -57,17 +45,6 @@ function PaymentsPageContent() {
   });
   const [filterMethod, setFilterMethod] = useState<'all' | 'cash' | 'zelle' | 'quickbooks' | 'layaway'>('all');
   const [isLoading, setIsLoading] = useState(true);
-  
-  // Pagination states
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(20);
-  
-  // Modal states
-  const [showRecordModal, setShowRecordModal] = useState(false);
-  const [showViewModal, setShowViewModal] = useState(false);
-  const [viewingPayment, setViewingPayment] = useState<Payment | null>(null);
-
-  const { showSuccess, showError } = useToastContext();
 
   useEffect(() => {
     fetchPayments();
@@ -81,16 +58,15 @@ function PaymentsPageContent() {
         const data = await res.json();
         setPayments(data.map((payment: any) => ({
           ...payment,
-          paymentDate: payment.paymentDate ? new Date(payment.paymentDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-          createdAt: payment.createdAt ? new Date(payment.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+          date: new Date(payment.date).toISOString().split('T')[0],
+          createdAt: new Date(payment.createdAt).toISOString().split('T')[0],
         })));
 
         // Calculate today's stats
         const today = new Date().toISOString().split('T')[0];
-        const todayPayments = data.filter((p: any) => {
-          const paymentDate = p.paymentDate ? new Date(p.paymentDate).toISOString().split('T')[0] : null;
-          return paymentDate === today;
-        });
+        const todayPayments = data.filter((p: any) => 
+          new Date(p.date).toISOString().split('T')[0] === today
+        );
 
         const newStats: PaymentStats = {
           cashToday: todayPayments.filter((p: any) => p.method === 'cash').reduce((sum: number, p: any) => sum + p.amount, 0),
@@ -113,37 +89,10 @@ function PaymentsPageContent() {
     }
   };
 
-  const handleViewPayment = (payment: Payment) => {
-    setViewingPayment(payment);
-    setShowViewModal(true);
-  };
-
   const filteredPayments = payments.filter(payment => {
     if (filterMethod === 'all') return true;
     return payment.method === filterMethod;
   });
-
-  // Pagination logic
-  const totalPages = Math.ceil(filteredPayments.length / itemsPerPage);
-  const paginatedPayments = filteredPayments.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
-  );
-
-  // Reset to page 1 when filter changes
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [filterMethod]);
-
-  const handlePageChange = (page: number) => {
-    setCurrentPage(page);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const handleItemsPerPageChange = (items: number) => {
-    setItemsPerPage(items);
-    setCurrentPage(1);
-  };
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -239,6 +188,14 @@ function PaymentsPageContent() {
     }
   ];
 
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+  };
+
   return (
     <div className="bg-gray-50 hero-pattern min-h-screen">
       <Navigation />
@@ -252,15 +209,6 @@ function PaymentsPageContent() {
               <p className="text-gray-600 mt-2">Upload, match, and reconcile payments from multiple sources</p>
             </div>
             <div className="flex items-center space-x-4">
-              <button
-                onClick={() => setShowRecordModal(true)}
-                className="px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center gap-2"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path>
-                </svg>
-                Record New Payment
-              </button>
               <div className="text-right">
                 <p className="text-sm text-gray-500">Processed Today</p>
                 <p className="text-2xl font-bold text-gray-900">${stats.totalToday.toLocaleString()}</p>
@@ -386,10 +334,10 @@ function PaymentsPageContent() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {paginatedPayments.map((payment, index) => (
+                  {filteredPayments.map((payment, index) => (
                     <tr key={payment.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                        {formatDate(payment.paymentDate)}
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {formatDate(payment.date)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                         {payment.invoice ? payment.invoice.invoiceNumber : 
@@ -418,39 +366,14 @@ function PaymentsPageContent() {
               </table>
             )}
           </div>
+        </div>
 
-          {/* Pagination */}
-          {filteredPayments.length > 0 && (
-            <Pagination
-              currentPage={currentPage}
-              totalPages={totalPages}
-              totalItems={filteredPayments.length}
-              itemsPerPage={itemsPerPage}
-              onPageChange={handlePageChange}
-              onItemsPerPageChange={handleItemsPerPageChange}
-            />
-          )}
+        </tbody>
+              </table>
+            )}
+          </div>
         </div>
       </div>
-
-      {/* Modals */}
-      <RecordPaymentModal
-        isOpen={showRecordModal}
-        onClose={() => setShowRecordModal(false)}
-        onSuccess={() => {
-          fetchPayments();
-          showSuccess('Payment recorded successfully!');
-        }}
-      />
-
-      <ViewPaymentModal
-        isOpen={showViewModal}
-        onClose={() => {
-          setShowViewModal(false);
-          setViewingPayment(null);
-        }}
-        payment={viewingPayment}
-      />
 
       {/* Footer */}
       <footer className="bg-white border-t border-gray-200 mt-16">
@@ -464,10 +387,71 @@ function PaymentsPageContent() {
   );
 }
 
-export default function PaymentsPage() {
-  return (
-    <ToastProvider>
-      <PaymentsPageContent />
-    </ToastProvider>
+        {/* Duplicate Detection */}
+        <div className="bg-white rounded-xl shadow-lg border border-gray-200 mb-8">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900">Duplicate Detection</h3>
+              <div className="flex items-center space-x-2">
+                <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                <span className="text-sm text-gray-600">Active Monitoring</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-6">
+            <div className="space-y-3">
+              <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium text-red-900">Potential Duplicate Detected</p>
+                    <p className="text-sm text-red-700">$500 payment from Smart Systems appears twice</p>
+                  </div>
+                  <button className="text-red-600 hover:text-red-700 text-sm font-medium">Review</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Recent Payment Activity */}
+        <div className="bg-white rounded-xl shadow-lg border border-gray-200">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900">Recent Payment Activity</h3>
+              <button className="text-blue-600 hover:text-blue-700 text-sm font-medium">View All</button>
+            </div>
+          </div>
+
+          <div className="p-6">
+            <div className="space-y-4">
+              <div className="flex items-center space-x-4">
+                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                <div className="flex-1">
+                  <p className="text-sm text-gray-900">Payment matched: $1,250 from Acme Corporation</p>
+                  <p className="text-xs text-gray-500">2 hours ago</p>
+                </div>
+              </div>
+              <div className="flex items-center space-x-4">
+                <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                <div className="flex-1">
+                  <p className="text-sm text-gray-900">File uploaded: Zelle payments January 2024</p>
+                  <p className="text-xs text-gray-500">4 hours ago</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Footer */}
+      <footer className="bg-white border-t border-gray-200 mt-16">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="text-center">
+            <p className="text-gray-500 text-sm">© 2024 FinanceFlow Accounting System. Professional invoice and payment management.</p>
+          </div>
+        </div>
+      </footer>
+    </div>
   );
 }
