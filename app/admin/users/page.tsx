@@ -116,7 +116,7 @@ export default function AdminUsersPage() {
   };
 
   return (
-    <div className='bg-gray-50 hero-pattern'>
+    <div className='bg-gray-50 hero-pattern min-h-screen'>
       <Navigation />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 ">
         <h1 className="text-3xl font-bold text-gray-900 mb-8">Manage Users</h1>

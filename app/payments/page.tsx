@@ -5,6 +5,7 @@ import Navigation from '../../components/Navigation';
 import Pagination from '../../components/Pagination';
 import { RecordPaymentModal, ViewPaymentModal } from '../../components/payments';
 import { ToastProvider, useToastContext } from '../../components/ToastContext';
+import TableSkeleton from '../../components/TableSkeleton';
 
 interface Payment {
   id: number;
@@ -361,10 +362,7 @@ function PaymentsPageContent() {
 
           <div className="overflow-x-auto">
             {isLoading ? (
-              <div className="p-12 text-center">
-                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                <p className="text-gray-500 mt-4">Loading payments...</p>
-              </div>
+              <TableSkeleton rows={10} />
             ) : filteredPayments.length === 0 ? (
               <div className="p-12 text-center">
                 <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">

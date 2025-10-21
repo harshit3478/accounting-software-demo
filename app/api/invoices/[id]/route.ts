@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import { requireAuth } from '../../../../lib/auth';
 
 const prisma = new PrismaClient();
@@ -37,7 +37,7 @@ export async function PUT(
       where: { id: invoiceId },
       data: {
         clientName,
-        items: items || null,
+        items: items ? (items as Prisma.InputJsonValue) : Prisma.DbNull,
         subtotal: parseFloat(subtotal),
         tax: parseFloat(taxAmount),
         discount: parseFloat(discountAmount),
@@ -46,10 +46,6 @@ export async function PUT(
         description,
         isLayaway: isLayaway || false,
       },
-      include: {
-        payments: true,
-        paymentMatches: true,
-      }
     });
 
     // Convert Decimal to number for response
@@ -60,10 +56,6 @@ export async function PUT(
       discount: invoice.discount.toNumber(),
       amount: invoice.amount.toNumber(),
       paidAmount: invoice.paidAmount.toNumber(),
-      payments: invoice.payments.map(payment => ({
-        ...payment,
-        amount: payment.amount.toNumber()
-      }))
     };
 
     return NextResponse.json(serializedInvoice);
