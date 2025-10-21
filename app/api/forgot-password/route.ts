@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import nodemailer from 'nodemailer';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import prisma from '../../../lib/prisma';
 
 const transporter = nodemailer.createTransport({
   host: 'smtp.gmail.com', // Example, change to your SMTP

@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
+import prisma from '@/lib/prisma';
 import { requireAdmin, requirePermission } from '@/lib/auth';
 import { deleteFromR2, extractFileNameFromUrl } from '@/lib/r2-client';
-
-const prisma = new PrismaClient();
 
 export async function DELETE(
   request: NextRequest,

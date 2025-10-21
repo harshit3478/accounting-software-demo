@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcrypt';
-import { PrismaClient } from '@prisma/client';
-import { requireAdmin } from '../../../lib/auth';
-
-const prisma = new PrismaClient();
+import prisma from '../../../lib/prisma';
+import { requireAuth } from '../../../lib/auth';
 
 export async function GET() {
   try {

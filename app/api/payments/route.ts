@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient, PaymentMethod } from '@prisma/client';
+import { PaymentMethod } from '@prisma/client';
+import prisma from '../../../lib/prisma';
 import { requireAuth } from '../../../lib/auth';
-import { updateInvoiceAfterPayment } from '../../../lib/invoice-utils';
-
-const prisma = new PrismaClient();
+import { calculateInvoiceStatus, updateInvoiceAfterPayment } from '../../../lib/invoice-utils';
 
 export async function GET(request: NextRequest) {
   try {

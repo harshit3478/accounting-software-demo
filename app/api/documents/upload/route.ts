@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
+import prisma from '@/lib/prisma';
 import { requirePermission } from '@/lib/auth';
 import { uploadToR2 } from '@/lib/r2-client';
 import {
@@ -10,8 +10,6 @@ import {
   generateUniqueFileName,
   formatFileSize,
 } from '@/lib/file-utils';
-
-const prisma = new PrismaClient();
 
 export async function POST(request: NextRequest) {
   try {
