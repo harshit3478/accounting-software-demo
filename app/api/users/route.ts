@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcrypt';
 import prisma from '../../../lib/prisma';
-import { requireAuth } from '../../../lib/auth';
+import { requireAuth, requireAdmin } from '../../../lib/auth';
 
 export async function GET() {
   try {

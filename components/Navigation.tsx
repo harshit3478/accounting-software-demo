@@ -7,7 +7,6 @@ import { useAuth } from '../lib/AuthContext';
 export default function Navigation() {
   const pathname = usePathname();
   const { logout, isAdmin, user } = useAuth();
-  console.log('User in Navigation:', user);
   const navItems = [
     { href: '/', label: 'Dashboard', active: pathname === '/' },
     { href: '/invoices', label: 'Invoices', active: pathname === '/invoices' },
