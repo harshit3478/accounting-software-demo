@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import prisma from '../../../../../../../lib/prisma';
-import { requireAuth } from '../../../../../../../lib/auth';
-import { updateInvoiceAfterPayment } from '../../../../../../../lib/invoice-utils';
+import prisma from '@/lib/prisma';
+import { requireAuth } from '@/lib/auth';
+import { updateInvoiceAfterPayment } from '@/lib/invoice-utils';
 
 export async function DELETE(
   request: NextRequest,

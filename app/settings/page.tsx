@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Navigation from '../../components/Navigation';
 import { ToastProvider, useToastContext } from '../../components/ToastContext';
@@ -254,7 +254,23 @@ function SettingsContent() {
 export default function SettingsPage() {
   return (
     <ToastProvider>
-      <SettingsContent />
+      <Suspense fallback={
+        <div className="bg-gray-50 min-h-screen">
+          <Navigation />
+          <div className="max-w-6xl mx-auto px-4 py-8">
+            <div className="animate-pulse">
+              <div className="h-8 bg-gray-200 rounded w-48 mb-8"></div>
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <div className="h-6 bg-gray-200 rounded w-64 mb-4"></div>
+                <div className="h-4 bg-gray-200 rounded w-full mb-2"></div>
+                <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      }>
+        <SettingsContent />
+      </Suspense>
     </ToastProvider>
   );
 }
