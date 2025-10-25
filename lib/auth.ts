@@ -34,6 +34,37 @@ export async function requirePermission(permission: string) {
   if (user.role === 'admin') return user; // Admins have all permissions
 
   const privileges = user.privileges as any;
-  if (!privileges?.documents?.[permission]) throw new Error('Forbidden');
+  
+  // Parse permission string (e.g., 'documents.delete' -> ['documents', 'delete'])
+  const parts = permission.split('.');
+  if (parts.length !== 2) throw new Error('Invalid permission format');
+  
+  const [category, action] = parts;
+  
+  // Check if user has this specific permission
+  if (!privileges?.[category]?.[action]) throw new Error('Forbidden');
+  
   return user;
+}
+
+export async function requireSuperAdmin() {
+  const user = await requireAuth();
+  
+  // Check both email and ID for backwards compatibility
+  const isSuperAdminUser = 
+    user.email === process.env.SUPERADMIN_EMAIL || 
+    user.id === parseInt(process.env.SUPERADMIN_ID || '1');
+  
+  if (!isSuperAdminUser) {
+    throw new Error('Super admin access required');
+  }
+  
+  return user;
+}
+
+export function isSuperAdmin(user: any): boolean {
+  return (
+    user.email === process.env.SUPERADMIN_EMAIL || 
+    user.id === parseInt(process.env.SUPERADMIN_ID || '1')
+  );
 }

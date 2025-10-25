@@ -11,9 +11,10 @@ interface CreateInvoiceModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  onError?: (message: string) => void;
 }
 
-export default function CreateInvoiceModal({ isOpen, onClose, onSuccess }: CreateInvoiceModalProps) {
+export default function CreateInvoiceModal({ isOpen, onClose, onSuccess, onError }: CreateInvoiceModalProps) {
   const [clientName, setClientName] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [items, setItems] = useState<InvoiceItem[]>([{ name: '', quantity: 1, price: 0 }]);
@@ -82,7 +83,7 @@ export default function CreateInvoiceModal({ isOpen, onClose, onSuccess }: Creat
 
   const handleCreateInvoice = async () => {
     if (!clientName.trim() || !dueDate) {
-      alert('Please fill in all required fields');
+      onError?.('Please fill in all required fields');
       return;
     }
 
@@ -91,7 +92,7 @@ export default function CreateInvoiceModal({ isOpen, onClose, onSuccess }: Creat
     }
 
     if (items.length === 0 || items.some(item => !item.name.trim() || item.price <= 0)) {
-      alert('Please add at least one valid item');
+      onError?.('Please add at least one valid item');
       return;
     }
 
@@ -125,11 +126,11 @@ export default function CreateInvoiceModal({ isOpen, onClose, onSuccess }: Creat
         onSuccess();
       } else {
         const error = await res.json();
-        alert(error.error || 'Failed to create invoice');
+        onError?.(error.error || 'Failed to create invoice');
       }
     } catch (error) {
       console.error('Failed to create invoice:', error);
-      alert('Failed to create invoice');
+      onError?.('Failed to create invoice');
     } finally {
       setIsCreating(false);
     }

@@ -11,6 +11,10 @@ export async function DELETE(
     // Check if user has delete permission
     await requirePermission('documents.delete');
 
+    // Get current user for tracking who deleted it
+    const { getUserFromToken } = await import('@/lib/auth');
+    const currentUser = await getUserFromToken();
+
     const { id } = await params;
     const documentId = parseInt(id);
 
@@ -33,18 +37,33 @@ export async function DELETE(
       );
     }
 
-    // Delete from R2
-    const fileName = document.fileName;
-    await deleteFromR2(fileName);
+    // Move to DeletedDocument table (soft delete - file stays in R2)
+    await prisma.deletedDocument.create({
+      data: {
+        originalDocId: document.id,
+        userId: document.userId,
+        fileName: document.fileName,
+        originalName: document.originalName,
+        fileSize: document.fileSize,
+        fileType: document.fileType,
+        fileUrl: document.fileUrl,
+        uploadedAt: document.uploadedAt,
+        deletedBy: currentUser!.id,
+        deletedAt: new Date(),
+        deleteReason: null,
+      }
+    });
 
-    // Delete from database
+    // Delete from Document table (but file stays in R2 storage!)
     await prisma.document.delete({
       where: { id: documentId },
     });
 
+    // Do NOT call deleteFromR2() anymore - file stays in storage for recovery
+
     return NextResponse.json({
       success: true,
-      message: 'Document deleted successfully',
+      message: 'Document moved to trash. It will be permanently deleted after 30 days.',
     });
   } catch (error: any) {
     console.error('Error deleting document:', error);
@@ -60,8 +79,8 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Check if user is admin
-    await requireAdmin();
+    // Check if user has rename permission
+    await requirePermission('documents.rename');
 
     const { id } = await params;
     const documentId = parseInt(id);
@@ -130,7 +149,7 @@ export async function PATCH(
 
     if (error.message === 'Forbidden') {
       return NextResponse.json(
-        { error: 'Only admins can rename files' },
+        { error: 'You do not have permission to rename files' },
         { status: 403 }
       );
     }

@@ -7,13 +7,20 @@ import { useAuth } from '../lib/AuthContext';
 export default function Navigation() {
   const pathname = usePathname();
   const { logout, isAdmin, user } = useAuth();
+  
+  // Check if user is superadmin (matches email from env)
+  const isSuperAdmin = user?.email === process.env.NEXT_PUBLIC_SUPERADMIN_EMAIL || user?.id === 1;
+  
   const navItems = [
     { href: '/', label: 'Dashboard', active: pathname === '/' },
     { href: '/invoices', label: 'Invoices', active: pathname === '/invoices' },
     { href: '/payments', label: 'Payments', active: pathname === '/payments' },
     { href: '/documents', label: 'Documents', active: pathname === '/documents' },
+    { href: '/settings', label: 'Settings', active: pathname === '/settings' },
     // { href: '/statements', label: 'Statements', active: pathname === '/statements' },
   ];
+
+  // Remove the push for Trash - will be moved to Documents page
 
   if (isAdmin) {
     navItems.push({ href: '/admin/users', label: 'User Management', active: pathname === '/admin/users' });

@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const invoiceId = searchParams.get('invoiceId');
 
-    let where: any = user.role === 'admin' ? {} : { userId: user.id };
+    let where: any = {};
     
     // Filter by invoiceId if provided
     if (invoiceId) {

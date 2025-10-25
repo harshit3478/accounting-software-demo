@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Navigation from '../../../components/Navigation';
+import ConfirmModal from '../../../components/ConfirmModal';
 
 interface User {
   id: number;
@@ -28,6 +29,7 @@ export default function AdminUsersPage() {
   const [loading, setLoading] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; name: string } | null>(null);
 
   useEffect(() => {
     fetchUsers();
@@ -92,19 +94,24 @@ export default function AdminUsersPage() {
     }
   };
 
-  const handleDeleteUser = async (id: number) => {
-    if (!confirm('Are you sure you want to delete this user?')) return;
+  const handleDeleteUser = async (id: number, name: string) => {
+    setDeleteConfirm({ id, name });
+  };
 
-    setDeletingId(id);
+  const confirmDelete = async () => {
+    if (!deleteConfirm) return;
+
+    setDeletingId(deleteConfirm.id);
     try {
       const res = await fetch('/api/users', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id }),
+        body: JSON.stringify({ id: deleteConfirm.id }),
       });
 
       if (res.ok) {
         setMessage('User deleted successfully');
+        setDeleteConfirm(null);
         fetchUsers();
       } else {
         const data = await res.json();
@@ -318,7 +325,7 @@ export default function AdminUsersPage() {
                       Edit
                     </button>
                     <button
-                      onClick={() => handleDeleteUser(user.id)}
+                      onClick={() => handleDeleteUser(user.id, user.name)}
                       disabled={deletingId !== null}
                       className="inline-flex items-center px-3 py-1.5 bg-red-600 text-white text-xs font-medium rounded hover:bg-red-700 transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
@@ -341,7 +348,7 @@ export default function AdminUsersPage() {
         </div>
 
         {editingUser && (
-          <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/70 backdrop-blur-sm transition-opacity duration-300">
+          <div className="fixed inset-0 flex items-center justify-center z-50  backdrop-blur-sm transition-opacity duration-300">
     <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto transform transition-all duration-300 scale-100 opacity-100 animate-fadeIn">
       <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
         <h2 className="text-xl font-semibold text-gray-800">Edit User</h2>
@@ -483,6 +490,19 @@ export default function AdminUsersPage() {
           </div>
         )}
       </div>
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmModal
+        isOpen={!!deleteConfirm}
+        title="Delete User"
+        message={`Are you sure you want to delete user "${deleteConfirm?.name}"? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteConfirm(null)}
+        isLoading={deletingId === deleteConfirm?.id}
+        danger={true}
+      />
       
     </div>
   );

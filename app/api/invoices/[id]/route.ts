@@ -14,17 +14,13 @@ export async function PUT(
     const { id } = await params;
     const invoiceId = parseInt(id);
 
-    // Check if invoice exists and user has permission
+    // Check if invoice exists
     const existingInvoice = await prisma.invoice.findUnique({
       where: { id: invoiceId },
     });
 
     if (!existingInvoice) {
       return NextResponse.json({ error: 'Invoice not found' }, { status: 404 });
-    }
-
-    if (user.role !== 'admin' && existingInvoice.userId !== user.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
     // Calculate total amount
@@ -70,11 +66,6 @@ export async function DELETE(
 ) {
   try {
     const user = await requireAuth();
-    
-    // Only admins can delete invoices
-    if (user.role !== 'admin') {
-      return NextResponse.json({ error: 'Only admins can delete invoices' }, { status: 403 });
-    }
 
     const { id } = await params;
     const invoiceId = parseInt(id);

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { FiDownload, FiTrash2, FiEdit2, FiEye, FiSearch } from 'react-icons/fi';
 import { formatFileSize, getFileTypeInfo, canPreviewFile } from '@/lib/file-utils';
 import FilePreview from './FilePreview';
+import ConfirmModal from './ConfirmModal';
 
 interface Document {
   id: number;
@@ -20,13 +21,17 @@ interface FileListProps {
   canRename: boolean;
   canDelete: boolean;
   onRefresh: () => void;
+  onSuccess?: (message: string) => void;
+  onError?: (message: string) => void;
 }
 
-export default function FileList({ documents, canRename, canDelete, onRefresh }: FileListProps) {
+export default function FileList({ documents, canRename, canDelete, onRefresh, onSuccess, onError }: FileListProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [previewFile, setPreviewFile] = useState<Document | null>(null);
   const [renamingId, setRenamingId] = useState<number | null>(null);
   const [newFileName, setNewFileName] = useState('');
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; fileName: string } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const filteredDocuments = documents.filter((doc) =>
     doc.fileName.toLowerCase().includes(searchQuery.toLowerCase())
@@ -45,25 +50,31 @@ export default function FileList({ documents, canRename, canDelete, onRefresh }:
   };
 
   const handleDelete = async (id: number, fileName: string) => {
-    if (!confirm(`Are you sure you want to delete "${fileName}"?`)) {
-      return;
-    }
+    setDeleteConfirm({ id, fileName });
+  };
 
+  const confirmDelete = async () => {
+    if (!deleteConfirm) return;
+
+    setIsDeleting(true);
     try {
-      const response = await fetch(`/api/documents/${id}`, {
+      const response = await fetch(`/api/documents/${deleteConfirm.id}`, {
         method: 'DELETE',
       });
 
       if (response.ok) {
-        alert('File deleted successfully');
+        onSuccess?.('File deleted successfully');
+        setDeleteConfirm(null);
         onRefresh();
       } else {
         const data = await response.json();
-        alert(`Failed to delete: ${data.error}`);
+        onError?.(`Failed to delete: ${data.error}`);
       }
     } catch (error) {
       console.error('Delete error:', error);
-      alert('Failed to delete file');
+      onError?.('Failed to delete file');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -79,7 +90,7 @@ export default function FileList({ documents, canRename, canDelete, onRefresh }:
 
   const handleRename = async (id: number) => {
     if (!newFileName.trim()) {
-      alert('File name cannot be empty');
+      onError?.('File name cannot be empty');
       return;
     }
 
@@ -91,16 +102,16 @@ export default function FileList({ documents, canRename, canDelete, onRefresh }:
       });
 
       if (response.ok) {
-        alert('File renamed successfully');
+        onSuccess?.('File renamed successfully');
         cancelRename();
         onRefresh();
       } else {
         const data = await response.json();
-        alert(`Failed to rename: ${data.error}`);
+        onError?.(`Failed to rename: ${data.error}`);
       }
     } catch (error) {
       console.error('Rename error:', error);
-      alert('Failed to rename file');
+      onError?.('Failed to rename file');
     }
   };
 
@@ -185,7 +196,7 @@ export default function FileList({ documents, canRename, canDelete, onRefresh }:
                             type="text"
                             value={newFileName}
                             onChange={(e) => setNewFileName(e.target.value)}
-                            className="px-2 py-1 border border-gray-300 rounded text-sm flex-1"
+                            className="px-2 py-1 text-gray-900 border border-gray-300 rounded text-sm flex-1"
                             autoFocus
                           />
                           <button
@@ -278,6 +289,19 @@ export default function FileList({ documents, canRename, canDelete, onRefresh }:
           onClose={() => setPreviewFile(null)}
         />
       )}
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmModal
+        isOpen={!!deleteConfirm}
+        title="Delete File"
+        message={`Are you sure you want to delete "${deleteConfirm?.fileName}"? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteConfirm(null)}
+        isLoading={isDeleting}
+        danger={true}
+      />
     </div>
   );
 }

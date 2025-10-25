@@ -12,13 +12,15 @@ interface FileWithPreview {
 
 interface FileUploadProps {
   onUploadComplete?: () => void;
+  onUploadSuccess?: (message: string) => void;
+  onUploadError?: (message: string) => void;
 }
 
-export default function FileUpload({ onUploadComplete }: FileUploadProps) {
+export default function FileUpload({ onUploadComplete, onUploadSuccess, onUploadError }: FileUploadProps) {
   const [files, setFiles] = useState<FileWithPreview[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<{ [key: string]: number }>({});
+  const [uploadProgress, setUploadProgress] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
@@ -74,11 +76,12 @@ export default function FileUpload({ onUploadComplete }: FileUploadProps) {
     const validFiles = files.filter((f) => !f.error);
 
     if (validFiles.length === 0) {
-      alert('No valid files to upload');
+      onUploadError?.('No valid files to upload');
       return;
     }
 
     setIsUploading(true);
+    setUploadProgress(0);
 
     try {
       const formData = new FormData();
@@ -86,25 +89,45 @@ export default function FileUpload({ onUploadComplete }: FileUploadProps) {
         formData.append('files', fileItem.file);
       });
 
-      const response = await fetch('/api/documents/upload', {
-        method: 'POST',
-        body: formData,
+      // Create XMLHttpRequest for progress tracking
+      const xhr = new XMLHttpRequest();
+
+      // Track upload progress
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable) {
+          const percentComplete = Math.round((e.loaded / e.total) * 100);
+          setUploadProgress(percentComplete);
+        }
       });
 
-      const data = await response.json();
+      // Handle completion
+      const uploadPromise = new Promise<{ ok: boolean; data: any }>((resolve, reject) => {
+        xhr.addEventListener('load', () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve({ ok: true, data: JSON.parse(xhr.responseText) });
+          } else {
+            reject(new Error(xhr.statusText));
+          }
+        });
+        xhr.addEventListener('error', () => reject(new Error('Upload failed')));
+        xhr.addEventListener('abort', () => reject(new Error('Upload cancelled')));
+      });
 
-      if (response.ok) {
-        alert(`Successfully uploaded ${data.uploaded.length} file(s)`);
-        setFiles([]);
-        if (onUploadComplete) {
-          onUploadComplete();
-        }
-      } else {
-        alert(`Upload failed: ${data.error || 'Unknown error'}`);
+      xhr.open('POST', '/api/documents/upload');
+      xhr.send(formData);
+
+      const { data } = await uploadPromise;
+
+      onUploadSuccess?.(`Successfully uploaded ${data.uploaded.length} file(s)`);
+      setFiles([]);
+      setUploadProgress(0);
+      if (onUploadComplete) {
+        onUploadComplete();
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Upload error:', error);
-      alert('Upload failed. Please try again.');
+      onUploadError?.(error.message || 'Upload failed. Please try again.');
+      setUploadProgress(0);
     } finally {
       setIsUploading(false);
     }
@@ -185,18 +208,34 @@ export default function FileUpload({ onUploadComplete }: FileUploadProps) {
             ))}
           </div>
 
+          {/* Upload Progress Bar */}
+          {isUploading && (
+            <div className="mt-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-gray-700">Uploading...</span>
+                <span className="text-sm font-medium text-blue-600">{uploadProgress}%</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
+                <div
+                  className="bg-blue-600 h-2.5 rounded-full transition-all duration-300 ease-out"
+                  style={{ width: `${uploadProgress}%` }}
+                ></div>
+              </div>
+            </div>
+          )}
+
           {/* Upload Button */}
           <div className="mt-4 flex justify-end">
             <button
               onClick={handleUpload}
               disabled={isUploading || files.every((f) => f.error)}
-              className={`px-6 py-2 rounded-lg font-medium ${
+              className={`px-6 py-2 rounded-lg font-medium transition-colors ${
                 isUploading || files.every((f) => f.error)
                   ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                   : 'bg-green-600 text-white hover:bg-green-700'
               }`}
             >
-              {isUploading ? 'Uploading...' : `Upload ${files.filter((f) => !f.error).length} File(s)`}
+              {isUploading ? `Uploading... ${uploadProgress}%` : `Upload ${files.filter((f) => !f.error).length} File(s)`}
             </button>
           </div>
         </div>

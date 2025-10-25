@@ -2,12 +2,14 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useAuth } from '@/lib/AuthContext';
 import Navigation from '@/components/Navigation';
 import FileUpload from '@/components/FileUpload';
 import StorageIndicator from '@/components/StorageIndicator';
 import FileList from '@/components/FileList';
-import { FiEdit2, FiCheck, FiX, FiFolder } from 'react-icons/fi';
+import { ToastProvider, useToastContext } from '@/components/ToastContext';
+import { FiEdit2, FiCheck, FiX, FiFolder, FiTrash2 } from 'react-icons/fi';
 
 interface Document {
   id: number;
@@ -25,9 +27,10 @@ interface Folder {
   isDefault: boolean;
 }
 
-export default function DocumentsPage() {
+function DocumentsPageContent() {
   const router = useRouter();
-  const { isAuthenticated, canUpload, canRename, canDelete } = useAuth();
+  const { isAuthenticated, canUpload, canRename, canDelete, isAdmin } = useAuth();
+  const { showSuccess, showError } = useToastContext();
   const [documents, setDocuments] = useState<Document[]>([]);
   const [folder, setFolder] = useState<Folder | null>(null);
   const [loading, setLoading] = useState(true);
@@ -114,7 +117,7 @@ export default function DocumentsPage() {
 
   const handleRenameFolder = async () => {
     if (!newFolderName.trim()) {
-      alert('Folder name cannot be empty');
+      showError('Folder name cannot be empty');
       return;
     }
 
@@ -129,14 +132,14 @@ export default function DocumentsPage() {
         const data = await response.json();
         setFolder(data.folder);
         setIsEditingFolder(false);
-        alert('Folder renamed successfully');
+        showSuccess('Folder renamed successfully');
       } else {
         const data = await response.json();
-        alert(`Failed to rename folder: ${data.error}`);
+        showError(`Failed to rename folder: ${data.error}`);
       }
     } catch (error) {
       console.error('Rename error:', error);
-      alert('Failed to rename folder');
+      showError('Failed to rename folder');
     }
   };
 
@@ -195,6 +198,15 @@ export default function DocumentsPage() {
                 </>
               )}
             </div>
+            {isAdmin && (
+              <Link
+                href="/documents/trash"
+                className="flex items-center px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg border border-red-200 transition-colors"
+                title="Trash"
+              >
+                <FiTrash2 className="text-xl" />
+              </Link>
+            )}
           </div>
           <p className="text-gray-600 mt-2">
             Manage and access all your business documents in one place
@@ -212,7 +224,11 @@ export default function DocumentsPage() {
 
             {/* File Upload */}
             {canUpload && (
-              <FileUpload onUploadComplete={fetchData} />
+              <FileUpload 
+                onUploadComplete={fetchData}
+                onUploadSuccess={showSuccess}
+                onUploadError={showError}
+              />
             )}
 
             {/* Sort Controls */}
@@ -248,10 +264,20 @@ export default function DocumentsPage() {
               canRename={canRename}
               canDelete={canDelete}
               onRefresh={fetchData}
+              onSuccess={showSuccess}
+              onError={showError}
             />
           </div>
         )}
       </div>
     </div>
+  );
+}
+
+export default function DocumentsPage() {
+  return (
+    <ToastProvider>
+      <DocumentsPageContent />
+    </ToastProvider>
   );
 }

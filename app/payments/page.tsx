@@ -1,11 +1,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import Navigation from '../../components/Navigation';
 import Pagination from '../../components/Pagination';
 import { RecordPaymentModal, ViewPaymentModal } from '../../components/payments';
 import { ToastProvider, useToastContext } from '../../components/ToastContext';
 import TableSkeleton from '../../components/TableSkeleton';
+import CSVUploadModal from '../../components/CSVUploadModal';
 
 interface Payment {
   id: number;
@@ -20,6 +22,16 @@ interface Payment {
     clientName: string;
     amount: number;
   } | null;
+  paymentMatches?: Array<{
+    id: number;
+    amount: number;
+    invoice: {
+      id: number;
+      invoiceNumber: string;
+      clientName: string;
+      amount: number;
+    };
+  }>;
 }
 
 interface PaymentStats {
@@ -45,6 +57,7 @@ interface Invoice {
 
 function PaymentsPageContent() {
   const [payments, setPayments] = useState<Payment[]>([]);
+  const [unmatchedCount, setUnmatchedCount] = useState(0);
   const [stats, setStats] = useState<PaymentStats>({
     cashToday: 0,
     cashCount: 0,
@@ -66,13 +79,22 @@ function PaymentsPageContent() {
   // Modal states
   const [showRecordModal, setShowRecordModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
+  const [showCSVUploadModal, setShowCSVUploadModal] = useState(false);
   const [viewingPayment, setViewingPayment] = useState<Payment | null>(null);
 
   const { showSuccess, showError } = useToastContext();
 
-  useEffect(() => {
-    fetchPayments();
-  }, []);
+  const fetchUnmatchedCount = async () => {
+    try {
+      const response = await fetch('/api/payments/unmatched');
+      if (response.ok) {
+        const result = await response.json();
+        setUnmatchedCount(result.summary.count);
+      }
+    } catch (err) {
+      console.error('Failed to fetch unmatched count:', err);
+    }
+  };
 
   const fetchPayments = async () => {
     setIsLoading(true);
@@ -113,6 +135,12 @@ function PaymentsPageContent() {
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    fetchPayments();
+    fetchUnmatchedCount();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleViewPayment = (payment: Payment) => {
     setViewingPayment(payment);
@@ -248,11 +276,38 @@ function PaymentsPageContent() {
       <div className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-3xl font-bold text-gray-900">Payment Processing</h2>
-              <p className="text-gray-600 mt-2">Upload, match, and reconcile payments from multiple sources</p>
+            <div className="flex items-center gap-4">
+              <div>
+                <h2 className="text-3xl font-bold text-gray-900">Payment Processing</h2>
+                {/* <p className="text-gray-600 mt-2">Upload, match, and reconcile payments from multiple sources</p> */}
+              </div>
+              {/* Payment Matching Link Icon */}
+              <Link
+                href="/payments/matching"
+                className="flex items-center gap-2 px-4 py-2 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-colors border border-purple-200"
+                title="Payment Matching"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                </svg>
+                <span className="text-sm font-medium">Match Payments</span>
+                {unmatchedCount > 0 && (
+                  <span className="bg-purple-600 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
+                    {unmatchedCount > 99 ? '99+' : unmatchedCount}
+                  </span>
+                )}
+              </Link>
             </div>
             <div className="flex items-center space-x-4">
+              <button
+                onClick={() => setShowCSVUploadModal(true)}
+                className="px-6 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors flex items-center gap-2"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                </svg>
+                Bulk Upload
+              </button>
               <button
                 onClick={() => setShowRecordModal(true)}
                 className="px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center gap-2"
@@ -390,14 +445,34 @@ function PaymentsPageContent() {
                         {formatDate(payment.paymentDate)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {payment.invoice ? payment.invoice.invoiceNumber : 
+                        {payment.invoice ? (
+                          payment.invoice.invoiceNumber
+                        ) : payment.paymentMatches && payment.paymentMatches.length > 0 ? (
+                          <div className="flex flex-col space-y-1">
+                            {payment.paymentMatches.map((match) => (
+                              <span key={match.id} className="text-blue-600">
+                                {match.invoice.invoiceNumber}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
                           <span className="text-gray-400">No invoice</span>
-                        }
+                        )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {payment.invoice ? payment.invoice.clientName :
+                        {payment.invoice ? (
+                          payment.invoice.clientName
+                        ) : payment.paymentMatches && payment.paymentMatches.length > 0 ? (
+                          <div className="flex flex-col space-y-1">
+                            {payment.paymentMatches.map((match) => (
+                              <span key={match.id}>
+                                {match.invoice.clientName}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
                           <span className="text-gray-400">-</span>
-                        }
+                        )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">
                         ${payment.amount.toFixed(2)}
@@ -448,6 +523,20 @@ function PaymentsPageContent() {
           setViewingPayment(null);
         }}
         payment={viewingPayment}
+      />
+
+      <CSVUploadModal
+        isOpen={showCSVUploadModal}
+        onClose={() => setShowCSVUploadModal(false)}
+        onSuccess={() => {
+          showSuccess('Payments uploaded successfully! Use Payment Matching to link them to invoices.');
+          fetchPayments();
+        }}
+        title="Bulk Upload Payments"
+        type="payments"
+        templateUrl="/api/payments/bulk/template"
+        validateUrl="/api/payments/bulk/validate"
+        uploadUrl="/api/payments/bulk/upload"
       />
 
       {/* Footer */}

@@ -11,6 +11,9 @@ interface Payment {
   date: string;
   notes: string | null;
   createdAt: string;
+  createdBy?: string;
+  type?: 'direct' | 'matched';
+  matchId?: number;
 }
 
 interface Invoice {
@@ -51,7 +54,7 @@ export default function ViewInvoiceModal({ isOpen, onClose, invoice }: ViewInvoi
     
     setIsLoadingPayments(true);
     try {
-      const res = await fetch(`/api/payments?invoiceId=${invoice.id}`);
+      const res = await fetch(`/api/invoices/${invoice.id}/payments`);
       if (res.ok) {
         const data = await res.json();
         setPayments(data);
@@ -265,10 +268,20 @@ export default function ViewInvoiceModal({ isOpen, onClose, invoice }: ViewInvoi
                           <span className="text-xs px-2 py-1 bg-gray-100 text-gray-700 rounded">
                             {payment.method.charAt(0).toUpperCase() + payment.method.slice(1)}
                           </span>
+                          {payment.type === 'matched' && (
+                            <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded font-medium">
+                              Matched Payment
+                            </span>
+                          )}
                         </div>
                         <p className="text-sm text-gray-600 mt-1">
                           {formatDate(payment.date)}
                         </p>
+                        {payment.createdBy && (
+                          <p className="text-xs text-gray-500 mt-1">
+                            Recorded by: {payment.createdBy}
+                          </p>
+                        )}
                         {payment.notes && (
                           <p className="text-sm text-gray-500 mt-2 italic">"{payment.notes}"</p>
                         )}

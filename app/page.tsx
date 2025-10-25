@@ -13,7 +13,7 @@ import { ToastProvider, useToastContext } from '../components/ToastContext';
 
 function DashboardContent() {
   const router = useRouter();
-  const { showSuccess } = useToastContext();
+  const { showSuccess, showError } = useToastContext();
   
   const [metrics, setMetrics] = useState({
     outstanding: 0,
@@ -29,6 +29,12 @@ function DashboardContent() {
   });
   const [recentPayments, setRecentPayments] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  
+  // Chart data states
+  const [chartPeriod, setChartPeriod] = useState('30');
+  const [customDateRange, setCustomDateRange] = useState({ start: '', end: '' });
+  const [chartData, setChartData] = useState<any>(null);
+  const [isLoadingCharts, setIsLoadingCharts] = useState(false);
 
   // Modal states
   const [showCreateInvoiceModal, setShowCreateInvoiceModal] = useState(false);
@@ -100,6 +106,26 @@ function DashboardContent() {
     }
   };
 
+  const fetchChartData = async () => {
+    setIsLoadingCharts(true);
+    try {
+      let url = `/api/dashboard/charts?period=${chartPeriod}`;
+      if (chartPeriod === 'custom' && customDateRange.start && customDateRange.end) {
+        url += `&start=${customDateRange.start}&end=${customDateRange.end}`;
+      }
+
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        setChartData(data);
+      }
+    } catch (error) {
+      console.error('Error fetching chart data:', error);
+    } finally {
+      setIsLoadingCharts(false);
+    }
+  };
+
   useEffect(() => {
     // Initialize typed text
     const typed = new Typed('#typed-text', {
@@ -120,7 +146,11 @@ function DashboardContent() {
     };
   }, []);
 
-  const revenueChartOption = {
+  useEffect(() => {
+    fetchChartData();
+  }, [chartPeriod, customDateRange]);
+
+  const revenueChartOption = chartData ? {
     tooltip: {
       trigger: 'axis',
       backgroundColor: 'rgba(255, 255, 255, 0.95)',
@@ -128,6 +158,10 @@ function DashboardContent() {
       borderWidth: 1,
       textStyle: {
         color: '#374151'
+      },
+      formatter: (params: any) => {
+        const value = params[0].value;
+        return `${params[0].name}<br/>$${value.toFixed(2)}`;
       }
     },
     grid: {
@@ -138,14 +172,15 @@ function DashboardContent() {
     },
     xAxis: {
       type: 'category',
-      data: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+      data: chartData.revenueChart.dates,
       axisLine: {
         lineStyle: {
           color: '#e2e8f0'
         }
       },
       axisLabel: {
-        color: '#6b7280'
+        color: '#6b7280',
+        rotate: chartData.revenueChart.dates.length > 30 ? 45 : 0
       }
     },
     yAxis: {
@@ -158,7 +193,7 @@ function DashboardContent() {
       },
       axisLabel: {
         color: '#6b7280',
-        formatter: '${value}k'
+        formatter: '${value}'
       },
       splitLine: {
         lineStyle: {
@@ -167,7 +202,7 @@ function DashboardContent() {
       }
     },
     series: [{
-      data: [45, 52, 48, 61, 58, 67, 72, 69, 75, 82, 89, 95],
+      data: chartData.revenueChart.values,
       type: 'line',
       smooth: true,
       lineStyle: {
@@ -196,41 +231,107 @@ function DashboardContent() {
       animationDuration: 2000,
       animationEasing: 'cubicOut'
     }]
-  };
+  } : null;
 
-  const paymentChartOption = {
+  const paymentChartOption = chartData ? {
     tooltip: {
-      trigger: 'item',
+      trigger: 'axis',
       backgroundColor: 'rgba(255, 255, 255, 0.95)',
       borderColor: '#e2e8f0',
       borderWidth: 1,
       textStyle: {
         color: '#374151'
+      },
+      formatter: (params: any) => {
+        let result = params[0].name + '<br/>';
+        params.forEach((param: any) => {
+          result += `${param.seriesName}: $${param.value.toFixed(2)}<br/>`;
+        });
+        return result;
       }
     },
     legend: {
-      orient: 'vertical',
-      left: 'left'
+      data: ['Cash', 'Zelle', 'QuickBooks', 'Layaway'],
+      bottom: 0
     },
-    series: [{
-      name: 'Payment Methods',
-      type: 'pie',
-      radius: '50%',
-      data: [
-        { value: 45, name: 'Credit Card' },
-        { value: 30, name: 'Bank Transfer' },
-        { value: 15, name: 'Cash' },
-        { value: 10, name: 'Check' }
-      ],
-      emphasis: {
-        itemStyle: {
-          shadowBlur: 10,
-          shadowOffsetX: 0,
-          shadowColor: 'rgba(0, 0, 0, 0.5)'
+    grid: {
+      left: '3%',
+      right: '4%',
+      bottom: '15%',
+      containLabel: true
+    },
+    xAxis: {
+      type: 'category',
+      data: chartData.paymentMethodsChart.dates,
+      axisLabel: {
+        rotate: chartData.paymentMethodsChart.dates.length > 30 ? 45 : 0,
+        color: '#6b7280'
+      },
+      axisLine: {
+        lineStyle: {
+          color: '#e2e8f0'
         }
       }
-    }]
-  };
+    },
+    yAxis: {
+      type: 'value',
+      axisLabel: {
+        formatter: '${value}',
+        color: '#6b7280'
+      },
+      axisLine: {
+        show: false
+      },
+      axisTick: {
+        show: false
+      },
+      splitLine: {
+        lineStyle: {
+          color: '#f3f4f6'
+        }
+      }
+    },
+    series: [
+      {
+        name: 'Cash',
+        type: 'bar',
+        stack: 'total',
+        data: chartData.paymentMethodsChart.cash,
+        itemStyle: {
+          color: '#48bb78'
+        }
+      },
+      {
+        name: 'Zelle',
+        type: 'bar',
+        stack: 'total',
+        data: chartData.paymentMethodsChart.zelle,
+        itemStyle: {
+          color: '#4299e1'
+        }
+      },
+      {
+        name: 'QuickBooks',
+        type: 'bar',
+        stack: 'total',
+        data: chartData.paymentMethodsChart.quickbooks,
+        itemStyle: {
+          color: '#ed8936'
+        }
+      },
+      {
+        name: 'Layaway',
+        type: 'bar',
+        stack: 'total',
+        data: chartData.paymentMethodsChart.layaway,
+        itemStyle: {
+          color: '#9f7aea'
+        }
+      }
+    ],
+    animationDuration: 2000,
+    animationEasing: 'cubicOut'
+  } : null;
 
   return (
     <div className="bg-gray-50 hero-pattern min-h-screen">
@@ -399,15 +500,72 @@ function DashboardContent() {
           </>
         )}
 
+        {/* Date Range Selector */}
+        <div className="mb-6 bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+          <div className="flex flex-wrap items-center gap-4">
+            <label className="text-sm font-medium text-gray-700">Chart Period:</label>
+            <select
+              value={chartPeriod}
+              onChange={(e) => setChartPeriod(e.target.value)}
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="7">Last 7 Days</option>
+              <option value="30">Last 30 Days</option>
+              <option value="90">Last 90 Days</option>
+              <option value="custom">Custom Range</option>
+            </select>
+
+            {chartPeriod === 'custom' && (
+              <>
+                <input
+                  type="date"
+                  value={customDateRange.start}
+                  onChange={(e) => setCustomDateRange({ ...customDateRange, start: e.target.value })}
+                  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+                <span className="text-gray-500">to</span>
+                <input
+                  type="date"
+                  value={customDateRange.end}
+                  onChange={(e) => setCustomDateRange({ ...customDateRange, end: e.target.value })}
+                  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </>
+            )}
+
+            {isLoadingCharts && (
+              <div className="flex items-center text-sm text-gray-500">
+                <svg className="animate-spin h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Loading...
+              </div>
+            )}
+          </div>
+        </div>
+
         {/* Charts Section */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
           <div className="chart-container p-6 rounded-xl shadow-lg border border-gray-200">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Revenue Trends</h3>
-            <Chart option={revenueChartOption as any} />
+            {revenueChartOption ? (
+              <Chart option={revenueChartOption as any} />
+            ) : (
+              <div className="h-[300px] flex items-center justify-center text-gray-400">
+                Loading chart data...
+              </div>
+            )}
           </div>
           <div className="chart-container p-6 rounded-xl shadow-lg border border-gray-200">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Payment Methods</h3>
-            <Chart option={paymentChartOption as any} />
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Payment Methods Breakdown</h3>
+            {paymentChartOption ? (
+              <Chart option={paymentChartOption as any} />
+            ) : (
+              <div className="h-[300px] flex items-center justify-center text-gray-400">
+                Loading chart data...
+              </div>
+            )}
           </div>
         </div>
 
@@ -504,6 +662,7 @@ function DashboardContent() {
           // Optionally redirect to invoices page
           // router.push('/invoices');
         }}
+        onError={showError}
       />
 
       <RecordPaymentModal

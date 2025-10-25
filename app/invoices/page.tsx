@@ -13,6 +13,7 @@ import { ToastProvider, useToastContext } from '../../components/ToastContext';
 import { invoicesToCSV, downloadCSV } from '../../lib/csv-export';
 import Pagination from '../../components/Pagination';
 import TableSkeleton from '../../components/TableSkeleton';
+import CSVUploadModal from '../../components/CSVUploadModal';
 
 interface InvoiceItem {
   name: string;
@@ -53,6 +54,7 @@ function InvoicesPageContent() {
   const [showViewModal, setShowViewModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showCSVUploadModal, setShowCSVUploadModal] = useState(false);
   
   // Selected invoice states
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
@@ -291,12 +293,23 @@ function InvoicesPageContent() {
                 <p className="text-sm text-gray-500">Total Outstanding</p>
                 <p className="text-2xl font-bold text-gray-900">${totalOutstanding.toLocaleString()}</p>
               </div>
-              <button
-                onClick={() => setShowCreateModal(true)}
-                className="px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors shadow-lg hover:shadow-xl"
-              >
-                + Create Invoice
-              </button>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowCSVUploadModal(true)}
+                  className="px-6 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors shadow-lg hover:shadow-xl flex items-center gap-2"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                  </svg>
+                  Bulk Upload
+                </button>
+                <button
+                  onClick={() => setShowCreateModal(true)}
+                  className="px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors shadow-lg hover:shadow-xl"
+                >
+                  + Create Invoice
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -570,6 +583,7 @@ function InvoicesPageContent() {
           fetchInvoices();
           showSuccess('Invoice created successfully!');
         }}
+        onError={showError}
       />
 
       <EditInvoiceModal
@@ -620,6 +634,20 @@ function InvoicesPageContent() {
         cancelText="Cancel"
         type="danger"
         isLoading={isDeleting}
+      />
+
+      <CSVUploadModal
+        isOpen={showCSVUploadModal}
+        onClose={() => setShowCSVUploadModal(false)}
+        onSuccess={() => {
+          showSuccess('Invoices uploaded successfully!');
+          fetchInvoices();
+        }}
+        title="Bulk Upload Invoices"
+        type="invoices"
+        templateUrl="/api/invoices/bulk/template"
+        validateUrl="/api/invoices/bulk/validate"
+        uploadUrl="/api/invoices/bulk/upload"
       />
     </div>
   );

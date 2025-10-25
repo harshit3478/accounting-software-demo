@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
     const { email, password, name, role, privileges } = await request.json();
 
     // Only superadmin can create admins
-    if (role === 'admin' && currentUser.email !== 'admin@example.com') {
+    if (role === 'admin' && currentUser.email !== process.env.SUPERADMIN_EMAIL) {
       return NextResponse.json({ error: 'Only superadmin can create admins' }, { status: 403 });
     }
 
@@ -54,7 +54,7 @@ export async function PUT(request: NextRequest) {
     const { id, email, name, role, privileges } = await request.json();
 
     // Only superadmin can edit admins or change roles to admin
-    if ((role === 'admin' || currentUser.email === 'admin@example.com') && currentUser.email !== 'admin@example.com') {
+    if ((role === 'admin' || currentUser.email === process.env.SUPERADMIN_EMAIL) && currentUser.email !== process.env.SUPERADMIN_EMAIL) {
       return NextResponse.json({ error: 'Only superadmin can edit admins' }, { status: 403 });
     }
 
@@ -78,7 +78,7 @@ export async function DELETE(request: NextRequest) {
     const { id } = await request.json();
 
     // Prevent deleting superadmin
-    if (id === 1) { // Assuming superadmin is id 1
+    if (id === parseInt(process.env.SUPERADMIN_ID || '1')) {
       return NextResponse.json({ error: 'Cannot delete superadmin' }, { status: 403 });
     }
 

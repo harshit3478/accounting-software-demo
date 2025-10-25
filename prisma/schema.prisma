@@ -45,6 +45,9 @@ model User {
   payments  Payment[]
   documents Document[]
   paymentMatches PaymentInvoiceMatch[]
+  deletedDocumentsAsUploader  DeletedDocument[] @relation("DeletedDocOriginalUploader")
+  deletedDocumentsAsDeleter   DeletedDocument[] @relation("DeletedDocDeleter")
+  quickbooksConnection        QuickBooksConnection?
 
   @@map("users")
 }
@@ -145,4 +148,65 @@ model PaymentInvoiceMatch {
   
   @@unique([paymentId, invoiceId])
   @@map("payment_invoice_matches")
+}
+
+model DeletedDocument {
+  id              Int      @id @default(autoincrement())
+  
+  // Original document information
+  originalDocId   Int      // Original document ID (before deletion)
+  userId          Int      // Original uploader
+  fileName        String   // R2 filename (keep in storage)
+  originalName    String   // User-facing filename
+  fileSize        BigInt   // File size in bytes
+  fileType        String   // MIME type
+  fileUrl         String   // R2 URL (still valid)
+  uploadedAt      DateTime // Original upload timestamp
+  
+  // Deletion tracking
+  deletedBy       Int      // Who deleted it
+  deletedAt       DateTime @default(now())
+  deleteReason    String?  @db.Text // Optional reason for deletion
+  
+  // Relations
+  originalUploader User    @relation("DeletedDocOriginalUploader", fields: [userId], references: [id], onDelete: Cascade)
+  deleter          User    @relation("DeletedDocDeleter", fields: [deletedBy], references: [id], onDelete: Cascade)
+  
+  @@map("deleted_documents")
+}
+
+model QuickBooksConnection {
+  id                Int      @id @default(autoincrement())
+  userId            Int      @unique
+  realmId           String   // QuickBooks Company/Realm ID
+  accessToken       String   @db.Text
+  refreshToken      String   @db.Text
+  tokenExpiry       DateTime
+  isActive          Boolean  @default(true)
+  lastSyncAt        DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  webhookLogs       QuickBooksWebhookLog[]
+  
+  @@map("quickbooks_connections")
+}
+
+model QuickBooksWebhookLog {
+  id                     Int      @id @default(autoincrement())
+  connectionId           Int
+  eventType              String   // e.g., "Payment.Create", "Payment.Update"
+  entityId               String   // QuickBooks entity ID
+  entityName             String   // e.g., "Payment"
+  payload                Json     // Full webhook payload
+  processed              Boolean  @default(false)
+  processedAt            DateTime?
+  errorMessage           String?  @db.Text
+  createdPaymentId       Int?     // Reference to created payment in our system
+  createdAt              DateTime @default(now())
+  
+  connection             QuickBooksConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  
+  @@map("quickbooks_webhook_logs")
 }

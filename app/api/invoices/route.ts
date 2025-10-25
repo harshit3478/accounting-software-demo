@@ -7,10 +7,7 @@ export async function GET() {
   try {
     const user = await requireAuth();
 
-    const where = user.role === 'admin' ? {} : { userId: user.id };
-
     const invoices = await prisma.invoice.findMany({
-      where,
       include: { 
         payments: true,
         paymentMatches: true,

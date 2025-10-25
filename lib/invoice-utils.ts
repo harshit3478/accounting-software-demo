@@ -4,11 +4,12 @@ import prisma from './prisma';
  * Generates a unique invoice number in format: INV-YYYY-NNNN
  * Example: INV-2025-0001
  */
-export async function generateInvoiceNumber(): Promise<string> {
+export async function generateInvoiceNumber(tx?: any): Promise<string> {
   const year = new Date().getFullYear();
+  const db = tx || prisma;
   
   // Get the last invoice number for this year
-  const lastInvoice = await prisma.invoice.findFirst({
+  const lastInvoice = await db.invoice.findFirst({
     where: {
       invoiceNumber: {
         startsWith: `INV-${year}-`
