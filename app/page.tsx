@@ -1,12 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import Navigation from '../components/Navigation';
 import MetricCard from '../components/MetricCard';
 import Chart from '../components/Chart';
-import Typed from 'typed.js';
 import { CreateInvoiceModal } from '../components/invoices';
 import { RecordPaymentModal } from '../components/payments';
 import { ToastProvider, useToastContext } from '../components/ToastContext';
@@ -127,23 +125,8 @@ function DashboardContent() {
   };
 
   useEffect(() => {
-    // Initialize typed text
-    const typed = new Typed('#typed-text', {
-      strings: ['Accounting Workflow', 'Payment Processing', 'Invoice Management', 'Financial Reporting'],
-      typeSpeed: 80,
-      backSpeed: 50,
-      backDelay: 2000,
-      loop: true,
-      showCursor: true,
-      cursorChar: '|'
-    });
-
     // Load metrics
     fetchMetrics();
-
-    return () => {
-      typed.destroy();
-    };
   }, []);
 
   useEffect(() => {
@@ -337,62 +320,45 @@ function DashboardContent() {
     <div className="bg-gray-50 hero-pattern min-h-screen">
       <Navigation />
 
-      {/* Hero Section */}
-      <div className="relative bg-gradient-to-br from-blue-50 to-indigo-100 py-16 overflow-hidden">
-        <div className="absolute inset-0 bg-white opacity-20"></div>
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-            <div>
-              <h2 className="text-4xl font-bold text-gray-900 mb-4">
-                Streamline Your <span id="typed-text" className="text-blue-600"></span>
-              </h2>
-              <p className="text-xl text-gray-600 mb-8 leading-relaxed">
-                Centralized invoice management, automated payment processing, and intelligent duplicate detection.
-                Transform your accounting workflow with our comprehensive solution.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-4">
-                <button 
-                  onClick={() => setShowRecordPaymentModal(true)}
-                  className="bg-blue-600 text-white px-8 py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors card-hover flex items-center justify-center gap-2"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path>
-                  </svg>
-                  Record Payment
-                </button>
-                <button 
-                  onClick={() => setShowCreateInvoiceModal(true)}
-                  className="border border-gray-300 text-gray-700 px-8 py-3 rounded-lg font-medium hover:bg-gray-50 transition-colors card-hover flex items-center justify-center gap-2"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                  </svg>
-                  Create Invoice
-                </button>
-              </div>
-            </div>
-            <div className="relative">
-              <Image
-                src="/hero-dashboard.png"
-                alt="Financial Dashboard"
-                width={600}
-                height={400}
-                className="w-full h-auto rounded-2xl shadow-2xl"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-blue-900/20 to-transparent rounded-2xl"></div>
-            </div>
+      {/* Quick Actions Section */}
+      <div className="bg-white border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <h1 className="text-2xl font-bold text-gray-900 mb-6">Dashboard</h1>
+          <div className="flex flex-col sm:flex-row gap-4">
+            <button 
+              onClick={() => setShowRecordPaymentModal(true)}
+              className="group bg-blue-600 text-white px-10 py-5 rounded-xl font-semibold hover:bg-blue-700 transition-all duration-200 card-hover flex items-center justify-center gap-3 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+            >
+              <svg className="w-6 h-6 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path>
+              </svg>
+              <span className="text-lg">Record Payment</span>
+            </button>
+            <button 
+              onClick={() => setShowCreateInvoiceModal(true)}
+              className="group bg-white border-2 border-gray-300 text-gray-700 px-10 py-5 rounded-xl font-semibold hover:border-blue-500 hover:text-blue-600 transition-all duration-200 card-hover flex items-center justify-center gap-3 shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
+            >
+              <svg className="w-6 h-6 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+              </svg>
+              <span className="text-lg">Create Invoice</span>
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Key Metrics */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+      {/* Daily Focus Metrics */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {isLoading ? (
           <div className="flex justify-center items-center py-12">
             <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
           </div>
         ) : (
           <>
+            <div className="mb-6">
+              <h2 className="text-lg font-semibold text-gray-900">Today's Focus</h2>
+              <p className="text-sm text-gray-500 mt-1">Key metrics for {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
               <div className="animate-fade-in-up stagger-1">
                 <MetricCard
@@ -456,12 +422,16 @@ function DashboardContent() {
               </div>
             </div>
 
-            {/* Additional Stats Row */}
+            {/* Big Picture Metrics */}
+            <div className="mb-6 mt-12">
+              <h2 className="text-lg font-semibold text-gray-900">Financial Overview</h2>
+              <p className="text-sm text-gray-500 mt-1">Overall business performance</p>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-              <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 card-hover">
+              <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 card-hover transform transition-all duration-200 hover:shadow-xl">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-sm font-medium text-gray-600">Total Outstanding</h3>
-                  <div className="p-2 bg-blue-100 rounded-lg">
+                  <div className="p-2 bg-blue-100 rounded-lg transition-transform hover:scale-110">
                     <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
                     </svg>
@@ -471,10 +441,10 @@ function DashboardContent() {
                 <p className="text-sm text-gray-500 mt-2">Unpaid invoices</p>
               </div>
 
-              <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 card-hover">
+              <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 card-hover transform transition-all duration-200 hover:shadow-xl">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-sm font-medium text-gray-600">Total Revenue</h3>
-                  <div className="p-2 bg-green-100 rounded-lg">
+                  <div className="p-2 bg-green-100 rounded-lg transition-transform hover:scale-110">
                     <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
                     </svg>
@@ -484,10 +454,10 @@ function DashboardContent() {
                 <p className="text-sm text-gray-500 mt-2">All-time payments</p>
               </div>
 
-              <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 card-hover">
+              <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 card-hover transform transition-all duration-200 hover:shadow-xl">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-sm font-medium text-gray-600">Active Clients</h3>
-                  <div className="p-2 bg-purple-100 rounded-lg">
+                  <div className="p-2 bg-purple-100 rounded-lg transition-transform hover:scale-110">
                     <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
                     </svg>
@@ -497,17 +467,23 @@ function DashboardContent() {
                 <p className="text-sm text-gray-500 mt-2">Unique clients</p>
               </div>
             </div>
+
+            {/* Analytics Section */}
+            <div className="mb-6 mt-12">
+              <h2 className="text-lg font-semibold text-gray-900">Analytics</h2>
+              <p className="text-sm text-gray-500 mt-1">Revenue and payment trends</p>
+            </div>
           </>
         )}
 
         {/* Date Range Selector */}
-        <div className="mb-6 bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+        <div className="mb-6 bg-white p-4 rounded-xl shadow-sm border border-gray-200 transition-all duration-200 hover:shadow-md">
           <div className="flex flex-wrap items-center gap-4">
             <label className="text-sm font-medium text-gray-700">Chart Period:</label>
             <select
               value={chartPeriod}
               onChange={(e) => setChartPeriod(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="px-4 py-2 border text-black border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
             >
               <option value="7">Last 7 Days</option>
               <option value="30">Last 30 Days</option>
@@ -521,14 +497,14 @@ function DashboardContent() {
                   type="date"
                   value={customDateRange.start}
                   onChange={(e) => setCustomDateRange({ ...customDateRange, start: e.target.value })}
-                  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
                 />
                 <span className="text-gray-500">to</span>
                 <input
                   type="date"
                   value={customDateRange.end}
                   onChange={(e) => setCustomDateRange({ ...customDateRange, end: e.target.value })}
-                  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
                 />
               </>
             )}
@@ -547,33 +523,43 @@ function DashboardContent() {
 
         {/* Charts Section */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
-          <div className="chart-container p-6 rounded-xl shadow-lg border border-gray-200">
+          <div className="chart-container p-6 rounded-xl shadow-lg border border-gray-200 transform transition-all duration-200 hover:shadow-xl">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Revenue Trends</h3>
             {revenueChartOption ? (
               <Chart option={revenueChartOption as any} />
             ) : (
               <div className="h-[300px] flex items-center justify-center text-gray-400">
-                Loading chart data...
+                <div className="text-center">
+                  <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-2"></div>
+                  <p>Loading chart data...</p>
+                </div>
               </div>
             )}
           </div>
-          <div className="chart-container p-6 rounded-xl shadow-lg border border-gray-200">
+          <div className="chart-container p-6 rounded-xl shadow-lg border border-gray-200 transform transition-all duration-200 hover:shadow-xl">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Payment Methods Breakdown</h3>
             {paymentChartOption ? (
               <Chart option={paymentChartOption as any} />
             ) : (
               <div className="h-[300px] flex items-center justify-center text-gray-400">
-                Loading chart data...
+                <div className="text-center">
+                  <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-2"></div>
+                  <p>Loading chart data...</p>
+                </div>
               </div>
             )}
           </div>
         </div>
 
         {/* Recent Activity */}
-        <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+        <div className="mb-6">
+          <h2 className="text-lg font-semibold text-gray-900">Recent Activity</h2>
+          <p className="text-sm text-gray-500 mt-1">Latest payment transactions</p>
+        </div>
+        <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 transform transition-all duration-200 hover:shadow-xl">
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-lg font-semibold text-gray-900">Recent Payments</h3>
-            <a href="/payments" className="text-blue-600 hover:text-blue-700 text-sm font-medium">View All</a>
+            <a href="/payments" className="text-blue-600 hover:text-blue-700 text-sm font-medium transition-colors duration-200 hover:underline">View All →</a>
           </div>
           {isLoading ? (
             <div className="flex justify-center py-8">
@@ -614,8 +600,8 @@ function DashboardContent() {
                 })();
 
                 return (
-                  <div key={payment.id} className="flex items-center space-x-4">
-                    <div className={`w-2 h-2 ${colors.dot} rounded-full`}></div>
+                  <div key={payment.id} className="flex items-center space-x-4 py-3 hover:bg-gray-50 rounded-lg px-2 transition-colors duration-150">
+                    <div className={`w-2 h-2 ${colors.dot} rounded-full animate-pulse`}></div>
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
                         <p className="text-sm text-gray-900">

@@ -8,6 +8,8 @@ import { ToastProvider, useToastContext } from '../../../components/ToastContext
 interface Payment {
   id: number;
   amount: number;
+  allocatedAmount?: number;
+  remainingAmount?: number;
   method: 'cash' | 'zelle' | 'quickbooks' | 'layaway';
   paymentDate: string;
   notes: string | null;
@@ -129,8 +131,7 @@ function PaymentMatchingPageContent() {
   const handleMatchFull = async (invoice: Invoice) => {
     if (!selectedPayment) return;
 
-    const alreadyAllocated = selectedPayment.paymentMatches.reduce((sum: number, m: any) => sum + m.amount, 0);
-    const remaining = selectedPayment.amount - alreadyAllocated;
+    const remaining = selectedPayment.remainingAmount || selectedPayment.amount;
     const matchAmt = Math.min(remaining, invoice.remaining);
 
     setMatchingInvoice(invoice);
@@ -291,9 +292,16 @@ function PaymentMatchingPageContent() {
                     }`}
                   >
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-2xl font-bold text-gray-900">
-                        ${payment.amount.toFixed(2)}
-                      </span>
+                      <div>
+                        <span className="text-2xl font-bold text-gray-900">
+                          ${(payment.remainingAmount || payment.amount).toFixed(2)}
+                        </span>
+                        {payment.allocatedAmount && payment.allocatedAmount > 0 && (
+                          <span className="text-sm text-gray-500 ml-2">
+                            (${payment.amount.toFixed(2)} total, ${payment.allocatedAmount.toFixed(2)} allocated)
+                          </span>
+                        )}
+                      </div>
                       <span className={`px-3 py-1 rounded-full text-xs font-medium ${getMethodColor(payment.method)}`}>
                         {payment.method.charAt(0).toUpperCase() + payment.method.slice(1)}
                       </span>

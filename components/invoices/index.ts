@@ -7,4 +7,5 @@ export { default as ConfirmModal } from './ConfirmModal';
 export { default as Modal } from './Modal';
 export { default as InvoiceItemsEditor } from './InvoiceItemsEditor';
 export { default as InvoiceSummary } from './InvoiceSummary';
+export { default as InvoiceFiltersNew } from './InvoiceFiltersNew';
 export * from './types';

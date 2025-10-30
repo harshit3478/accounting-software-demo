@@ -6,8 +6,11 @@ export async function GET() {
   try {
     await requireAuth();
 
-    // Fetch all payments with their matches
+    // Fetch payments that are not fully matched
     const allPayments = await prisma.payment.findMany({
+      where: {
+        isMatched: false  // Only get payments that aren't fully matched
+      },
       include: {
         user: {
           select: {
@@ -34,7 +37,7 @@ export async function GET() {
       }
     });
 
-    // Filter to only include payments with remaining unallocated amount
+    // Double-check and filter to only include payments with remaining unallocated amount
     const payments = allPayments.filter(payment => {
       const paymentAmount = payment.amount.toNumber();
       const allocatedAmount = payment.paymentMatches.reduce((sum, match) => {
@@ -55,19 +58,29 @@ export async function GET() {
       return sum + (paymentAmount - allocatedAmount);
     }, 0);
 
-    // Serialize Decimal values
-    const serializedPayments = payments.map(payment => ({
-      ...payment,
-      amount: payment.amount.toNumber(),
-      paymentMatches: payment.paymentMatches.map(match => ({
-        ...match,
-        amount: match.amount.toNumber(),
-        invoice: {
-          ...match.invoice,
-          amount: match.invoice.amount.toNumber()
-        }
-      }))
-    }));
+    // Serialize Decimal values and add remaining amount
+    const serializedPayments = payments.map(payment => {
+      const paymentAmount = payment.amount.toNumber();
+      const allocatedAmount = payment.paymentMatches.reduce((sum, match) => {
+        return sum + match.amount.toNumber();
+      }, 0);
+      const remainingAmount = paymentAmount - allocatedAmount;
+
+      return {
+        ...payment,
+        amount: paymentAmount,
+        allocatedAmount,
+        remainingAmount,
+        paymentMatches: payment.paymentMatches.map(match => ({
+          ...match,
+          amount: match.amount.toNumber(),
+          invoice: {
+            ...match.invoice,
+            amount: match.invoice.amount.toNumber()
+          }
+        }))
+      };
+    });
 
     return NextResponse.json({
       payments: serializedPayments,

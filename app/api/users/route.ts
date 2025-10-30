@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const currentUser = await requireAdmin();
-    const { id, email, name, role, privileges } = await request.json();
+    const { id, email, name, role, privileges, password } = await request.json();
 
     // Only superadmin can edit admins or change roles to admin
     if ((role === 'admin' || currentUser.email === process.env.SUPERADMIN_EMAIL) && currentUser.email !== process.env.SUPERADMIN_EMAIL) {
@@ -60,6 +60,11 @@ export async function PUT(request: NextRequest) {
 
     const updateData: any = { email, name, role };
     if (privileges) updateData.privileges = privileges;
+    
+    // Hash and update password if provided
+    if (password && password.trim()) {
+      updateData.passwordHash = await bcrypt.hash(password, 10);
+    }
 
     const user = await prisma.user.update({
       where: { id },
