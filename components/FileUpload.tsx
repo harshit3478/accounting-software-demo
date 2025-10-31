@@ -14,9 +14,10 @@ interface FileUploadProps {
   onUploadComplete?: () => void;
   onUploadSuccess?: (message: string) => void;
   onUploadError?: (message: string) => void;
+  folderId?: number | null;
 }
 
-export default function FileUpload({ onUploadComplete, onUploadSuccess, onUploadError }: FileUploadProps) {
+export default function FileUpload({ onUploadComplete, onUploadSuccess, onUploadError, folderId }: FileUploadProps) {
   const [files, setFiles] = useState<FileWithPreview[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -88,6 +89,11 @@ export default function FileUpload({ onUploadComplete, onUploadSuccess, onUpload
       validFiles.forEach((fileItem) => {
         formData.append('files', fileItem.file);
       });
+      
+      // Add folderId if provided
+      if (folderId !== undefined && folderId !== null) {
+        formData.append('folderId', folderId.toString());
+      }
 
       // Create XMLHttpRequest for progress tracking
       const xhr = new XMLHttpRequest();

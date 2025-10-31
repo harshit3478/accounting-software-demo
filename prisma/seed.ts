@@ -5,13 +5,13 @@ const prisma = new PrismaClient();
 
 async function main() {
   // Hash a default password for the admin
-  const hashedPassword = await bcrypt.hash('admin123', 10); // Change this in production
+  const hashedPassword = await bcrypt.hash(process.env.SUPERADMIN_PASSWORD || 'admin123', 10); // Change this in production
 
   const admin = await prisma.user.upsert({
     where: { email: 'admin@example.com' },
     update: {},
     create: {
-      email: 'admin@example.com',
+      email: process.env.SUPERADMIN_EMAIL || 'admin@example.com',
       passwordHash: hashedPassword,
       name: 'Super Admin',
       role: 'admin',

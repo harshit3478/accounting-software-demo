@@ -111,27 +111,38 @@ model Payment {
   @@map("payments")
 }
 
+enum DocumentType {
+  file
+  folder
+}
+
 model Document {
-  id           Int      @id @default(autoincrement())
-  userId       Int
-  fileName     String   // Unique filename stored in R2
-  originalName String   // Original filename from user
-  fileSize     BigInt   // File size in bytes
-  fileType     String   // MIME type
-  fileUrl      String   // Public R2 URL
-  uploadedAt   DateTime @default(now())
+  id           Int           @id @default(autoincrement())
+  userId       Int           // Who created/uploaded (audit trail - SHARED STORAGE!)
+  type         DocumentType  @default(file)  // 'file' or 'folder'
+  name         String                         // Universal name field
+  
+  // File-specific fields (nullable for folders)
+  fileName     String?       // Unique filename stored in R2
+  originalName String?       // Original filename from user (deprecated - use 'name')
+  fileSize     BigInt?       // File size in bytes
+  fileType     String?       // MIME type
+  fileUrl      String?       // Public R2 URL
+  
+  // Hierarchy (self-referencing)
+  parentId     Int?          // NULL = root level
+  parent       Document?     @relation("DocumentHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children     Document[]    @relation("DocumentHierarchy")
+  
+  // Timestamps
+  uploadedAt   DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([parentId], name: "idx_parent")
+  @@index([type, parentId], name: "idx_type_parent")
   @@map("documents")
-}
-
-model SystemFolder {
-  id        Int     @id @default(autoincrement())
-  name      String
-  isDefault Boolean @default(false)
-
-  @@map("system_folders")
 }
 
 model PaymentInvoiceMatch {
@@ -151,26 +162,37 @@ model PaymentInvoiceMatch {
 }
 
 model DeletedDocument {
-  id              Int      @id @default(autoincrement())
+  id              Int           @id @default(autoincrement())
   
   // Original document information
-  originalDocId   Int      // Original document ID (before deletion)
-  userId          Int      // Original uploader
-  fileName        String   // R2 filename (keep in storage)
-  originalName    String   // User-facing filename
-  fileSize        BigInt   // File size in bytes
-  fileType        String   // MIME type
-  fileUrl         String   // R2 URL (still valid)
-  uploadedAt      DateTime // Original upload timestamp
+  originalDocId   Int           // Original document ID (before deletion)
+  userId          Int           // Original uploader (audit trail)
+  type            DocumentType  @default(file)  // 'file' or 'folder'
+  name            String        // Name at time of deletion
+  
+  // For folders: store serialized children structure
+  folderContents  Json?         // Nested structure of deleted folder
+  
+  // Original hierarchy position
+  originalParentId Int?         // Where it was before deletion
+  parentPath       String?      @db.VarChar(1000)  // Breadcrumb path for display
+  
+  // File-specific (nullable for folders)
+  fileName        String?       // R2 filename (keep in storage)
+  originalName    String?       // DEPRECATED: use 'name' (kept for compatibility)
+  fileSize        BigInt?       // File size in bytes
+  fileType        String?       // MIME type
+  fileUrl         String?       // R2 URL (still valid)
+  uploadedAt      DateTime      // Original upload timestamp
   
   // Deletion tracking
-  deletedBy       Int      // Who deleted it
-  deletedAt       DateTime @default(now())
-  deleteReason    String?  @db.Text // Optional reason for deletion
+  deletedBy       Int           // Who deleted it
+  deletedAt       DateTime      @default(now())
+  deleteReason    String?       @db.Text // Optional reason for deletion
   
   // Relations
-  originalUploader User    @relation("DeletedDocOriginalUploader", fields: [userId], references: [id], onDelete: Cascade)
-  deleter          User    @relation("DeletedDocDeleter", fields: [deletedBy], references: [id], onDelete: Cascade)
+  originalUploader User         @relation("DeletedDocOriginalUploader", fields: [userId], references: [id], onDelete: Cascade)
+  deleter          User         @relation("DeletedDocDeleter", fields: [deletedBy], references: [id], onDelete: Cascade)
   
   @@map("deleted_documents")
 }

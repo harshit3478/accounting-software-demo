@@ -16,7 +16,7 @@ export default function Navigation() {
     { href: '/invoices', label: 'Invoices', active: pathname === '/invoices' },
     { href: '/payments', label: 'Payments', active: pathname === '/payments' },
     { href: '/documents', label: 'Documents', active: pathname === '/documents' },
-    { href: '/settings', label: 'Settings', active: pathname === '/settings' },
+    // { href: '/settings', label: 'Settings', active: pathname === '/settings' },
     // { href: '/statements', label: 'Statements', active: pathname === '/statements' },
   ];
 

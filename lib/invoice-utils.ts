@@ -36,6 +36,10 @@ export async function generateInvoiceNumber(tx?: any): Promise<string> {
 
 /**
  * Calculate invoice status based on paid amount and due date
+ * 
+ * Note: Uses a small epsilon (0.01) for floating-point comparison to handle
+ * precision issues with currency calculations. This means amounts within $0.01
+ * are considered equal.
  */
 export function calculateInvoiceStatus(
   amount: number,
@@ -44,23 +48,40 @@ export function calculateInvoiceStatus(
 ): 'paid' | 'pending' | 'overdue' | 'partial' {
   const now = new Date();
   
-  if (paidAmount >= amount) {
+  // Use epsilon for floating-point comparison (0.01 = 1 cent tolerance)
+  const EPSILON = 0.01;
+  const remaining = amount - paidAmount;
+  
+  // Invoice is fully paid if remaining is <= epsilon (accounting for floating point)
+  if (remaining <= EPSILON) {
     return 'paid';
   }
   
-  if (paidAmount > 0 && paidAmount < amount) {
+  // Invoice is partially paid if some payment made but still has remaining balance
+  if (paidAmount > EPSILON && remaining > EPSILON) {
     return 'partial';
   }
   
-  if (paidAmount === 0 && dueDate < now) {
+  // Invoice is overdue if no payment made and past due date
+  if (paidAmount < EPSILON && dueDate < now) {
     return 'overdue';
   }
   
+  // Default to pending (no payment, not yet overdue)
   return 'pending';
 }
 
 /**
- * Update invoice status after payment
+ * Update invoice status and paid amount after a payment is added, removed, or modified
+ * 
+ * This function:
+ * 1. Calculates total paid from both direct payments and payment matches
+ * 2. Determines the correct invoice status
+ * 3. Updates the invoice in the database
+ * 4. Handles overpayment scenarios (logs warning for future credit note implementation)
+ * 
+ * @param invoiceId - The ID of the invoice to update
+ * @returns Promise<void>
  */
 export async function updateInvoiceAfterPayment(invoiceId: number) {
   const invoice = await prisma.invoice.findUnique({
@@ -71,19 +92,54 @@ export async function updateInvoiceAfterPayment(invoiceId: number) {
     }
   });
 
-  if (!invoice) return;
+  if (!invoice) {
+    console.warn(`updateInvoiceAfterPayment: Invoice ${invoiceId} not found`);
+    return;
+  }
 
   // Calculate total paid amount from direct payments and payment matches
   const directPayments = invoice.payments.reduce((sum, p) => sum + Number(p.amount), 0);
   const matchedPayments = invoice.paymentMatches.reduce((sum, m) => sum + Number(m.amount), 0);
   const totalPaid = directPayments + matchedPayments;
+  
+  // Convert invoice amount to number for comparison
+  const invoiceAmount = Number(invoice.amount);
+  const overpayment = totalPaid - invoiceAmount;
 
+  // Calculate new status based on total paid and due date
   const newStatus = calculateInvoiceStatus(
-    Number(invoice.amount),
+    invoiceAmount,
     totalPaid,
     invoice.dueDate
   );
 
+  // Log the update for debugging
+  console.log(`Updating invoice ${invoice.invoiceNumber}:`, {
+    amount: invoiceAmount,
+    previousPaidAmount: Number(invoice.paidAmount),
+    newPaidAmount: totalPaid,
+    directPayments,
+    matchedPayments,
+    previousStatus: invoice.status,
+    newStatus,
+    remaining: invoiceAmount - totalPaid
+  });
+
+  // TODO: Handle overpayment with credit notes
+  // If overpayment > $0.01, consider creating a credit note for the customer
+  if (overpayment > 0.01) {
+    console.warn(`⚠️ Overpayment detected on invoice ${invoice.invoiceNumber}:`, {
+      invoiceAmount,
+      totalPaid,
+      overpayment: overpayment.toFixed(2),
+      clientName: invoice.clientName,
+      suggestion: 'Consider implementing credit note functionality to track this overpayment'
+    });
+    // Future enhancement: Create a credit note record
+    // await createCreditNote({ invoiceId, amount: overpayment, reason: 'Overpayment' });
+  }
+
+  // Update invoice with new paid amount and status
   await prisma.invoice.update({
     where: { id: invoiceId },
     data: {

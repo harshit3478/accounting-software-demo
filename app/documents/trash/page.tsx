@@ -1,18 +1,32 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import Navigation from '../../../components/Navigation';
 import { ToastProvider, useToastContext } from '../../../components/ToastContext';
 import TableSkeleton from '../../../components/TableSkeleton';
+import { Folder, File, ArrowLeft, MoreVertical } from 'lucide-react';
 
 interface DeletedDocument {
   id: number;
   originalDocId: number;
-  fileName: string;
-  originalName: string;
-  fileSize: number;
-  fileType: string;
-  fileUrl: string;
+  userId: number;
+  type: 'file' | 'folder';
+  name: string;
+  // File-specific fields
+  fileName?: string | null;
+  fileSize?: number | null;
+  fileType?: string | null;
+  fileUrl?: string | null;
+  // Folder-specific fields
+  folderContents?: {
+    totalItems: number;
+    files: number;
+    folders: number;
+  };
+  originalParentId?: number | null;
+  parentPath?: string | null;
+  // Common fields
   uploadedAt: string;
   deletedAt: string;
   deleteReason: string | null;
@@ -37,6 +51,7 @@ function TrashPageContent() {
   const [showAll, setShowAll] = useState(false);
   const [confirmModal, setConfirmModal] = useState<{ type: 'recover' | 'delete' | 'cleanup'; doc?: DeletedDocument } | null>(null);
   const [processingId, setProcessingId] = useState<number | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const { showToast } = useToastContext();
 
   const fetchDeletedDocs = async () => {
@@ -156,6 +171,13 @@ function TrashPageContent() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-6">
+          <Link 
+            href="/documents"
+            className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-800 mb-4 transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>Back to Documents</span>
+          </Link>
           <h1 className="text-3xl font-bold text-gray-900">Deleted Documents (Trash)</h1>
           <p className="text-gray-600 mt-2">
             Manage deleted documents. Documents are automatically deleted after 30 days.
@@ -203,8 +225,8 @@ function TrashPageContent() {
             <p className="mt-1 text-sm text-gray-500">Trash is empty</p>
           </div>
         ) : (
-          <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-            <table className="min-w-full divide-y divide-gray-200">
+          <div className="bg-white rounded-lg shadow-sm overflow-visible">
+            <table className="min-w-full divide-y divide-gray-200 ">
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -235,12 +257,22 @@ function TrashPageContent() {
                   <tr key={doc.id} className={doc.isExpired ? 'bg-red-50' : ''}>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
-                        <svg className="h-5 w-5 text-gray-400 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                        </svg>
+                        {doc.type === 'folder' ? (
+                          <Folder className="h-5 w-5 text-blue-500 mr-2" />
+                        ) : (
+                          <File className="h-5 w-5 text-gray-400 mr-2" />
+                        )}
                         <div>
-                          <div className="text-sm font-medium text-gray-900">{doc.originalName}</div>
-                          <div className="text-xs text-gray-500">{doc.fileType}</div>
+                          <div className="text-sm font-medium text-gray-900 truncate max-w-40">{doc.name}</div>
+                          {doc.type === 'folder' && doc.folderContents && (
+                            <div className="text-xs text-gray-500">
+                              {doc.folderContents.totalItems} items 
+                              ({doc.folderContents.files} files, {doc.folderContents.folders} folders)
+                            </div>
+                          )}
+                          {doc.type === 'file' && doc.fileType && (
+                            <div className="text-xs text-gray-500 truncate max-w-40">{doc.fileType}</div>
+                          )}
                         </div>
                       </div>
                     </td>
@@ -269,23 +301,43 @@ function TrashPageContent() {
                       )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {formatFileSize(doc.fileSize)}
+                      {doc.type === 'file' && doc.fileSize ? formatFileSize(doc.fileSize) : '—'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <button
-                        onClick={() => setConfirmModal({ type: 'recover', doc })}
-                        disabled={processingId === doc.id}
-                        className="text-green-600 hover:text-green-900 mr-4 disabled:text-gray-400 disabled:cursor-not-allowed"
-                      >
-                        {processingId === doc.id ? 'Processing...' : 'Recover'}
-                      </button>
-                      <button
-                        onClick={() => setConfirmModal({ type: 'delete', doc })}
-                        disabled={processingId === doc.id}
-                        className="text-red-600 hover:text-red-900 disabled:text-gray-400 disabled:cursor-not-allowed"
-                      >
-                        {processingId === doc.id ? 'Processing...' : 'Permanent Delete'}
-                      </button>
+                      <div className="relative inline-block text-left">
+                        <button
+                          onClick={() => setOpenMenuId(openMenuId === doc.id ? null : doc.id)}
+                          disabled={processingId === doc.id}
+                          className="p-1 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <MoreVertical className="h-5 w-5 text-gray-400" />
+                        </button>
+
+                        {openMenuId === doc.id && processingId !== doc.id && (
+                          <div className="origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white  z-50">
+                            <div className="py-1">
+                              <button
+                                onClick={() => {
+                                  setConfirmModal({ type: 'recover', doc });
+                                  setOpenMenuId(null);
+                                }}
+                                className="w-full text-left px-4 py-2 text-sm text-green-600 hover:bg-gray-100 flex items-center gap-2"
+                              >
+                                Recover
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setConfirmModal({ type: 'delete', doc });
+                                  setOpenMenuId(null);
+                                }}
+                                className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100 flex items-center gap-2"
+                              >
+                                Permanent Delete
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -296,22 +348,40 @@ function TrashPageContent() {
 
         {/* Confirmation Modal */}
         {confirmModal && (
-          <div className="fixed inset-0 bg-gray-600 backdrop-blur-sm overflow-y-auto h-full w-full z-50" onClick={() => setConfirmModal(null)}>
-            <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white" onClick={(e) => e.stopPropagation()}>
-              <div className="mt-3">
-                <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
+          <div className="fixed inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => setConfirmModal(null)}>
+            <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
+              <div className="px-6 py-4 border-b">
+                <h3 className="text-lg font-semibold text-gray-900">
                   {confirmModal.type === 'cleanup' && 'Cleanup Expired Documents?'}
                   {confirmModal.type === 'recover' && 'Recover Document?'}
                   {confirmModal.type === 'delete' && 'Permanently Delete Document?'}
                 </h3>
-                <div className="mt-2 px-7 py-3">
-                  <p className="text-sm text-gray-500">
+              </div>
+              <div className="p-6">
+                <p className="text-sm text-gray-600">
                     {confirmModal.type === 'cleanup' && `This will permanently delete ${expiredDocs.length} document(s) that are older than 30 days. This action cannot be undone.`}
-                    {confirmModal.type === 'recover' && `Recover "${confirmModal.doc?.originalName}"? It will be restored to your documents with [RECOVERED] prefix.`}
-                    {confirmModal.type === 'delete' && `Permanently delete "${confirmModal.doc?.originalName}"? This will remove the file from storage. This action cannot be undone.`}
+                    {confirmModal.type === 'recover' && confirmModal.doc && (
+                      <>
+                        Recover "{confirmModal.doc.name}"?
+                        {confirmModal.doc.type === 'folder' ? (
+                          <> The folder will be restored to root level (contents not restored).</>
+                        ) : (
+                          <> It will be restored to your documents with [RECOVERED] prefix.</>
+                        )}
+                      </>
+                    )}
+                    {confirmModal.type === 'delete' && confirmModal.doc && (
+                      <>
+                        Permanently delete "{confirmModal.doc.name}"?
+                        {confirmModal.doc.type === 'folder' && confirmModal.doc.folderContents ? (
+                          <> This will remove the folder record and all its contents ({confirmModal.doc.folderContents.totalItems} items). This action cannot be undone.</>
+                        ) : (
+                          <> This will remove the file from storage. This action cannot be undone.</>
+                        )}
+                      </>
+                    )}
                   </p>
-                </div>
-                <div className="flex gap-4 mt-4">
+                <div className="flex gap-4 px-6 py-4 bg-gray-50 rounded-b-lg">
                   <button
                     onClick={() => setConfirmModal(null)}
                     disabled={processingId !== null}

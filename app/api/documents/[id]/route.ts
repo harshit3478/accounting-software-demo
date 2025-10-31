@@ -42,8 +42,9 @@ export async function DELETE(
       data: {
         originalDocId: document.id,
         userId: document.userId,
+        type: 'file',
+        name: document.name,
         fileName: document.fileName,
-        originalName: document.originalName,
         fileSize: document.fileSize,
         fileType: document.fileType,
         fileUrl: document.fileUrl,
@@ -93,9 +94,10 @@ export async function PATCH(
     }
 
     const body = await request.json();
-    const { newName } = body;
+    const { name, newName } = body;
+    const nameToUse = name || newName; // Support both 'name' and 'newName' for backwards compatibility
 
-    if (!newName || typeof newName !== 'string' || newName.trim().length === 0) {
+    if (!nameToUse || typeof nameToUse !== 'string' || nameToUse.trim().length === 0) {
       return NextResponse.json(
         { error: 'Invalid file name' },
         { status: 400 }
@@ -114,11 +116,11 @@ export async function PATCH(
       );
     }
 
-    // Update the original name in database
+    // Update the name in database
     const updatedDocument = await prisma.document.update({
       where: { id: documentId },
       data: {
-        originalName: newName.trim(),
+        name: nameToUse.trim(),
       },
       include: {
         user: {
@@ -136,8 +138,9 @@ export async function PATCH(
       message: 'Document renamed successfully',
       document: {
         id: updatedDocument.id,
-        fileName: updatedDocument.originalName,
-        fileSize: Number(updatedDocument.fileSize),
+        name: updatedDocument.name,
+        fileName: updatedDocument.fileName,
+        fileSize: updatedDocument.fileSize ? Number(updatedDocument.fileSize) : null,
         fileType: updatedDocument.fileType,
         fileUrl: updatedDocument.fileUrl,
         uploadedBy: updatedDocument.user.name,

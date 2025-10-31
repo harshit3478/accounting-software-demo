@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { requireSuperAdmin } from '@/lib/auth';
 import { deleteFromR2 } from '@/lib/r2-client';
+import { DocumentType } from '@prisma/client';
 
-// POST - Recover deleted document
+// POST - Recover deleted document or folder
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -37,32 +38,224 @@ export async function POST(
       );
     }
 
-    // Restore to Document table (as recovered by superadmin with new upload date)
-    const restoredDoc = await prisma.document.create({
-      data: {
-        userId: user.id, // Mark as recovered by superadmin
-        fileName: deletedDoc.fileName,
-        originalName: `[RECOVERED] ${deletedDoc.originalName}`,
-        fileSize: deletedDoc.fileSize,
-        fileType: deletedDoc.fileType,
-        fileUrl: deletedDoc.fileUrl,
-        uploadedAt: new Date(), // New upload date
+    if (deletedDoc.type === DocumentType.folder) {
+      // Check if original parent folder still exists
+      let targetParentId = deletedDoc.originalParentId;
+      let restoredName = deletedDoc.name;
+      
+      if (targetParentId) {
+        const parentExists = await prisma.document.findUnique({
+          where: { id: targetParentId, type: DocumentType.folder }
+        });
+        
+        if (!parentExists) {
+          // Parent was deleted, fallback to root with [RECOVERED] prefix
+          targetParentId = null;
+          restoredName = `[RECOVERED] ${deletedDoc.name}`;
+        }
+      } else {
+        // Was originally at root, add prefix
+        restoredName = `[RECOVERED] ${deletedDoc.name}`;
       }
-    });
-
-    // Remove from trash
-    await prisma.deletedDocument.delete({
-      where: { id: deletedDocId }
-    });
-
-    return NextResponse.json({
-      success: true,
-      message: `Document recovered successfully. Originally uploaded by ${deletedDoc.originalUploader.name}.`,
-      document: {
-        ...restoredDoc,
-        fileSize: Number(restoredDoc.fileSize)
+      
+      // Check for duplicate names and auto-rename if needed
+      const existingFolder = await prisma.document.findFirst({
+        where: {
+          parentId: targetParentId,
+          name: restoredName,
+          type: DocumentType.folder
+        }
+      });
+      
+      if (existingFolder) {
+        // Auto-rename with timestamp
+        const timestamp = Date.now();
+        restoredName = `${restoredName} (${timestamp})`;
       }
-    });
+      
+      // Parse folder contents for recursive restoration
+      const folderContents = deletedDoc.folderContents as any;
+      const descendants = folderContents?.descendants || [];
+      
+      // Start transaction for atomic restoration
+      await prisma.$transaction(async (tx) => {
+        // 1. Restore the main folder
+        const restoredFolder = await tx.document.create({
+          data: {
+            userId: user.id,
+            type: DocumentType.folder,
+            name: restoredName,
+            parentId: targetParentId,
+            uploadedAt: new Date(),
+          }
+        });
+        
+        // 2. Build ID mapping: old ID -> new ID (for parent relationships)
+        const idMapping = new Map<number, number>();
+        idMapping.set(deletedDoc.originalDocId, restoredFolder.id);
+        
+        // 3. Sort descendants by depth (parents before children)
+        const sortedDescendants = [...descendants].sort((a, b) => {
+          // Calculate depth based on parent chain
+          const getDepth = (item: any): number => {
+            let depth = 0;
+            let currentParentId = item.parentId;
+            while (currentParentId !== deletedDoc.originalDocId && currentParentId !== null) {
+              depth++;
+              const parent = descendants.find((d: any) => d.id === currentParentId);
+              if (!parent) break;
+              currentParentId = parent.parentId;
+            }
+            return depth;
+          };
+          return getDepth(a) - getDepth(b);
+        });
+        
+        // 4. Restore all descendants recursively
+        for (const desc of sortedDescendants) {
+          // Map old parent ID to new parent ID
+          let newParentId: number | null;
+          if (desc.parentId === deletedDoc.originalDocId) {
+            // Direct child of the main folder
+            newParentId = restoredFolder.id;
+          } else if (idMapping.has(desc.parentId)) {
+            // Child of a restored subfolder
+            newParentId = idMapping.get(desc.parentId)!;
+          } else {
+            // Parent not found, skip this item
+            console.warn(`Skipping ${desc.name}: parent ${desc.parentId} not found`);
+            continue;
+          }
+          
+          if (desc.type === DocumentType.folder) {
+            // Restore subfolder
+            const restoredSubfolder = await tx.document.create({
+              data: {
+                userId: user.id,
+                type: DocumentType.folder,
+                name: desc.name,
+                parentId: newParentId,
+                uploadedAt: new Date(desc.uploadedAt || Date.now()),
+              }
+            });
+            idMapping.set(desc.id, restoredSubfolder.id);
+          } else {
+            // Restore file
+            await tx.document.create({
+              data: {
+                userId: user.id,
+                type: DocumentType.file,
+                name: desc.name,
+                parentId: newParentId,
+                fileName: desc.fileName,
+                fileSize: desc.fileSize ? BigInt(desc.fileSize) : null,
+                fileType: desc.fileType,
+                fileUrl: desc.fileUrl,
+                uploadedAt: new Date(desc.uploadedAt || Date.now()),
+              }
+            });
+          }
+        }
+        
+        // 5. Remove from trash
+        await tx.deletedDocument.delete({
+          where: { id: deletedDocId }
+        });
+      });
+      
+      const locationMsg = targetParentId 
+        ? `to its original location${deletedDoc.parentPath ? ` (${deletedDoc.parentPath})` : ''}`
+        : 'to root level';
+      
+      const restoredCount = descendants.length + 1; // +1 for the folder itself
+      const fileCount = descendants.filter((d: any) => d.type === DocumentType.file).length;
+      const folderCount = descendants.filter((d: any) => d.type === DocumentType.folder).length;
+
+      return NextResponse.json({
+        success: true,
+        message: `Folder "${deletedDoc.name}" with all contents recovered ${locationMsg}. Originally created by ${deletedDoc.originalUploader.name}.`,
+        restoredCount,
+        details: {
+          folders: folderCount + 1,
+          files: fileCount
+        },
+        type: 'folder'
+      });
+    } else {
+      // Check if original parent folder still exists
+      let targetParentId = deletedDoc.originalParentId;
+      let restoredName = deletedDoc.name;
+      
+      if (targetParentId) {
+        const parentExists = await prisma.document.findUnique({
+          where: { id: targetParentId, type: DocumentType.folder }
+        });
+        
+        if (!parentExists) {
+          // Parent was deleted, fallback to root with [RECOVERED] prefix
+          targetParentId = null;
+          restoredName = `[RECOVERED] ${deletedDoc.name}`;
+        }
+      } else {
+        // Was originally at root, add prefix
+        restoredName = `[RECOVERED] ${deletedDoc.name}`;
+      }
+      
+      // Check for duplicate names and auto-rename if needed
+      const existingFile = await prisma.document.findFirst({
+        where: {
+          parentId: targetParentId,
+          name: restoredName,
+          type: DocumentType.file
+        }
+      });
+      
+      if (existingFile) {
+        // Auto-rename with timestamp
+        const timestamp = Date.now();
+        const nameParts = restoredName.split('.');
+        if (nameParts.length > 1) {
+          const ext = nameParts.pop();
+          restoredName = `${nameParts.join('.')} (${timestamp}).${ext}`;
+        } else {
+          restoredName = `${restoredName} (${timestamp})`;
+        }
+      }
+      
+      // Restore file
+      const restoredDoc = await prisma.document.create({
+        data: {
+          userId: user.id, // Mark as recovered by superadmin
+          type: DocumentType.file,
+          name: restoredName,
+          parentId: targetParentId,
+          fileName: deletedDoc.fileName,
+          fileSize: deletedDoc.fileSize,
+          fileType: deletedDoc.fileType,
+          fileUrl: deletedDoc.fileUrl,
+          uploadedAt: new Date(), // New upload date
+        }
+      });
+
+      // Remove from trash
+      await prisma.deletedDocument.delete({
+        where: { id: deletedDocId }
+      });
+      
+      const locationMsg = targetParentId 
+        ? `to its original location${deletedDoc.parentPath ? ` (${deletedDoc.parentPath})` : ''}`
+        : 'to root level';
+
+      return NextResponse.json({
+        success: true,
+        message: `File recovered successfully ${locationMsg}. Originally uploaded by ${deletedDoc.originalUploader.name}.`,
+        document: {
+          ...restoredDoc,
+          fileSize: restoredDoc.fileSize ? Number(restoredDoc.fileSize) : null
+        },
+        type: 'file'
+      });
+    }
   } catch (error: any) {
     console.error('Error recovering document:', error);
 
@@ -87,7 +280,7 @@ export async function POST(
   }
 }
 
-// DELETE - Permanently delete document
+// DELETE - Permanently delete document or folder
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -116,23 +309,46 @@ export async function DELETE(
       );
     }
 
-    // NOW actually delete from R2 storage
-    try {
-      await deleteFromR2(deletedDoc.fileName);
-    } catch (r2Error) {
-      console.error('Error deleting from R2:', r2Error);
-      // Continue even if R2 deletion fails
+    if (deletedDoc.type === DocumentType.folder) {
+      // For folders, just remove from trash (no R2 files to delete)
+      await prisma.deletedDocument.delete({
+        where: { id: deletedDocId }
+      });
+
+      // Parse folder contents to get count
+      let itemCount = 0;
+      if (deletedDoc.folderContents) {
+        const contents = deletedDoc.folderContents as any;
+        itemCount = contents.totalItems || 0;
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: `Folder "${deletedDoc.name}" and its contents (${itemCount} items) permanently deleted`,
+        type: 'folder'
+      });
+    } else {
+      // For files, delete from R2 storage if fileName exists
+      if (deletedDoc.fileName) {
+        try {
+          await deleteFromR2(deletedDoc.fileName);
+        } catch (r2Error) {
+          console.error('Error deleting from R2:', r2Error);
+          // Continue even if R2 deletion fails
+        }
+      }
+
+      // Remove from trash table
+      await prisma.deletedDocument.delete({
+        where: { id: deletedDocId }
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: 'File permanently deleted from storage',
+        type: 'file'
+      });
     }
-
-    // Remove from trash table
-    await prisma.deletedDocument.delete({
-      where: { id: deletedDocId }
-    });
-
-    return NextResponse.json({
-      success: true,
-      message: 'Document permanently deleted from storage'
-    });
   } catch (error: any) {
     console.error('Error permanently deleting document:', error);
 

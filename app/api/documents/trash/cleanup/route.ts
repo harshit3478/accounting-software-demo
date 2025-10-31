@@ -3,18 +3,21 @@ import prisma from '@/lib/prisma';
 import { requireSuperAdmin } from '@/lib/auth';
 import { deleteFromR2 } from '@/lib/r2-client';
 
-// POST - Manual cleanup of documents older than 30 days
+// Trash retention period in days (must match trash/route.ts)
+const TRASH_RETENTION_DAYS = 60;
+
+// POST - Manual cleanup of documents older than 60 days
 export async function POST(request: NextRequest) {
   try {
     await requireSuperAdmin();
 
-    // Find all documents older than 30 days
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    // Find all documents older than 60 days
+    const retentionThreshold = new Date(Date.now() - TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000);
 
     const oldDocs = await prisma.deletedDocument.findMany({
       where: {
         deletedAt: {
-          lt: thirtyDaysAgo
+          lt: retentionThreshold
         }
       }
     });
@@ -35,8 +38,10 @@ export async function POST(request: NextRequest) {
     // Delete each one permanently
     for (const doc of oldDocs) {
       try {
-        // Delete from R2 storage
-        await deleteFromR2(doc.fileName);
+        // Delete from R2 storage (only if it's a file with fileName)
+        if (doc.type === 'file' && doc.fileName) {
+          await deleteFromR2(doc.fileName);
+        }
         
         // Delete from database
         await prisma.deletedDocument.delete({ 
@@ -45,9 +50,9 @@ export async function POST(request: NextRequest) {
         
         deletedCount++;
       } catch (error) {
-        console.error(`Failed to delete ${doc.fileName}:`, error);
+        console.error(`Failed to delete ${doc.name}:`, error);
         failedCount++;
-        failedFiles.push(doc.originalName);
+        failedFiles.push(doc.name || 'Unknown');
       }
     }
 

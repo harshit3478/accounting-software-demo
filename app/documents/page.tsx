@@ -7,140 +7,185 @@ import { useAuth } from '@/lib/AuthContext';
 import Navigation from '@/components/Navigation';
 import FileUpload from '@/components/FileUpload';
 import StorageIndicator from '@/components/StorageIndicator';
-import FileList from '@/components/FileList';
+import FolderTree from '@/components/documents/FolderTree';
+import Breadcrumb from '@/components/documents/Breadcrumb';
+import DocumentsTable from '@/components/documents/DocumentsTable';
+import FolderModal from '@/components/documents/FolderModal';
+import DeleteConfirmModal from '@/components/documents/DeleteConfirmModal';
+import RenameFileModal from '@/components/documents/RenameFileModal';
+import FilePreview from '@/components/FilePreview';
 import { ToastProvider, useToastContext } from '@/components/ToastContext';
-import { FiEdit2, FiCheck, FiX, FiFolder, FiTrash2 } from 'react-icons/fi';
+import { Upload, FolderPlus, Trash2 } from 'lucide-react';
 
 interface Document {
   id: number;
-  fileName: string;
-  fileSize: number;
-  fileType: string;
-  fileUrl: string;
-  uploadedBy: string;
-  uploadedAt: string;
-}
-
-interface Folder {
-  id: number;
+  type: 'file' | 'folder';
   name: string;
-  isDefault: boolean;
+  fileName?: string | null;
+  fileSize?: number | null;
+  fileType?: string | null;
+  fileUrl?: string | null;
+  uploadedBy: string;
+  uploadedByEmail: string;
+  uploadedAt: string;
+  updatedAt: string;
+  parentId: number | null;
 }
 
 function DocumentsPageContent() {
   const router = useRouter();
   const { isAuthenticated, canUpload, canRename, canDelete, isAdmin } = useAuth();
   const { showSuccess, showError } = useToastContext();
+  
+  // State
   const [documents, setDocuments] = useState<Document[]>([]);
-  const [folder, setFolder] = useState<Folder | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [isEditingFolder, setIsEditingFolder] = useState(false);
-  const [newFolderName, setNewFolderName] = useState('');
-  const [sortBy, setSortBy] = useState<'date' | 'name'>('date');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [currentFolderId, setCurrentFolderId] = useState<number | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+  
+  // Modal states
+  const [folderModal, setFolderModal] = useState<{
+    isOpen: boolean;
+    mode: 'create' | 'rename';
+    parentId?: number | null;
+    folderId?: number;
+    currentName?: string;
+  }>({ isOpen: false, mode: 'create' });
+  
+  const [deleteModal, setDeleteModal] = useState<{
+    isOpen: boolean;
+    id: number;
+    name: string;
+    type: 'file' | 'folder';
+  } | null>(null);
+
+  const [showUpload, setShowUpload] = useState(false);
+  const [previewFile, setPreviewFile] = useState<Document | null>(null);
+  const [renameFileModal, setRenameFileModal] = useState<{
+    isOpen: boolean;
+    fileId: number;
+    currentName: string;
+  } | null>(null);
 
   useEffect(() => {
     if (!isAuthenticated) {
       router.push('/login');
       return;
     }
+    fetchDocuments();
+  }, [isAuthenticated, currentFolderId]);
 
-    fetchData();
-  }, [isAuthenticated, router]);
-
-  const fetchData = async () => {
-    setLoading(true);
+  const fetchDocuments = async () => {
     try {
-      // Fetch documents and folder in parallel
-      const [docsResponse, folderResponse] = await Promise.all([
-        fetch('/api/documents'),
-        fetch('/api/documents/folder'),
-      ]);
-
-      if (docsResponse.ok) {
-        const docsData = await docsResponse.json();
-        setDocuments(docsData.documents);
+      setLoading(true);
+      const folderParam = currentFolderId !== null ? `?folderId=${currentFolderId}` : '';
+      const response = await fetch(`/api/documents${folderParam}`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to load documents');
       }
-
-      if (folderResponse.ok) {
-        const folderData = await folderResponse.json();
-        setFolder(folderData);
-        setNewFolderName(folderData.name);
-      }
-    } catch (error) {
-      console.error('Error fetching data:', error);
+      
+      const data = await response.json();
+      setDocuments(data.documents || []);
+    } catch (error: any) {
+      console.error('Error fetching documents:', error);
+      showError(error.message || 'Failed to load documents');
     } finally {
       setLoading(false);
     }
   };
 
-  const sortDocuments = (docs: Document[]) => {
-    const sorted = [...docs].sort((a, b) => {
-      if (sortBy === 'date') {
-        const dateA = new Date(a.uploadedAt).getTime();
-        const dateB = new Date(b.uploadedAt).getTime();
-        return sortOrder === 'asc' ? dateA - dateB : dateB - dateA;
-      } else {
-        // Sort by name
-        const nameA = a.fileName.toLowerCase();
-        const nameB = b.fileName.toLowerCase();
-        if (sortOrder === 'asc') {
-          return nameA.localeCompare(nameB);
-        } else {
-          return nameB.localeCompare(nameA);
-        }
-      }
+  const handleFolderSelect = (folderId: number | null) => {
+    setCurrentFolderId(folderId);
+  };
+
+  const handleCreateFolder = (parentId: number | null) => {
+    setFolderModal({
+      isOpen: true,
+      mode: 'create',
+      parentId
     });
-    return sorted;
   };
 
-  const sortedDocuments = sortDocuments(documents);
-
-  const toggleSort = (type: 'date' | 'name') => {
-    if (sortBy === type) {
-      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortBy(type);
-      setSortOrder('desc');
-    }
+  const handleRenameFolder = (folderId: number, currentName: string) => {
+    setFolderModal({
+      isOpen: true,
+      mode: 'rename',
+      folderId,
+      currentName
+    });
   };
 
-  const startEditingFolder = () => {
-    setIsEditingFolder(true);
-    setNewFolderName(folder?.name || '');
+  const handleDeleteFolder = (folderId: number, name: string) => {
+    setDeleteModal({
+      isOpen: true,
+      id: folderId,
+      name,
+      type: 'folder'
+    });
   };
 
-  const cancelEditingFolder = () => {
-    setIsEditingFolder(false);
-    setNewFolderName(folder?.name || '');
+  const handleDeleteFile = (fileId: number, name: string) => {
+    setDeleteModal({
+      isOpen: true,
+      id: fileId,
+      name,
+      type: 'file'
+    });
   };
 
-  const handleRenameFolder = async () => {
-    if (!newFolderName.trim()) {
-      showError('Folder name cannot be empty');
-      return;
-    }
+  const handleViewFile = (doc: Document) => {
+    setPreviewFile(doc);
+  };
+
+  const handleRenameFile = (fileId: number, currentName: string) => {
+    setRenameFileModal({
+      isOpen: true,
+      fileId,
+      currentName
+    });
+  };
+
+  const handleRenameFileSuccess = () => {
+    fetchDocuments();
+    showSuccess('File renamed successfully');
+  };
+
+  const handleFolderSuccess = () => {
+    fetchDocuments();
+    setRefreshTrigger(prev => prev + 1);
+    showSuccess(`Folder ${folderModal.mode === 'create' ? 'created' : 'renamed'} successfully`);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteModal) return;
 
     try {
-      const response = await fetch('/api/documents/folder', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ newName: newFolderName.trim() }),
+      const endpoint = deleteModal.type === 'folder'
+        ? `/api/documents/folders/${deleteModal.id}`
+        : `/api/documents/${deleteModal.id}`;
+      
+      const response = await fetch(endpoint, {
+        method: 'DELETE'
       });
 
-      if (response.ok) {
+      if (!response.ok) {
         const data = await response.json();
-        setFolder(data.folder);
-        setIsEditingFolder(false);
-        showSuccess('Folder renamed successfully');
-      } else {
-        const data = await response.json();
-        showError(`Failed to rename folder: ${data.error}`);
+        throw new Error(data.error || 'Failed to delete');
       }
-    } catch (error) {
-      console.error('Rename error:', error);
-      showError('Failed to rename folder');
+
+      showSuccess(`${deleteModal.type === 'folder' ? 'Folder' : 'File'} moved to trash`);
+      fetchDocuments();
+      setRefreshTrigger(prev => prev + 1);
+    } catch (error: any) {
+      throw error; // Let the modal handle the error
     }
+  };
+
+  const handleUploadComplete = () => {
+    fetchDocuments();
+    setShowUpload(false);
+    showSuccess('Files uploaded successfully');
   };
 
   if (!isAuthenticated) {
@@ -151,125 +196,161 @@ function DocumentsPageContent() {
     <div className="min-h-screen bg-gray-50">
       <Navigation />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Page Header with Folder Name */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <FiFolder className="text-4xl text-blue-600" />
-              {isEditingFolder ? (
-                <div className="flex items-center space-x-2">
-                  <input
-                    type="text"
-                    value={newFolderName}
-                    onChange={(e) => setNewFolderName(e.target.value)}
-                    className="text-3xl font-bold text-gray-900 border-b-2 border-blue-500 focus:outline-none bg-transparent px-2"
-                    autoFocus
-                  />
-                  <button
-                    onClick={handleRenameFolder}
-                    className="p-2 text-green-600 hover:bg-green-50 rounded-lg"
-                    title="Save"
-                  >
-                    <FiCheck className="text-xl" />
-                  </button>
-                  <button
-                    onClick={cancelEditingFolder}
-                    className="p-2 text-gray-600 hover:bg-gray-50 rounded-lg"
-                    title="Cancel"
-                  >
-                    <FiX className="text-xl" />
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <h1 className="text-3xl font-bold text-gray-900">
-                    {folder?.name || 'Documents'}
-                  </h1>
-                  {canRename && (
-                    <button
-                      onClick={startEditingFolder}
-                      className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg"
-                      title="Rename Folder"
-                    >
-                      <FiEdit2 />
-                    </button>
-                  )}
-                </>
+      <div className="flex h-[calc(100vh-64px)]">
+        {/* Sidebar - Folder Tree */}
+        <div className="w-64 bg-white border-r border-gray-200 overflow-y-auto">
+          <div className="p-4">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-900">Folders</h2>
+              {canUpload && (
+                <button
+                  onClick={() => handleCreateFolder(null)}
+                  className="p-1.5 text-blue-600 hover:bg-blue-50 rounded"
+                  title="Create folder"
+                >
+                  <FolderPlus className="w-5 h-5" />
+                </button>
               )}
             </div>
-            {isAdmin && (
-              <Link
-                href="/documents/trash"
-                className="flex items-center px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg border border-red-200 transition-colors"
-                title="Trash"
-              >
-                <FiTrash2 className="text-xl" />
-              </Link>
-            )}
-          </div>
-          <p className="text-gray-600 mt-2">
-            Manage and access all your business documents in one place
-          </p>
-        </div>
-
-        {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-          </div>
-        ) : (
-          <div className="space-y-6">
-            {/* Storage Indicator */}
-            <StorageIndicator />
-
-            {/* File Upload */}
-            {canUpload && (
-              <FileUpload 
-                onUploadComplete={fetchData}
-                onUploadSuccess={showSuccess}
-                onUploadError={showError}
-              />
-            )}
-
-            {/* Sort Controls */}
-            <div className="bg-white rounded-lg shadow-sm p-4 flex items-center justify-between">
-              <span className="text-sm font-medium text-gray-700">Sort by:</span>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => toggleSort('date')}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    sortBy === 'date'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  Date {sortBy === 'date' && (sortOrder === 'asc' ? '↑' : '↓')}
-                </button>
-                <button
-                  onClick={() => toggleSort('name')}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    sortBy === 'name'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  Name {sortBy === 'name' && (sortOrder === 'asc' ? '↑' : '↓')}
-                </button>
-              </div>
-            </div>
-
-            {/* File List */}
-            <FileList
-              documents={sortedDocuments}
-              canRename={canRename}
-              canDelete={canDelete}
-              onRefresh={fetchData}
-              onSuccess={showSuccess}
-              onError={showError}
+            <FolderTree
+              currentFolderId={currentFolderId}
+              onFolderSelect={handleFolderSelect}
+              onCreateFolder={handleCreateFolder}
+              refreshTrigger={refreshTrigger}
             />
           </div>
-        )}
+        </div>
+
+        {/* Main Content */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Breadcrumb */}
+          <Breadcrumb
+            currentFolderId={currentFolderId}
+            onNavigate={handleFolderSelect}
+          />
+
+          {/* Page Header */}
+          <div className="px-6 py-4 bg-white border-b">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">Documents</h1>
+                <p className="text-sm text-gray-600 mt-1">
+                  {currentFolderId === null 
+                    ? 'All documents and folders' 
+                    : 'Browse and manage your files'
+                  }
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                {isAdmin && (
+                  <Link
+                    href="/documents/trash"
+                    className="flex items-center gap-2 px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg border border-red-200 transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    <span>Trash</span>
+                  </Link>
+                )}
+                {canUpload && (
+                  <button
+                    onClick={() => setShowUpload(!showUpload)}
+                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    <Upload className="w-4 h-4" />
+                    <span>Upload Files</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Content Area */}
+          <div className="flex-1 overflow-y-auto p-6">
+            <div className="max-w-7xl mx-auto space-y-6">
+              {/* Storage Indicator */}
+              <StorageIndicator />
+
+              {/* File Upload */}
+              {canUpload && showUpload && (
+                <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold text-gray-900">Upload Files</h3>
+                    <button
+                      onClick={() => setShowUpload(false)}
+                      className="text-gray-400 hover:text-gray-600"
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <FileUpload
+                    onUploadComplete={handleUploadComplete}
+                    onUploadSuccess={showSuccess}
+                    onUploadError={showError}
+                    folderId={currentFolderId}
+                  />
+                </div>
+              )}
+
+              {/* Documents Table */}
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                <DocumentsTable
+                  documents={documents}
+                  loading={loading}
+                  onFolderClick={handleFolderSelect}
+                  onRenameFolder={handleRenameFolder}
+                  onDeleteFolder={handleDeleteFolder}
+                  onDeleteFile={handleDeleteFile}
+                  onViewFile={handleViewFile}
+                  onRenameFile={canRename ? handleRenameFile : undefined}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
+
+      {/* Modals */}
+      <FolderModal
+        isOpen={folderModal.isOpen}
+        onClose={() => setFolderModal({ ...folderModal, isOpen: false })}
+        onSuccess={handleFolderSuccess}
+        mode={folderModal.mode}
+        parentId={folderModal.parentId}
+        folderId={folderModal.folderId}
+        currentName={folderModal.currentName}
+      />
+
+      {deleteModal && (
+        <DeleteConfirmModal
+          isOpen={deleteModal.isOpen}
+          onClose={() => setDeleteModal(null)}
+          onConfirm={handleDeleteConfirm}
+          itemName={deleteModal.name}
+          itemType={deleteModal.type}
+        />
+      )}
+
+      {/* File Rename Modal */}
+      {renameFileModal && (
+        <RenameFileModal
+          isOpen={renameFileModal.isOpen}
+          onClose={() => setRenameFileModal(null)}
+          onSuccess={handleRenameFileSuccess}
+          fileId={renameFileModal.fileId}
+          currentName={renameFileModal.currentName}
+        />
+      )}
+
+      {/* File Preview Modal */}
+      {previewFile && previewFile.fileUrl && (
+        <FilePreview
+          fileId={previewFile.id}
+          fileName={previewFile.name}
+          fileType={previewFile.fileType || ''}
+          fileUrl={previewFile.fileUrl}
+          onClose={() => setPreviewFile(null)}
+        />
+      )}
     </div>
   );
 }

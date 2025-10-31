@@ -76,11 +76,15 @@ export async function POST(
       const directPayments = invoice.payments.reduce((sum, p) => sum + p.amount.toNumber(), 0);
       const matchedPayments = invoice.paymentMatches.reduce((sum, m) => sum + m.amount.toNumber(), 0);
       const totalPaid = directPayments + matchedPayments;
-      const remaining = invoice.amount.toNumber() - totalPaid;
+      const invoiceAmount = invoice.amount.toNumber();
+      const remaining = invoiceAmount - totalPaid;
 
-      if (match.amount > remaining) {
+      // Allow small epsilon for floating point precision (1 cent)
+      const EPSILON = 0.01;
+      
+      if (match.amount > remaining + EPSILON) {
         return NextResponse.json({
-          error: `Match amount ($${match.amount.toFixed(2)}) exceeds invoice ${invoice.invoiceNumber} remaining balance ($${remaining.toFixed(2)})`
+          error: `Match amount ($${match.amount.toFixed(2)}) exceeds invoice ${invoice.invoiceNumber} remaining balance ($${remaining.toFixed(2)}). Current status: ${invoice.status}, Total paid: $${totalPaid.toFixed(2)}, Invoice amount: $${invoiceAmount.toFixed(2)}`
         }, { status: 400 });
       }
     }
@@ -117,6 +121,14 @@ export async function POST(
       await tx.payment.update({
         where: { id: paymentId },
         data: { isMatched: isFullyMatched }
+      });
+
+      console.log(`Payment ${paymentId} matched:`, {
+        paymentAmount,
+        totalAllocation,
+        isFullyMatched,
+        matchesCreated: matches.length,
+        invoices: matches.map(m => m.invoice.invoiceNumber)
       });
 
       return matches;
