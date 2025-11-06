@@ -9,6 +9,7 @@ import { CreateInvoiceModal } from '../components/invoices';
 import { RecordPaymentModal } from '../components/payments';
 import { ToastProvider, useToastContext } from '../components/ToastContext';
 import { useClientCache, invalidateCachePattern } from '../hooks/useClientCache';
+import Footer from '@/components/Footer';
 
 function DashboardContent() {
   const router = useRouter();
@@ -671,13 +672,7 @@ function DashboardContent() {
       </div>
 
       {/* Footer */}
-      <footer className="bg-white border-t border-gray-200 mt-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="text-center">
-            <p className="text-gray-500 text-sm">© 2024 FinanceFlow Accounting System. Professional invoice and payment management.</p>
-          </div>
-        </div>
-      </footer>
+      <Footer />
 
       {/* Modals */}
       <CreateInvoiceModal

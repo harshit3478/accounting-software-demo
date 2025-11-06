@@ -10,6 +10,7 @@ import PaymentSourceCards from '../../components/payments/PaymentSourceCards';
 import PaymentFiltersNew from '../../components/payments/PaymentFiltersNew';
 import PaymentTable from '../../components/payments/PaymentTable';
 import { usePayments } from '../../hooks/usePayments';
+import Footer from '@/components/Footer';
 
 function PaymentsPageContent() {
   const { showSuccess, showError } = useToastContext();
@@ -141,15 +142,7 @@ function PaymentsPageContent() {
         uploadUrl="/api/payments/bulk/upload"
       />
 
-      <footer className="bg-white border-t border-gray-200 mt-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="text-center">
-            <p className="text-gray-500 text-sm">
-              © 2024 FinanceFlow Accounting System. Professional invoice and payment management.
-            </p>
-          </div>
-        </div>
-      </footer>
+      <Footer />
     </div>
   );
 }

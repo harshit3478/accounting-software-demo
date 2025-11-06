@@ -17,6 +17,7 @@ import InvoiceFiltersNew from '../../components/invoices/InvoiceFiltersNew';
 import InvoiceStats from '../../components/invoices/InvoiceStats';
 import InvoiceTable from '../../components/invoices/InvoiceTable';
 import { useInvoices } from '../../hooks/useInvoices';
+import Footer from '@/components/Footer';
 
 function InvoicesPageContent() {
   const { showSuccess, showError, showInfo } = useToastContext();
@@ -155,15 +156,7 @@ function InvoicesPageContent() {
       </div>
 
       {/* Footer */}
-      <footer className="bg-white border-t border-gray-200 mt-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="text-center">
-            <p className="text-gray-500 text-sm">
-              © 2024 FinanceFlow Accounting System. Professional invoice and payment management.
-            </p>
-          </div>
-        </div>
-      </footer>
+     <Footer />
 
       {/* Modals */}
       <CreateInvoiceModal
