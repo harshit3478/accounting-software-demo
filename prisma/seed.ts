@@ -49,17 +49,17 @@ async function main() {
 
   console.log('Created accountant user:', accountant);
 
-  // Create default system folder for documents
-  const defaultFolder = await prisma.systemFolder.upsert({
-    where: { id: 1 },
-    update: {},
-    create: {
-      name: 'Business Documents',
-      isDefault: true,
-    },
-  });
+  // // Create default system folder for documents
+  // const defaultFolder = await prisma.systemFolder.upsert({
+  //   where: { id: 1 },
+  //   update: {},
+  //   create: {
+  //     name: 'Business Documents',
+  //     isDefault: true,
+  //   },
+  // });
 
-  console.log('Created default folder:', defaultFolder);
+  // console.log('Created default folder:', defaultFolder);
 }
 
 main()

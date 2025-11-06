@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '../../../lib/prisma';
 import { requireAuth } from '../../../lib/auth';
 import { generateInvoiceNumber, calculateInvoiceStatus } from '../../../lib/invoice-utils';
+import { invalidateDashboard } from '../../../lib/cache-helpers';
 
 export async function GET() {
   try {
@@ -84,6 +85,9 @@ export async function POST(request: NextRequest) {
       amount: invoice.amount.toNumber(),
       paidAmount: invoice.paidAmount.toNumber(),
     };
+
+    // Invalidate dashboard cache
+    invalidateDashboard();
 
     return NextResponse.json(serializedInvoice);
   } catch (error: any) {

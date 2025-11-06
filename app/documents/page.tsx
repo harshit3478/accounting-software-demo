@@ -16,6 +16,7 @@ import RenameFileModal from '@/components/documents/RenameFileModal';
 import FilePreview from '@/components/FilePreview';
 import { ToastProvider, useToastContext } from '@/components/ToastContext';
 import { Upload, FolderPlus, Trash2 } from 'lucide-react';
+import { useClientCache, invalidateCachePattern } from '@/hooks/useClientCache';
 
 interface Document {
   id: number;

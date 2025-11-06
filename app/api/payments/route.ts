@@ -3,6 +3,7 @@ import { PaymentMethod } from '@prisma/client';
 import prisma from '../../../lib/prisma';
 import { requireAuth } from '../../../lib/auth';
 import { calculateInvoiceStatus, updateInvoiceAfterPayment } from '../../../lib/invoice-utils';
+import { invalidateDashboard } from '../../../lib/cache-helpers';
 
 export async function GET(request: NextRequest) {
   try {
@@ -80,6 +81,9 @@ export async function POST(request: NextRequest) {
     if (invoiceId) {
       await updateInvoiceAfterPayment(parseInt(invoiceId));
     }
+
+    // Invalidate dashboard cache
+    invalidateDashboard();
 
     return NextResponse.json(payment);
   } catch (error: any) {

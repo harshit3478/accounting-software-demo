@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { requirePermission } from '@/lib/auth';
 import { DocumentType } from '@prisma/client';
+import { invalidateDocuments } from '@/lib/cache-helpers';
 
 // GET - Get folder details with children
 export async function GET(
@@ -175,6 +176,9 @@ export async function PATCH(
     
     console.log(`✅ Folder renamed: "${folder.name}" → "${updated.name}" by ${user.name}`);
     
+    // Invalidate document tree cache
+    invalidateDocuments();
+
     return NextResponse.json({ folder: updated });
   } catch (error: any) {
     console.error('Rename folder error:', error);
@@ -295,6 +299,9 @@ export async function DELETE(
     
     console.log(`✅ Folder deleted: "${folder.name}" (${fileCount} files, ${folderCount} folders) by ${user.name}`);
     
+    // Invalidate document tree cache
+    invalidateDocuments();
+
     return NextResponse.json({
       message: 'Folder moved to trash',
       deletedCount: allDescendants.length + 1, // +1 for the folder itself

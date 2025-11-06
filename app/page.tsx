@@ -8,6 +8,7 @@ import Chart from '../components/Chart';
 import { CreateInvoiceModal } from '../components/invoices';
 import { RecordPaymentModal } from '../components/payments';
 import { ToastProvider, useToastContext } from '../components/ToastContext';
+import { useClientCache, invalidateCachePattern } from '../hooks/useClientCache';
 
 function DashboardContent() {
   const router = useRouter();
@@ -38,70 +39,111 @@ function DashboardContent() {
   const [showCreateInvoiceModal, setShowCreateInvoiceModal] = useState(false);
   const [showRecordPaymentModal, setShowRecordPaymentModal] = useState(false);
 
-  const fetchMetrics = async () => {
-    setIsLoading(true);
-    try {
-      // Fetch dashboard metrics
-      const dashboardRes = await fetch('/api/dashboard');
-      if (dashboardRes.ok) {
-        const data = await dashboardRes.json();
-        setMetrics(data);
-      }
-
-      // Fetch invoices for additional stats
-      const invoicesRes = await fetch('/api/invoices');
-      if (invoicesRes.ok) {
-        const invoices = await invoicesRes.json();
-        
-        // Calculate overdue invoices
-        const today = new Date();
-        const overdue = invoices.filter((inv: any) => 
-          inv.status !== 'paid' && new Date(inv.dueDate) < today
-        );
-        
-        const overdueAmount = overdue.reduce((sum: number, inv: any) => 
-          sum + (inv.amount - inv.paidAmount), 0
-        );
-
-        // Count layaway plans
-        const layawayPlans = invoices.filter((inv: any) => inv.isLayaway && inv.status !== 'paid').length;
-
-        setTodayStats({
-          todayRevenue: 0, // Will be calculated from payments
-          overdueInvoices: overdue.length,
-          overdueAmount,
-          layawayPlans,
-        });
-      }
-
-      // Fetch payments for today's revenue and recent activity
-      const paymentsRes = await fetch('/api/payments');
-      if (paymentsRes.ok) {
-        const payments = await paymentsRes.json();
-        
-        // Calculate today's revenue
-        const todayStr = new Date().toISOString().split('T')[0];
-        const todayPayments = payments.filter((p: any) => {
-          const paymentDate = p.paymentDate ? new Date(p.paymentDate).toISOString().split('T')[0] : null;
-          return paymentDate === todayStr;
-        });
-        
-        const todayRevenue = todayPayments.reduce((sum: number, p: any) => sum + p.amount, 0);
-        
-        setTodayStats(prev => ({ ...prev, todayRevenue }));
-        
-        // Get last 5 payments for recent activity
-        const sortedPayments = payments
-          .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-          .slice(0, 5);
-        
-        setRecentPayments(sortedPayments);
-      }
-    } catch (error) {
-      console.error('Error fetching dashboard data:', error);
-    } finally {
-      setIsLoading(false);
+  // Use client-side cache for dashboard metrics
+  const { 
+    data: metricsData, 
+    isLoading: metricsLoading,
+    mutate: refreshMetrics 
+  } = useClientCache(
+    'dashboard-metrics',
+    async () => {
+      const res = await fetch('/api/dashboard');
+      if (!res.ok) throw new Error('Failed to fetch metrics');
+      return res.json();
+    },
+    { 
+      staleTime: 2 * 60 * 1000, // 2 minutes (matches backend cache)
+      refetchOnMount: false // Don't refetch on every mount
     }
+  );
+
+  // Use cache for invoices
+  const { 
+    data: invoicesData,
+    isLoading: invoicesLoading 
+  } = useClientCache(
+    'dashboard-invoices',
+    async () => {
+      const res = await fetch('/api/invoices');
+      if (!res.ok) throw new Error('Failed to fetch invoices');
+      return res.json();
+    },
+    { 
+      staleTime: 2 * 60 * 1000,
+      refetchOnMount: false
+    }
+  );
+
+  // Use cache for payments
+  const { 
+    data: paymentsData,
+    isLoading: paymentsLoading 
+  } = useClientCache(
+    'dashboard-payments',
+    async () => {
+      const res = await fetch('/api/payments');
+      if (!res.ok) throw new Error('Failed to fetch payments');
+      return res.json();
+    },
+    { 
+      staleTime: 2 * 60 * 1000,
+      refetchOnMount: false
+    }
+  );
+
+  // Compute derived metrics from cached data
+  useEffect(() => {
+    if (metricsData) {
+      setMetrics(metricsData);
+    }
+
+    if (invoicesData) {
+      const today = new Date();
+      const overdue = invoicesData.filter((inv: any) => 
+        inv.status !== 'paid' && new Date(inv.dueDate) < today
+      );
+      
+      const overdueAmount = overdue.reduce((sum: number, inv: any) => 
+        sum + (inv.amount - inv.paidAmount), 0
+      );
+
+      const layawayPlans = invoicesData.filter((inv: any) => inv.isLayaway && inv.status !== 'paid').length;
+
+      setTodayStats(prev => ({
+        ...prev,
+        overdueInvoices: overdue.length,
+        overdueAmount,
+        layawayPlans,
+      }));
+    }
+
+    if (paymentsData) {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const todayPayments = paymentsData.filter((p: any) => {
+        const paymentDate = p.paymentDate ? new Date(p.paymentDate).toISOString().split('T')[0] : null;
+        return paymentDate === todayStr;
+      });
+      
+      const todayRevenue = todayPayments.reduce((sum: number, p: any) => sum + p.amount, 0);
+      
+      setTodayStats(prev => ({ ...prev, todayRevenue }));
+      
+      const sortedPayments = paymentsData
+        .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .slice(0, 5);
+      
+      setRecentPayments(sortedPayments);
+    }
+  }, [metricsData, invoicesData, paymentsData]); // Removed loading states from deps
+
+  // Separate effect for loading state
+  useEffect(() => {
+    setIsLoading(metricsLoading || invoicesLoading || paymentsLoading);
+  }, [metricsLoading, invoicesLoading, paymentsLoading]);
+
+  const fetchMetrics = async () => {
+    // Refresh all cached data
+    await refreshMetrics();
   };
 
   const fetchChartData = async () => {
@@ -644,9 +686,9 @@ function DashboardContent() {
         onSuccess={() => {
           setShowCreateInvoiceModal(false);
           showSuccess('Invoice created successfully!');
-          fetchMetrics(); // Refresh dashboard metrics
-          // Optionally redirect to invoices page
-          // router.push('/invoices');
+          // Invalidate client cache to force refresh
+          invalidateCachePattern('dashboard-.*');
+          fetchMetrics();
         }}
         onError={showError}
       />
@@ -657,9 +699,9 @@ function DashboardContent() {
         onSuccess={() => {
           setShowRecordPaymentModal(false);
           showSuccess('Payment recorded successfully!');
-          fetchMetrics(); // Refresh dashboard metrics
-          // Optionally redirect to payments page
-          // router.push('/payments');
+          // Invalidate client cache to force refresh
+          invalidateCachePattern('dashboard-.*');
+          fetchMetrics();
         }}
       />
     </div>

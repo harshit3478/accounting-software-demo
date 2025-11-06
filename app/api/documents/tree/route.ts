@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { DocumentType } from '@prisma/client';
+import cache, { CACHE_KEYS, CACHE_TTL } from '@/lib/cache';
 
 // Recursive function to build folder tree
 interface TreeNode {
@@ -53,7 +54,14 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const maxDepth = parseInt(searchParams.get('maxDepth') || '5');
     
-    // Build the tree from root
+    // Check cache first
+    const cacheKey = CACHE_KEYS.DOCUMENT_TREE;
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      return NextResponse.json(cached);
+    }
+
+    // Cache miss - build the tree from root
     const tree = await buildFolderTree(null);
     
     // Get root-level stats
@@ -79,7 +87,7 @@ export async function GET(request: NextRequest) {
       }
     });
     
-    return NextResponse.json({
+    const result = {
       tree,
       metadata: {
         totalFolders,
@@ -87,7 +95,12 @@ export async function GET(request: NextRequest) {
         rootFiles,
         maxDepth
       }
-    });
+    };
+
+    // Cache for 5 minutes
+    cache.set(cacheKey, result, CACHE_TTL.LONG);
+
+    return NextResponse.json(result);
   } catch (error: any) {
     console.error('Get folder tree error:', error);
     return NextResponse.json(

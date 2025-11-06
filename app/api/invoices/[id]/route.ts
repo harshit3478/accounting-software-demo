@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 import prisma from '../../../../lib/prisma';
 import { requireAuth } from '../../../../lib/auth';
+import { invalidateDashboard } from '../../../../lib/cache-helpers';
 
 export async function PUT(
   request: NextRequest,
@@ -53,6 +54,9 @@ export async function PUT(
       paidAmount: invoice.paidAmount.toNumber(),
     };
 
+    // Invalidate dashboard cache
+    invalidateDashboard();
+
     return NextResponse.json(serializedInvoice);
   } catch (error: any) {
     console.error('Update invoice error:', error);
@@ -102,6 +106,9 @@ export async function DELETE(
     await prisma.invoice.delete({
       where: { id: invoiceId },
     });
+
+    // Invalidate dashboard cache
+    invalidateDashboard();
 
     return NextResponse.json({ message: 'Invoice deleted successfully' });
   } catch (error: any) {
