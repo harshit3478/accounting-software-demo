@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { requirePermission } from '@/lib/auth';
 import { DocumentType } from '@prisma/client';
+import { invalidateDocuments } from '@/lib/cache-helpers';
 
 // Helper: Calculate folder depth (max 5 levels)
 async function getFolderDepth(folderId: number): Promise<number> {
@@ -109,6 +110,9 @@ export async function POST(request: NextRequest) {
     
     console.log(`✅ Folder created: "${folder.name}" by ${user.name} (id: ${folder.id})`);
     
+    // Invalidate document tree cache
+    invalidateDocuments();
+
     return NextResponse.json({ folder }, { status: 201 });
   } catch (error: any) {
     console.error('Create folder error:', error);
