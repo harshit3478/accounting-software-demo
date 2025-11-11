@@ -9,3 +9,4 @@ export { default as InvoiceItemsEditor } from './InvoiceItemsEditor';
 export { default as InvoiceSummary } from './InvoiceSummary';
 export { default as InvoiceFiltersNew } from './InvoiceFiltersNew';
 export * from './types';
+export { default as ShipInvoiceModal } from './ShipInvoiceModal';

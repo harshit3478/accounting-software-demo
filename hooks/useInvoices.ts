@@ -22,6 +22,9 @@ export interface Invoice {
   status: 'paid' | 'pending' | 'overdue' | 'partial';
   isLayaway: boolean;
   createdAt: string;
+  // Shipping fields (nullable)
+  shipmentId?: string | null;
+  trackingNumber?: string | null;
 }
 
 export type InvoiceFilter = 'all' | 'pending' | 'paid' | 'overdue' | 'partial' | 'layaway';
@@ -63,6 +66,8 @@ interface UseInvoicesReturn {
   setShowDeleteConfirm: (show: boolean) => void;
   showCSVUploadModal: boolean;
   setShowCSVUploadModal: (show: boolean) => void;
+  showShipModal: boolean;
+  setShowShipModal: (show: boolean) => void;
   
   // Selected invoices
   editingInvoice: Invoice | null;
@@ -71,6 +76,8 @@ interface UseInvoicesReturn {
   setViewingInvoice: (invoice: Invoice | null) => void;
   paymentInvoice: Invoice | null;
   setPaymentInvoice: (invoice: Invoice | null) => void;
+  shippingInvoice: Invoice | null;
+  setShippingInvoice: (invoice: Invoice | null) => void;
   deletingInvoice: Invoice | null;
   setDeletingInvoice: (invoice: Invoice | null) => void;
   isDeleting: boolean;
@@ -78,6 +85,7 @@ interface UseInvoicesReturn {
   // Actions
   fetchInvoices: () => Promise<void>;
   handleViewInvoice: (invoice: Invoice) => void;
+  handleOpenShipModal: (invoice: Invoice) => void;
   handleEditInvoice: (invoice: Invoice) => void;
   handleOpenPaymentModal: (invoice: Invoice) => void;
   handleDeleteClick: (invoice: Invoice) => void;
@@ -121,12 +129,14 @@ export function useInvoices(
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showCSVUploadModal, setShowCSVUploadModal] = useState(false);
+  const [showShipModal, setShowShipModal] = useState(false);
   
   // Selected invoice states
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
   const [viewingInvoice, setViewingInvoice] = useState<Invoice | null>(null);
   const [paymentInvoice, setPaymentInvoice] = useState<Invoice | null>(null);
   const [deletingInvoice, setDeletingInvoice] = useState<Invoice | null>(null);
+  const [shippingInvoice, setShippingInvoice] = useState<Invoice | null>(null);
   
   const [isDeleting, setIsDeleting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -174,6 +184,11 @@ export function useInvoices(
   const handleViewInvoice = (invoice: Invoice) => {
     setViewingInvoice(invoice);
     setShowViewModal(true);
+  };
+
+  const handleOpenShipModal = (invoice: Invoice) => {
+    setShippingInvoice(invoice);
+    setShowShipModal(true);
   };
 
   const handleEditInvoice = (invoice: Invoice) => {
@@ -384,17 +399,22 @@ export function useInvoices(
     setShowDeleteConfirm,
     showCSVUploadModal,
     setShowCSVUploadModal,
+  showShipModal,
+  setShowShipModal,
     editingInvoice,
     setEditingInvoice,
     viewingInvoice,
     setViewingInvoice,
     paymentInvoice,
     setPaymentInvoice,
+  shippingInvoice,
+  setShippingInvoice,
     deletingInvoice,
     setDeletingInvoice,
     isDeleting,
     fetchInvoices,
-    handleViewInvoice,
+  handleViewInvoice,
+  handleOpenShipModal,
     handleEditInvoice,
     handleOpenPaymentModal,
     handleDeleteClick,

@@ -1,21 +1,24 @@
-'use client';
+"use client";
 
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { useAuth } from '../lib/AuthContext';
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useAuth } from "../lib/AuthContext";
 
 export default function Navigation() {
   const pathname = usePathname();
   const { logout, isAdmin, user } = useAuth();
-  
+
   // Check if user is superadmin (matches email from env)
-  const isSuperAdmin = user?.email === process.env.NEXT_PUBLIC_SUPERADMIN_EMAIL || user?.id === 1;
-  
+
   const navItems = [
-    { href: '/', label: 'Dashboard', active: pathname === '/' },
-    { href: '/invoices', label: 'Invoices', active: pathname === '/invoices' },
-    { href: '/payments', label: 'Payments', active: pathname === '/payments' },
-    { href: '/documents', label: 'Documents', active: pathname === '/documents' },
+    { href: "/", label: "Dashboard", active: pathname === "/" },
+    { href: "/invoices", label: "Invoices", active: pathname === "/invoices" },
+    { href: "/payments", label: "Payments", active: pathname === "/payments" },
+    {
+      href: "/documents",
+      label: "Documents",
+      active: pathname === "/documents",
+    },
     // { href: '/settings', label: 'Settings', active: pathname === '/settings' },
     // { href: '/statements', label: 'Statements', active: pathname === '/statements' },
   ];
@@ -23,11 +26,25 @@ export default function Navigation() {
   // Remove the push for Trash - will be moved to Documents page
 
   if (isAdmin) {
-    navItems.push({ href: '/admin/users', label: 'User Management', active: pathname === '/admin/users' });
+    navItems.push({
+      href: "/admin/users",
+      label: "User Management",
+      active: pathname === "/admin/users",
+    });
+  }
+  // Terms & Conditions admin page (admin or superadmin only)
+  const isSuperAdmin =
+    user?.email === process.env.NEXT_PUBLIC_SUPERADMIN_EMAIL || user?.id === 1;
+  if (isAdmin || isSuperAdmin) {
+    navItems.push({
+      href: "/terms",
+      label: "Terms & Conditions",
+      active: pathname === "/terms",
+    });
   }
 
   const handleLogout = async () => {
-    await fetch('/api/logout', { method: 'POST' });
+    await fetch("/api/logout", { method: "POST" });
     logout();
   };
 
@@ -40,7 +57,9 @@ export default function Navigation() {
               <Link href="/" className="text-2xl font-bold text-gray-900">
                 FinanceFlow
               </Link>
-              <p className="text-xs text-gray-500">Accounting Management System</p>
+              <p className="text-xs text-gray-500">
+                Accounting Management System
+              </p>
             </div>
           </div>
           <div className="hidden md:block">
@@ -51,8 +70,8 @@ export default function Navigation() {
                   href={item.href}
                   className={`nav-link px-3 py-2 rounded-md text-sm font-medium ${
                     item.active
-                      ? 'text-blue-600'
-                      : 'text-gray-700 hover:text-blue-600'
+                      ? "text-blue-600"
+                      : "text-gray-700 hover:text-blue-600"
                   }`}
                 >
                   {item.label}
@@ -67,8 +86,12 @@ export default function Navigation() {
             {user && (
               <div className="flex items-center space-x-3">
                 <div className="text-right">
-                  <p className="text-sm font-medium text-gray-900">Welcome {user.name}!</p>
-                  <p className="text-xs text-gray-500 capitalize">{user.role}</p>
+                  <p className="text-sm font-medium text-gray-900">
+                    Welcome {user.name}!
+                  </p>
+                  <p className="text-xs text-gray-500 capitalize">
+                    {user.role}
+                  </p>
                 </div>
                 <button
                   onClick={handleLogout}

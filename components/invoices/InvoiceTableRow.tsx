@@ -9,6 +9,7 @@ interface InvoiceTableRowProps {
   onEdit: (invoice: Invoice) => void;
   onPay: (invoice: Invoice) => void;
   onDelete: (invoice: Invoice) => void;
+  onShip?: (invoice: Invoice) => void;
 }
 
 export default function InvoiceTableRow({
@@ -18,6 +19,7 @@ export default function InvoiceTableRow({
   onEdit,
   onPay,
   onDelete,
+  onShip,
 }: InvoiceTableRowProps) {
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -76,6 +78,12 @@ export default function InvoiceTableRow({
           {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}
         </span>
       </td>
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+        {invoice.shipmentId ? invoice.shipmentId : '-'}
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+        {invoice.trackingNumber ? invoice.trackingNumber : '-'}
+      </td>
       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
         <div className="flex items-center space-x-3">
           <button
@@ -94,6 +102,13 @@ export default function InvoiceTableRow({
             {invoice.status === 'paid' ? 'Paid' : 'Pay'}
           </button>
           <button
+            onClick={() => onShip?.(invoice)}
+            className="text-sky-600 hover:text-sky-900"
+            title="Create shipment"
+          >
+            Ship
+          </button>
+          <button
             onClick={() => onDelete(invoice)}
             className="text-red-600 hover:text-red-900"
             title="Delete invoice"
@@ -101,6 +116,12 @@ export default function InvoiceTableRow({
             Delete
           </button>
         </div>
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+        {invoice.shipmentId ? invoice.shipmentId : '-'}
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+        {invoice.trackingNumber ? invoice.trackingNumber : '-'}
       </td>
     </tr>
   );

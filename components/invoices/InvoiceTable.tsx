@@ -12,6 +12,7 @@ interface InvoiceTableProps {
   onEdit: (invoice: Invoice) => void;
   onPay: (invoice: Invoice) => void;
   onDelete: (invoice: Invoice) => void;
+  onShip: (invoice: Invoice) => void;
   onCreateFirst: () => void;
   searchTerm: string;
   filter: string;
@@ -27,6 +28,7 @@ export default function InvoiceTable({
   onEdit,
   onPay,
   onDelete,
+  onShip,
   onCreateFirst,
   searchTerm,
   filter,
@@ -144,6 +146,12 @@ export default function InvoiceTable({
                 Status
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Shipment ID
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Tracking #
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Actions
               </th>
             </tr>
@@ -158,6 +166,7 @@ export default function InvoiceTable({
                 onEdit={onEdit}
                 onPay={onPay}
                 onDelete={onDelete}
+                onShip={onShip}
               />
             ))}
           </tbody>

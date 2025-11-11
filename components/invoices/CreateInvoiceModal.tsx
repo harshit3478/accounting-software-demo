@@ -1,11 +1,11 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import Modal from './Modal';
-import PreviewInvoiceModal from './PreviewInvoiceModal';
-import InvoiceItemsEditor from './InvoiceItemsEditor';
-import InvoiceSummary from './InvoiceSummary';
-import { InvoiceItem } from './types';
+import { useState } from "react";
+import Modal from "./Modal";
+import PreviewInvoiceModal from "./PreviewInvoiceModal";
+import InvoiceItemsEditor from "./InvoiceItemsEditor";
+import InvoiceSummary from "./InvoiceSummary";
+import { InvoiceItem } from "./types";
 
 interface CreateInvoiceModalProps {
   isOpen: boolean;
@@ -14,40 +14,56 @@ interface CreateInvoiceModalProps {
   onError?: (message: string) => void;
 }
 
-export default function CreateInvoiceModal({ isOpen, onClose, onSuccess, onError }: CreateInvoiceModalProps) {
-  const [clientName, setClientName] = useState('');
-  const [dueDate, setDueDate] = useState('');
-  const [items, setItems] = useState<InvoiceItem[]>([{ name: '', quantity: 1, price: 0 }]);
+export default function CreateInvoiceModal({
+  isOpen,
+  onClose,
+  onSuccess,
+  onError,
+}: CreateInvoiceModalProps) {
+  const [clientName, setClientName] = useState("");
+  const [dueDate, setDueDate] = useState("");
+  const [items, setItems] = useState<InvoiceItem[]>([
+    { name: "", quantity: 1, price: 0 },
+  ]);
   const [tax, setTax] = useState(0);
-  const [taxType, setTaxType] = useState<'fixed' | 'percentage'>('fixed');
+  const [taxType, setTaxType] = useState<"fixed" | "percentage">("fixed");
   const [discount, setDiscount] = useState(0);
-  const [discountType, setDiscountType] = useState<'fixed' | 'percentage'>('fixed');
+  const [discountType, setDiscountType] = useState<"fixed" | "percentage">(
+    "fixed"
+  );
   const [isLayaway, setIsLayaway] = useState(false);
+  const [useDefaultTerms, setUseDefaultTerms] = useState(true);
+  const [defaultTerms, setDefaultTerms] = useState<string[] | null>(null);
+  const [customTerms, setCustomTerms] = useState<string[]>([""]);
   const [isCreating, setIsCreating] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
-  const [dateError, setDateError] = useState('');
+  const [dateError, setDateError] = useState("");
 
   const calculateSubtotal = () => {
-    return items.reduce((sum, item) => sum + (item.quantity * item.price), 0);
+    return items.reduce((sum, item) => sum + item.quantity * item.price, 0);
   };
 
   const calculateTaxAmount = () => {
     const subtotal = calculateSubtotal();
-    return taxType === 'percentage' ? (subtotal * tax) / 100 : tax;
+    return taxType === "percentage" ? (subtotal * tax) / 100 : tax;
   };
 
   const calculateDiscountAmount = () => {
     const subtotal = calculateSubtotal();
-    return discountType === 'percentage' ? (subtotal * discount) / 100 : discount;
+    return discountType === "percentage"
+      ? (subtotal * discount) / 100
+      : discount;
   };
 
   const calculateTotal = () => {
-    return calculateSubtotal() + calculateTaxAmount() - calculateDiscountAmount();
+    return (
+      calculateSubtotal() + calculateTaxAmount() - calculateDiscountAmount()
+    );
   };
 
   const validateDate = (selectedDate: string) => {
     if (!selectedDate) {
-      setDateError('');
+      setDateError("");
       return true;
     }
     const today = new Date();
@@ -56,10 +72,10 @@ export default function CreateInvoiceModal({ isOpen, onClose, onSuccess, onError
     selected.setHours(0, 0, 0, 0);
 
     if (selected < today) {
-      setDateError('Due date cannot be in the past');
+      setDateError("Due date cannot be in the past");
       return false;
     }
-    setDateError('');
+    setDateError("");
     return true;
   };
 
@@ -70,20 +86,20 @@ export default function CreateInvoiceModal({ isOpen, onClose, onSuccess, onError
   };
 
   const resetForm = () => {
-    setClientName('');
-    setDueDate('');
-    setItems([{ name: '', quantity: 1, price: 0 }]);
+    setClientName("");
+    setDueDate("");
+    setItems([{ name: "", quantity: 1, price: 0 }]);
     setTax(0);
-    setTaxType('fixed');
+    setTaxType("fixed");
     setDiscount(0);
-    setDiscountType('fixed');
+    setDiscountType("fixed");
     setIsLayaway(false);
-    setDateError('');
+    setDateError("");
   };
 
   const handleCreateInvoice = async () => {
     if (!clientName.trim() || !dueDate) {
-      onError?.('Please fill in all required fields');
+      onError?.("Please fill in all required fields");
       return;
     }
 
@@ -91,8 +107,11 @@ export default function CreateInvoiceModal({ isOpen, onClose, onSuccess, onError
       return;
     }
 
-    if (items.length === 0 || items.some(item => !item.name.trim() || item.price <= 0)) {
-      onError?.('Please add at least one valid item');
+    if (
+      items.length === 0 ||
+      items.some((item) => !item.name.trim() || item.price <= 0)
+    ) {
+      onError?.("Please add at least one valid item");
       return;
     }
 
@@ -104,19 +123,30 @@ export default function CreateInvoiceModal({ isOpen, onClose, onSuccess, onError
     setIsCreating(true);
     try {
       const subtotal = calculateSubtotal();
-      
-      const res = await fetch('/api/invoices', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          clientName,
-          dueDate,
-          items,
-          subtotal,
-          tax: calculateTaxAmount(),
-          discount: calculateDiscountAmount(),
-          isLayaway,
-        }),
+
+      const payload: any = {
+        clientName,
+        dueDate,
+        items,
+        subtotal,
+        tax: calculateTaxAmount(),
+        discount: calculateDiscountAmount(),
+        isLayaway,
+      };
+
+      if (useDefaultTerms) {
+        payload.useDefaultTerms = true;
+      } else if (
+        customTerms &&
+        customTerms.filter((t) => t.trim()).length > 0
+      ) {
+        payload.newTerms = customTerms.filter((t) => t.trim()).slice(0, 5);
+      }
+
+      const res = await fetch("/api/invoices", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
       });
 
       if (res.ok) {
@@ -126,11 +156,11 @@ export default function CreateInvoiceModal({ isOpen, onClose, onSuccess, onError
         onSuccess();
       } else {
         const error = await res.json();
-        onError?.(error.error || 'Failed to create invoice');
+        onError?.(error.error || "Failed to create invoice");
       }
     } catch (error) {
-      console.error('Failed to create invoice:', error);
-      onError?.('Failed to create invoice');
+      console.error("Failed to create invoice:", error);
+      onError?.("Failed to create invoice");
     } finally {
       setIsCreating(false);
     }
@@ -159,14 +189,29 @@ export default function CreateInvoiceModal({ isOpen, onClose, onSuccess, onError
       >
         {isCreating ? (
           <>
-            <svg className="animate-spin h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            <svg
+              className="animate-spin h-5 w-5 mr-2"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle
+                className="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                strokeWidth="4"
+              ></circle>
+              <path
+                className="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              ></path>
             </svg>
             Creating...
           </>
         ) : (
-          'Preview & Create'
+          "Preview & Create"
         )}
       </button>
     </div>
@@ -181,166 +226,241 @@ export default function CreateInvoiceModal({ isOpen, onClose, onSuccess, onError
         footer={footer}
         maxWidth="4xl"
       >
-      <div className="space-y-6">
-        {/* Client Info */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Client Name <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              value={clientName}
-              onChange={(e) => setClientName(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              placeholder="Enter client name"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Due Date <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="date"
-              value={dueDate}
-              onChange={handleDateChange}
-              className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 ${
-                dateError ? 'border-red-500' : 'border-gray-300'
-              }`}
-            />
-            {dateError && <p className="text-red-500 text-sm mt-1">{dateError}</p>}
-          </div>
-        </div>
+        <div className="space-y-6">
+          {/* Terms selection */}
 
-        {/* Items Section */}
-        <InvoiceItemsEditor items={items} onChange={setItems} />
-
-        {/* Calculations */}
-        <div className="border-t border-gray-200 pt-6">
+          {/* Client Info */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-4">
-              {/* Tax Section */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="block text-sm font-medium text-gray-700">
-                    Tax
-                  </label>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setTaxType('fixed')}
-                      className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
-                        taxType === 'fixed'
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                      }`}
-                    >
-                      $
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setTaxType('percentage')}
-                      className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
-                        taxType === 'percentage'
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                      }`}
-                    >
-                      %
-                    </button>
-                  </div>
-                </div>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={tax || ''}
-                  onChange={(e) => setTax(parseFloat(e.target.value) || 0)}
-                  onBlur={(e) => {
-                    const val = parseFloat(e.target.value);
-                    if (!isNaN(val)) {
-                      setTax(parseFloat(val.toFixed(2)));
-                    }
-                  }}
-                  className="w-full px-4 py-2 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="0.00"
-                />
-              </div>
-
-              {/* Discount Section */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="block text-sm font-medium text-gray-700">
-                    Discount
-                  </label>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setDiscountType('fixed')}
-                      className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
-                        discountType === 'fixed'
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                      }`}
-                    >
-                      $
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDiscountType('percentage')}
-                      className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
-                        discountType === 'percentage'
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                      }`}
-                    >
-                      %
-                    </button>
-                  </div>
-                </div>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={discount || ''}
-                  onChange={(e) => setDiscount(parseFloat(e.target.value) || 0)}
-                  onBlur={(e) => {
-                    const val = parseFloat(e.target.value);
-                    if (!isNaN(val)) {
-                      setDiscount(parseFloat(val.toFixed(2)));
-                    }
-                  }}
-                  className="w-full px-4 py-2 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="0.00"
-                />
-              </div>
-
-              {/* Layaway Checkbox */}
-              <div className="flex items-center">
-                <input
-                  type="checkbox"
-                  id="isLayaway"
-                  checked={isLayaway}
-                  onChange={(e) => setIsLayaway(e.target.checked)}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 mr-2"
-                />
-                <label htmlFor="isLayaway" className="text-sm font-medium text-gray-700">
-                  Mark as Layaway (Installment Payment Plan)
-                </label>
-              </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Client Name <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={clientName}
+                onChange={(e) => setClientName(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Enter client name"
+              />
             </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Due Date <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="date"
+                value={dueDate}
+                onChange={handleDateChange}
+                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 ${
+                  dateError ? "border-red-500" : "border-gray-300"
+                }`}
+              />
+              {dateError && (
+                <p className="text-red-500 text-sm mt-1">{dateError}</p>
+              )}
+            </div>
+          </div>
 
-            <InvoiceSummary
-              subtotal={calculateSubtotal()}
-              tax={tax}
-              taxType={taxType}
-              discount={discount}
-              discountType={discountType}
-              total={calculateTotal()}
-            />
+          {/* Items Section */}
+          <InvoiceItemsEditor items={items} onChange={setItems} />
+
+          {/* Calculations */}
+          <div className="border-t border-gray-200 pt-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-4">
+                {/* Tax Section */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-medium text-gray-700">
+                      Tax
+                    </label>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setTaxType("fixed")}
+                        className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
+                          taxType === "fixed"
+                            ? "bg-blue-600 text-white"
+                            : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                        }`}
+                      >
+                        $
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setTaxType("percentage")}
+                        className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
+                          taxType === "percentage"
+                            ? "bg-blue-600 text-white"
+                            : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                        }`}
+                      >
+                        %
+                      </button>
+                    </div>
+                  </div>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={tax || ""}
+                    onChange={(e) => setTax(parseFloat(e.target.value) || 0)}
+                    onBlur={(e) => {
+                      const val = parseFloat(e.target.value);
+                      if (!isNaN(val)) {
+                        setTax(parseFloat(val.toFixed(2)));
+                      }
+                    }}
+                    className="w-full px-4 py-2 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="0.00"
+                  />
+                </div>
+
+                {/* Discount Section */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-medium text-gray-700">
+                      Discount
+                    </label>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setDiscountType("fixed")}
+                        className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
+                          discountType === "fixed"
+                            ? "bg-blue-600 text-white"
+                            : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                        }`}
+                      >
+                        $
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDiscountType("percentage")}
+                        className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
+                          discountType === "percentage"
+                            ? "bg-blue-600 text-white"
+                            : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                        }`}
+                      >
+                        %
+                      </button>
+                    </div>
+                  </div>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={discount || ""}
+                    onChange={(e) =>
+                      setDiscount(parseFloat(e.target.value) || 0)
+                    }
+                    onBlur={(e) => {
+                      const val = parseFloat(e.target.value);
+                      if (!isNaN(val)) {
+                        setDiscount(parseFloat(val.toFixed(2)));
+                      }
+                    }}
+                    className="w-full px-4 py-2 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="0.00"
+                  />
+                </div>
+
+                {/* Layaway Checkbox */}
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    id="isLayaway"
+                    checked={isLayaway}
+                    onChange={(e) => setIsLayaway(e.target.checked)}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 mr-2"
+                  />
+                  <label
+                    htmlFor="isLayaway"
+                    className="text-sm font-medium text-gray-700"
+                  >
+                    Mark as Layaway (Installment Payment Plan)
+                  </label>
+                </div>
+
+                <div className="border-b border-gray-200 pb-4 mb-4">
+                  <h4 className="text-sm font-semibold text-gray-900 mb-3">
+                    Terms & Conditions
+                  </h4>
+                  <div className="flex items-start space-x-3 mb-3">
+                    <input
+                      type="checkbox"
+                      id="useDefaultTerms"
+                      checked={useDefaultTerms}
+                      onChange={(e) => setUseDefaultTerms(e.target.checked)}
+                      className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 mt-1"
+                    />
+                    <label
+                      htmlFor="useDefaultTerms"
+                      className="text-sm text-gray-700"
+                    >
+                      Use default Terms & Conditions
+                    </label>
+                  </div>
+
+                  {!useDefaultTerms && (
+                    <div className="space-y-3">
+                      <p className="text-xs text-gray-500">
+                        Add up to 5 points. Non-empty lines will be saved and
+                        attached to this invoice.
+                      </p>
+                      <div className="space-y-2">
+                        {customTerms.map((term, idx) => (
+                          <input
+                            key={idx}
+                            value={term}
+                            onChange={(e) => {
+                              const copy = [...customTerms];
+                              copy[idx] = e.target.value;
+                              setCustomTerms(copy);
+                            }}
+                            className="w-full px-4 py-2 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            placeholder={`Term ${idx + 1}`}
+                          />
+                        ))}
+                      </div>
+                      <div className="flex space-x-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (customTerms.length < 5)
+                              setCustomTerms([...customTerms, ""]);
+                          }}
+                          className="px-3 py-1 bg-white border border-gray-200 rounded text-sm hover:bg-gray-50"
+                        >
+                          Add line
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setCustomTerms(customTerms.slice(0, -1))
+                          }
+                          className="px-3 py-1 bg-white border border-gray-200 rounded text-sm hover:bg-gray-50"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <InvoiceSummary
+                subtotal={calculateSubtotal()}
+                tax={tax}
+                taxType={taxType}
+                discount={discount}
+                discountType={discountType}
+                total={calculateTotal()}
+              />
+            </div>
           </div>
         </div>
-      </div>
       </Modal>
 
       <PreviewInvoiceModal
@@ -358,6 +478,8 @@ export default function CreateInvoiceModal({ isOpen, onClose, onSuccess, onError
         total={calculateTotal()}
         isLayaway={isLayaway}
         isSubmitting={isCreating}
+        useDefaultTerms={useDefaultTerms}
+        customTerms={customTerms.filter((t) => t.trim())}
       />
     </>
   );

@@ -7,7 +7,8 @@ import {
   EditInvoiceModal, 
   ViewInvoiceModal, 
   PaymentModal,
-  ConfirmModal 
+  ConfirmModal,
+  ShipInvoiceModal,
 } from '../../components/invoices';
 import { ToastProvider, useToastContext } from '../../components/ToastContext';
 import Pagination from '../../components/Pagination';
@@ -50,6 +51,10 @@ function InvoicesPageContent() {
     setShowDeleteConfirm,
     showCSVUploadModal,
     setShowCSVUploadModal,
+  showShipModal,
+  setShowShipModal,
+  shippingInvoice,
+  setShippingInvoice,
     editingInvoice,
     setEditingInvoice,
     viewingInvoice,
@@ -61,6 +66,7 @@ function InvoicesPageContent() {
     isDeleting,
     fetchInvoices,
     handleViewInvoice,
+  handleOpenShipModal,
     handleEditInvoice,
     handleOpenPaymentModal,
     handleDeleteClick,
@@ -135,6 +141,7 @@ function InvoicesPageContent() {
           onEdit={handleEditInvoice}
           onPay={handleOpenPaymentModal}
           onDelete={handleDeleteClick}
+          onShip={handleOpenShipModal}
           onCreateFirst={() => setShowCreateModal(true)}
           searchTerm={searchTerm}
           filter={filter}
@@ -217,6 +224,20 @@ function InvoicesPageContent() {
         cancelText="Cancel"
         type="danger"
         isLoading={isDeleting}
+      />
+
+      <ShipInvoiceModal
+        isOpen={showShipModal}
+        onClose={() => {
+          setShowShipModal(false);
+          setShippingInvoice(null);
+        }}
+        invoice={shippingInvoice}
+        onSuccess={() => {
+          fetchInvoices();
+          showSuccess('Shipment created and attached to invoice');
+        }}
+        onError={showError}
       />
 
       <CSVUploadModal
