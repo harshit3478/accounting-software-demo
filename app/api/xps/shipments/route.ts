@@ -1,6 +1,10 @@
-import { NextResponse } from 'next/server';
-import prisma from '../../../../lib/prisma';
-import { createShipmentWithXps, updateShipmentWithXps, cancelShipmentWithXps } from '../../../../lib/xps';
+import { NextResponse } from "next/server";
+import prisma from "../../../../lib/prisma";
+import {
+  createShipmentWithXps,
+  updateShipmentWithXps,
+  cancelShipmentWithXps,
+} from "../../../../lib/xps";
 
 export async function POST(req: Request) {
   try {
@@ -8,12 +12,17 @@ export async function POST(req: Request) {
     const { invoiceId, address } = body;
 
     if (!invoiceId) {
-      return NextResponse.json({ error: 'invoiceId is required' }, { status: 400 });
+      return NextResponse.json(
+        { error: "invoiceId is required" },
+        { status: 400 }
+      );
     }
 
-    const invoice = await prisma.invoice.findUnique({ where: { id: Number(invoiceId) } });
+    const invoice = await prisma.invoice.findUnique({
+      where: { id: Number(invoiceId) },
+    });
     if (!invoice) {
-      return NextResponse.json({ error: 'Invoice not found' }, { status: 404 });
+      return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
     }
 
     const res = await createShipmentWithXps(invoice, address || {});
@@ -31,8 +40,11 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ invoice: updated, xps: res });
   } catch (err: any) {
-    console.error('Create shipment error', err);
-    return NextResponse.json({ error: err?.message || 'Unknown error' }, { status: 500 });
+    console.error("Create shipment error", err);
+    return NextResponse.json(
+      { error: err?.message || "Unknown error" },
+      { status: 500 }
+    );
   }
 }
 
@@ -44,13 +56,27 @@ export async function PATCH(req: Request) {
     let id = shipmentId;
     let invoice = null;
     if (!id) {
-      if (!invoiceId) return NextResponse.json({ error: 'shipmentId or invoiceId required' }, { status: 400 });
-      invoice = await prisma.invoice.findUnique({ where: { id: Number(invoiceId) } });
-      if (!invoice) return NextResponse.json({ error: 'Invoice not found' }, { status: 404 });
+      if (!invoiceId)
+        return NextResponse.json(
+          { error: "shipmentId or invoiceId required" },
+          { status: 400 }
+        );
+      invoice = await prisma.invoice.findUnique({
+        where: { id: Number(invoiceId) },
+      });
+      if (!invoice)
+        return NextResponse.json(
+          { error: "Invoice not found" },
+          { status: 404 }
+        );
       id = invoice.shipmentId as string | undefined;
     }
 
-    if (!id) return NextResponse.json({ error: 'Shipment id not found for invoice' }, { status: 400 });
+    if (!id)
+      return NextResponse.json(
+        { error: "Shipment id not found for invoice" },
+        { status: 400 }
+      );
 
     const res = await updateShipmentWithXps(id, address || {});
 
@@ -64,14 +90,20 @@ export async function PATCH(req: Request) {
     }
 
     if (invoice) {
-      const updated = await prisma.invoice.update({ where: { id: invoice.id }, data: dataToUpdate as any });
+      const updated = await prisma.invoice.update({
+        where: { id: invoice.id },
+        data: dataToUpdate as any,
+      });
       return NextResponse.json({ invoice: updated, xps: res });
     }
 
     return NextResponse.json({ xps: res });
   } catch (err: any) {
-    console.error('Update shipment error', err);
-    return NextResponse.json({ error: err?.message || 'Unknown error' }, { status: 500 });
+    console.error("Update shipment error", err);
+    return NextResponse.json(
+      { error: err?.message || "Unknown error" },
+      { status: 500 }
+    );
   }
 }
 
@@ -83,13 +115,27 @@ export async function DELETE(req: Request) {
     let id = shipmentId;
     let invoice = null;
     if (!id) {
-      if (!invoiceId) return NextResponse.json({ error: 'shipmentId or invoiceId required' }, { status: 400 });
-      invoice = await prisma.invoice.findUnique({ where: { id: Number(invoiceId) } });
-      if (!invoice) return NextResponse.json({ error: 'Invoice not found' }, { status: 404 });
+      if (!invoiceId)
+        return NextResponse.json(
+          { error: "shipmentId or invoiceId required" },
+          { status: 400 }
+        );
+      invoice = await prisma.invoice.findUnique({
+        where: { id: Number(invoiceId) },
+      });
+      if (!invoice)
+        return NextResponse.json(
+          { error: "Invoice not found" },
+          { status: 404 }
+        );
       id = invoice.shipmentId as string | undefined;
     }
 
-    if (!id) return NextResponse.json({ error: 'Shipment id not found for invoice' }, { status: 400 });
+    if (!id)
+      return NextResponse.json(
+        { error: "Shipment id not found for invoice" },
+        { status: 400 }
+      );
 
     const res = await cancelShipmentWithXps(id);
 
@@ -98,13 +144,19 @@ export async function DELETE(req: Request) {
     }
 
     if (invoice) {
-      const updated = await prisma.invoice.update({ where: { id: invoice.id }, data: { shipmentId: null, trackingNumber: null } as any });
+      const updated = await prisma.invoice.update({
+        where: { id: invoice.id },
+        data: { shipmentId: null, trackingNumber: null } as any,
+      });
       return NextResponse.json({ invoice: updated, xps: res });
     }
 
     return NextResponse.json({ xps: res });
   } catch (err: any) {
-    console.error('Cancel shipment error', err);
-    return NextResponse.json({ error: err?.message || 'Unknown error' }, { status: 500 });
+    console.error("Cancel shipment error", err);
+    return NextResponse.json(
+      { error: err?.message || "Unknown error" },
+      { status: 500 }
+    );
   }
 }

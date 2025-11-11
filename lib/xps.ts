@@ -13,7 +13,7 @@ export async function createShipmentWithXps(invoice: any, address: XpsAddress) {
   const key = process.env.XPS_API_KEY || process.env.NEXT_PUBLIC_XPS_API_KEY;
 
   if (!base || !key) {
-    throw new Error('XPS API base URL or API key not configured');
+    throw new Error("XPS API base URL or API key not configured");
   }
 
   // Build a best-effort payload. XPS API details may differ; adapt as needed.
@@ -42,10 +42,10 @@ export async function createShipmentWithXps(invoice: any, address: XpsAddress) {
     },
   };
 
-  const res = await fetch(`${base.replace(/\/+$/, '')}/shipments`, {
-    method: 'POST',
+  const res = await fetch(`${base.replace(/\/+$/, "")}/shipments`, {
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
       Authorization: `Bearer ${key}`,
     },
     body: JSON.stringify(payload),
@@ -53,23 +53,31 @@ export async function createShipmentWithXps(invoice: any, address: XpsAddress) {
 
   const data = await res.json();
   if (!res.ok) {
-    const msg = data?.message || data?.error || 'XPS create shipment failed';
+    const msg = data?.message || data?.error || "XPS create shipment failed";
     throw new Error(msg);
   }
 
   // Try multiple common shapes for returned shipment and tracking
-  const shipmentId = data?.id || data?.shipment_id || data?.shipmentId || data?.data?.id;
-  const trackingNumber = data?.tracking_number || data?.tracking || data?.data?.tracking_number || data?.data?.tracking;
+  const shipmentId =
+    data?.id || data?.shipment_id || data?.shipmentId || data?.data?.id;
+  const trackingNumber =
+    data?.tracking_number ||
+    data?.tracking ||
+    data?.data?.tracking_number ||
+    data?.data?.tracking;
 
   return { shipmentId, trackingNumber, raw: data };
 }
 
-export async function updateShipmentWithXps(shipmentId: string, address: XpsAddress) {
+export async function updateShipmentWithXps(
+  shipmentId: string,
+  address: XpsAddress
+) {
   const base = process.env.XPS_API_BASE || process.env.NEXT_PUBLIC_XPS_API_BASE;
   const key = process.env.XPS_API_KEY || process.env.NEXT_PUBLIC_XPS_API_KEY;
 
   if (!base || !key) {
-    throw new Error('XPS API base URL or API key not configured');
+    throw new Error("XPS API base URL or API key not configured");
   }
 
   const payload = {
@@ -84,23 +92,35 @@ export async function updateShipmentWithXps(shipmentId: string, address: XpsAddr
     },
   };
 
-  const res = await fetch(`${base.replace(/\/+$/, '')}/shipments/${encodeURIComponent(shipmentId)}`, {
-    method: 'PATCH',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${key}`,
-    },
-    body: JSON.stringify(payload),
-  });
+  const res = await fetch(
+    `${base.replace(/\/+$/, "")}/shipments/${encodeURIComponent(shipmentId)}`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${key}`,
+      },
+      body: JSON.stringify(payload),
+    }
+  );
 
   const data = await res.json();
   if (!res.ok) {
-    const msg = data?.message || data?.error || 'XPS update shipment failed';
+    const msg = data?.message || data?.error || "XPS update shipment failed";
     throw new Error(msg);
   }
 
-  const returnedShipmentId = data?.id || data?.shipment_id || data?.shipmentId || data?.data?.id || shipmentId;
-  const trackingNumber = data?.tracking_number || data?.tracking || data?.data?.tracking_number || data?.data?.tracking;
+  const returnedShipmentId =
+    data?.id ||
+    data?.shipment_id ||
+    data?.shipmentId ||
+    data?.data?.id ||
+    shipmentId;
+  const trackingNumber =
+    data?.tracking_number ||
+    data?.tracking ||
+    data?.data?.tracking_number ||
+    data?.data?.tracking;
 
   return { shipmentId: returnedShipmentId, trackingNumber, raw: data };
 }
@@ -110,19 +130,22 @@ export async function cancelShipmentWithXps(shipmentId: string) {
   const key = process.env.XPS_API_KEY || process.env.NEXT_PUBLIC_XPS_API_KEY;
 
   if (!base || !key) {
-    throw new Error('XPS API base URL or API key not configured');
+    throw new Error("XPS API base URL or API key not configured");
   }
 
-  const res = await fetch(`${base.replace(/\/+$/, '')}/shipments/${encodeURIComponent(shipmentId)}`, {
-    method: 'DELETE',
-    headers: {
-      Authorization: `Bearer ${key}`,
-    },
-  });
+  const res = await fetch(
+    `${base.replace(/\/+$/, "")}/shipments/${encodeURIComponent(shipmentId)}`,
+    {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${key}`,
+      },
+    }
+  );
 
   const data = await (res.status === 204 ? Promise.resolve({}) : res.json());
   if (!res.ok && res.status !== 204) {
-    const msg = data?.message || data?.error || 'XPS cancel shipment failed';
+    const msg = data?.message || data?.error || "XPS cancel shipment failed";
     throw new Error(msg);
   }
 

@@ -79,7 +79,7 @@ model Invoice {
   updatedAt   DateTime @updatedAt
 
   // Shipping info from external carrier (XPS)
-  shipmentId    String? @db.VarChar(255)
+  shipmentId     String? @db.VarChar(255)
   trackingNumber String? @db.VarChar(255)
 
   // Terms and conditions attached to this invoice (snapshot stored for immutability)
