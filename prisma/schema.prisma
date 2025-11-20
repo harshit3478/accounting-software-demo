@@ -30,6 +30,19 @@ enum PaymentMethod {
   layaway
 }
 
+enum RegularizationStatus {
+  pending
+  approved
+  rejected
+}
+
+enum RegularizationType {
+  checkin
+  checkout
+  both
+  manual
+}
+
 model User {
   id           Int      @id @default(autoincrement())
   email        String   @unique
@@ -46,11 +59,13 @@ model User {
   payments                   Payment[]
   documents                  Document[]
   paymentMatches             PaymentInvoiceMatch[]
-  deletedDocumentsAsUploader DeletedDocument[]     @relation("DeletedDocOriginalUploader")
-  deletedDocumentsAsDeleter  DeletedDocument[]     @relation("DeletedDocDeleter")
+  deletedDocumentsAsUploader DeletedDocument[]       @relation("DeletedDocOriginalUploader")
+  deletedDocumentsAsDeleter  DeletedDocument[]       @relation("DeletedDocDeleter")
   quickbooksConnection       QuickBooksConnection?
   // Terms created by this user
   termsCreated               Term[]
+  attendanceEntries          AttendanceEntry[]
+  regularizationRequests     RegularizationRequest[]
 
   @@map("users")
 }
@@ -259,4 +274,39 @@ model QuickBooksWebhookLog {
   connection QuickBooksConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
 
   @@map("quickbooks_webhook_logs")
+}
+
+model AttendanceEntry {
+  id         Int       @id @default(autoincrement())
+  userId     Int
+  date       DateTime // date (start of day) for the entry
+  checkIn    DateTime?
+  checkOut   DateTime?
+  totalHours Decimal?  @db.Decimal(6, 2)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@map("attendance_entries")
+}
+
+model RegularizationRequest {
+  id                Int                  @id @default(autoincrement())
+  userId            Int
+  forDate           DateTime // date the request is for
+  type              RegularizationType   @default(manual)
+  requestedCheckIn  DateTime?
+  requestedCheckOut DateTime?
+  reason            String?              @db.Text
+  status            RegularizationStatus @default(pending)
+  reviewedBy        Int?
+  reviewedAt        DateTime?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("regularization_requests")
 }

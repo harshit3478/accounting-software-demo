@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Navigation from "../../../components/Navigation";
+import Link from "next/link";
 import ConfirmModal from "../../../components/ConfirmModal";
 
 interface User {
@@ -466,6 +467,14 @@ export default function AdminUsersPage() {
                       >
                         Edit
                       </button>
+                      {/* <Link href={`/attendance/admin?userId=${user.id}`}> */}
+                      <Link
+                        href={`/attendance/admin?userId=${user.id}`}
+                         className="inline-flex items-center px-3 py-1.5 bg-indigo-600 text-white text-xs font-medium rounded hover:bg-indigo-700 transition duration-200"
+                      >
+                        Attendance
+                      </Link>
+                      {/* </Link> */}
                       <button
                         onClick={() => handleDeleteUser(user.id, user.name)}
                         disabled={deletingId !== null}
