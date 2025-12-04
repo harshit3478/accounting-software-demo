@@ -9,8 +9,27 @@ export async function GET(req: Request, { params }: any) {
     if (isNaN(id))
       return NextResponse.json({ error: "Invalid id" }, { status: 400 });
 
+    const url = new URL(req.url);
+    const startDate = url.searchParams.get("startDate");
+    const endDate = url.searchParams.get("endDate");
+
+    const whereClause: any = { userId: id };
+
+    // Apply date filtering if provided
+    if (startDate && endDate) {
+      const start = new Date(startDate);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+
+      whereClause.date = {
+        gte: start,
+        lte: end,
+      };
+    }
+
     const entries = await prisma.attendanceEntry.findMany({
-      where: { userId: id },
+      where: whereClause,
       orderBy: { date: "desc" },
     });
     return NextResponse.json({ ok: true, entries });

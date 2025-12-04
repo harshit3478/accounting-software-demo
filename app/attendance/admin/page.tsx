@@ -3,6 +3,9 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Navigation from "../../../components/Navigation";
+import AttendanceFilters, {
+  DateRange,
+} from "../../../components/attendance/AttendanceFilters";
 
 interface User {
   id: number;
@@ -19,19 +22,33 @@ export default function AttendanceAdminPage() {
   const [loading, setLoading] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [loadingUser, setLoadingUser] = useState(false);
+  const [dateRange, setDateRange] = useState<DateRange | null>(null);
+  const [currentPreset, setCurrentPreset] = useState<string>("thisMonth");
 
   useEffect(() => {
-    if (userId) fetchForUser(userId);
+    if (userId) {
+      fetchUserDetails(userId);
+      // Initialize with default "This Month" filter
+      const now = new Date();
+      const start = new Date(now.getFullYear(), now.getMonth(), 1);
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const defaultRange = {
+        start: start.toISOString().split("T")[0],
+        end: today.toISOString().split("T")[0],
+      };
+      setDateRange(defaultRange);
+      fetchForUser(userId, defaultRange);
+    }
   }, [userId]);
 
-  useEffect(() => {
-    if (userId) fetchUserDetails(userId);
-  }, [userId]);
-
-  async function fetchForUser(id: string) {
+  async function fetchForUser(id: string, range?: DateRange | null) {
     setLoading(true);
     try {
-      const res = await fetch(`/api/attendance/admin/user/${id}`);
+      let url = `/api/attendance/admin/user/${id}`;
+      if (range?.start && range?.end) {
+        url += `?startDate=${range.start}&endDate=${range.end}`;
+      }
+      const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
         setEntries(data.entries || []);
@@ -64,6 +81,14 @@ export default function AttendanceAdminPage() {
     }
   }
 
+  function handleFilterChange(range: DateRange | null, preset: string) {
+    setDateRange(range);
+    setCurrentPreset(preset);
+    if (userId && range) {
+      fetchForUser(userId, range);
+    }
+  }
+
   return (
     <div className="bg-gray-50 hero-pattern min-h-screen">
       <Navigation />
@@ -87,6 +112,8 @@ export default function AttendanceAdminPage() {
                 )}
               </div>
             </div>
+
+            <AttendanceFilters onFilterChange={handleFilterChange} />
 
             {loading ? (
               <div className="flex items-center gap-3">
