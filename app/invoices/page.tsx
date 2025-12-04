@@ -1,27 +1,28 @@
-'use client';
+"use client";
 
-import { useEffect } from 'react';
-import Navigation from '../../components/Navigation';
-import { 
-  CreateInvoiceModal, 
-  EditInvoiceModal, 
-  ViewInvoiceModal, 
+import { useEffect } from "react";
+import Navigation from "../../components/Navigation";
+import {
+  CreateInvoiceModal,
+  EditInvoiceModal,
+  ViewInvoiceModal,
   PaymentModal,
-  ConfirmModal 
-} from '../../components/invoices';
-import { ToastProvider, useToastContext } from '../../components/ToastContext';
-import Pagination from '../../components/Pagination';
-import CSVUploadModal from '../../components/CSVUploadModal';
-import InvoicePageHeader from '../../components/invoices/InvoicePageHeader';
-import InvoiceFiltersNew from '../../components/invoices/InvoiceFiltersNew';
-import InvoiceStats from '../../components/invoices/InvoiceStats';
-import InvoiceTable from '../../components/invoices/InvoiceTable';
-import { useInvoices } from '../../hooks/useInvoices';
-import Footer from '@/components/Footer';
+  ConfirmModal,
+  ShipInvoiceModal,
+} from "../../components/invoices";
+import { ToastProvider, useToastContext } from "../../components/ToastContext";
+import Pagination from "../../components/Pagination";
+import CSVUploadModal from "../../components/CSVUploadModal";
+import InvoicePageHeader from "../../components/invoices/InvoicePageHeader";
+import InvoiceFiltersNew from "../../components/invoices/InvoiceFiltersNew";
+import InvoiceStats from "../../components/invoices/InvoiceStats";
+import InvoiceTable from "../../components/invoices/InvoiceTable";
+import { useInvoices } from "../../hooks/useInvoices";
+import Footer from "@/components/Footer";
 
 function InvoicesPageContent() {
   const { showSuccess, showError, showInfo } = useToastContext();
-  
+
   const {
     invoices,
     filteredInvoices,
@@ -50,6 +51,10 @@ function InvoicesPageContent() {
     setShowDeleteConfirm,
     showCSVUploadModal,
     setShowCSVUploadModal,
+    showShipModal,
+    setShowShipModal,
+    shippingInvoice,
+    setShippingInvoice,
     editingInvoice,
     setEditingInvoice,
     viewingInvoice,
@@ -61,6 +66,7 @@ function InvoicesPageContent() {
     isDeleting,
     fetchInvoices,
     handleViewInvoice,
+    handleOpenShipModal,
     handleEditInvoice,
     handleOpenPaymentModal,
     handleDeleteClick,
@@ -76,20 +82,22 @@ function InvoicesPageContent() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Cmd/Ctrl + K for search focus
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
-        const searchInput = document.querySelector('input[placeholder*="Search"]') as HTMLInputElement;
+        const searchInput = document.querySelector(
+          'input[placeholder*="Search"]'
+        ) as HTMLInputElement;
         searchInput?.focus();
       }
       // Cmd/Ctrl + N for new invoice
-      if ((e.metaKey || e.ctrlKey) && e.key === 'n') {
+      if ((e.metaKey || e.ctrlKey) && e.key === "n") {
         e.preventDefault();
         setShowCreateModal(true);
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [setShowCreateModal]);
 
   return (
@@ -107,9 +115,11 @@ function InvoicesPageContent() {
         />
 
         {/* Stats Cards */}
-        <InvoiceStats 
-          stats={stats} 
-          showFiltered={filter !== 'all' || searchTerm !== '' || dateRange !== null}
+        <InvoiceStats
+          stats={stats}
+          showFiltered={
+            filter !== "all" || searchTerm !== "" || dateRange !== null
+          }
         />
 
         {/* Filters */}
@@ -135,6 +145,7 @@ function InvoicesPageContent() {
           onEdit={handleEditInvoice}
           onPay={handleOpenPaymentModal}
           onDelete={handleDeleteClick}
+          onShip={handleOpenShipModal}
           onCreateFirst={() => setShowCreateModal(true)}
           searchTerm={searchTerm}
           filter={filter}
@@ -156,7 +167,7 @@ function InvoicesPageContent() {
       </div>
 
       {/* Footer */}
-     <Footer />
+      <Footer />
 
       {/* Modals */}
       <CreateInvoiceModal
@@ -164,7 +175,7 @@ function InvoicesPageContent() {
         onClose={() => setShowCreateModal(false)}
         onSuccess={() => {
           fetchInvoices();
-          showSuccess('Invoice created successfully!');
+          showSuccess("Invoice created successfully!");
         }}
         onError={showError}
       />
@@ -177,7 +188,7 @@ function InvoicesPageContent() {
         }}
         onSuccess={() => {
           fetchInvoices();
-          showSuccess('Invoice updated successfully!');
+          showSuccess("Invoice updated successfully!");
         }}
         invoice={editingInvoice}
       />
@@ -199,7 +210,7 @@ function InvoicesPageContent() {
         }}
         onSuccess={() => {
           fetchInvoices();
-          showSuccess('Payment recorded successfully!');
+          showSuccess("Payment recorded successfully!");
         }}
         invoice={paymentInvoice}
       />
@@ -219,11 +230,25 @@ function InvoicesPageContent() {
         isLoading={isDeleting}
       />
 
+      <ShipInvoiceModal
+        isOpen={showShipModal}
+        onClose={() => {
+          setShowShipModal(false);
+          setShippingInvoice(null);
+        }}
+        invoice={shippingInvoice}
+        onSuccess={() => {
+          fetchInvoices();
+          showSuccess("Shipment created and attached to invoice");
+        }}
+        onError={showError}
+      />
+
       <CSVUploadModal
         isOpen={showCSVUploadModal}
         onClose={() => setShowCSVUploadModal(false)}
         onSuccess={() => {
-          showSuccess('Invoices uploaded successfully!');
+          showSuccess("Invoices uploaded successfully!");
           fetchInvoices();
         }}
         title="Bulk Upload Invoices"

@@ -12,6 +12,7 @@ datasource db {
 
 enum Role {
   admin
+  staff
   accountant
 }
 
@@ -29,6 +30,19 @@ enum PaymentMethod {
   layaway
 }
 
+enum RegularizationStatus {
+  pending
+  approved
+  rejected
+}
+
+enum RegularizationType {
+  checkin
+  checkout
+  both
+  manual
+}
+
 model User {
   id           Int      @id @default(autoincrement())
   email        String   @unique
@@ -41,72 +55,85 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  invoices  Invoice[]
-  payments  Payment[]
-  documents Document[]
-  paymentMatches PaymentInvoiceMatch[]
-  deletedDocumentsAsUploader  DeletedDocument[] @relation("DeletedDocOriginalUploader")
-  deletedDocumentsAsDeleter   DeletedDocument[] @relation("DeletedDocDeleter")
-  quickbooksConnection        QuickBooksConnection?
+  invoices                   Invoice[]
+  payments                   Payment[]
+  documents                  Document[]
+  paymentMatches             PaymentInvoiceMatch[]
+  deletedDocumentsAsUploader DeletedDocument[]       @relation("DeletedDocOriginalUploader")
+  deletedDocumentsAsDeleter  DeletedDocument[]       @relation("DeletedDocDeleter")
+  quickbooksConnection       QuickBooksConnection?
+  // Terms created by this user
+  termsCreated               Term[]
+  attendanceEntries          AttendanceEntry[]
+  regularizationRequests     RegularizationRequest[]
 
   @@map("users")
 }
 
 model Invoice {
-  id              Int            @id @default(autoincrement())
-  userId          Int
-  invoiceNumber   String         @unique
-  clientName      String
-  
-  // Item details (stored as JSON for simplicity)
-  items           Json?          // [{name, quantity, pricePerItem}]
-  
-  // Financial details
-  subtotal        Decimal        @db.Decimal(10, 2)
-  tax             Decimal        @db.Decimal(10, 2) @default(0)
-  discount        Decimal        @db.Decimal(10, 2) @default(0)
-  amount          Decimal        @db.Decimal(10, 2) // Total amount
-  paidAmount      Decimal        @db.Decimal(10, 2) @default(0) // Track partial payments
-  
-  dueDate         DateTime
-  status          InvoiceStatus  @default(pending)
-  isLayaway       Boolean        @default(false)
-  
-  description     String?
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  id            Int    @id @default(autoincrement())
+  userId        Int
+  invoiceNumber String @unique
+  clientName    String
 
-  user            User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  payments        Payment[]
-  paymentMatches  PaymentInvoiceMatch[]
+  // Item details (stored as JSON for simplicity)
+  items Json? // [{name, quantity, pricePerItem}]
+
+  // Financial details
+  subtotal   Decimal @db.Decimal(10, 2)
+  tax        Decimal @default(0) @db.Decimal(10, 2)
+  discount   Decimal @default(0) @db.Decimal(10, 2)
+  amount     Decimal @db.Decimal(10, 2) // Total amount
+  paidAmount Decimal @default(0) @db.Decimal(10, 2) // Track partial payments
+
+  dueDate   DateTime
+  status    InvoiceStatus @default(pending)
+  isLayaway Boolean       @default(false)
+
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Shipping info from external carrier (XPS)
+  shipmentId     String? @db.VarChar(255)
+  trackingNumber String? @db.VarChar(255)
+
+  // Terms and conditions attached to this invoice (snapshot stored for immutability)
+  termsId       Int?
+  termsSnapshot Json?
+
+  user           User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  payments       Payment[]
+  paymentMatches PaymentInvoiceMatch[]
+  terms          Term?                 @relation(fields: [termsId], references: [id], onDelete: SetNull)
 
   @@map("invoices")
 }
 
 model Payment {
-  id                 Int           @id @default(autoincrement())
-  invoiceId          Int?          // Nullable for unmatched payments
-  amount             Decimal       @db.Decimal(10, 2)
-  paymentDate        DateTime      @default(now())
-  method             PaymentMethod
-  
-  // QuickBooks integration fields
-  quickbooksId       String?       @unique
-  quickbooksSyncedAt DateTime?
-  
-  // Manual entry tracking
-  userId             Int           // Who recorded this payment
-  notes              String?       @db.Text
-  
-  // Matching status
-  isMatched          Boolean       @default(true)
-  
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
+  id          Int           @id @default(autoincrement())
+  invoiceId   Int? // Nullable for unmatched payments
+  amount      Decimal       @db.Decimal(10, 2)
+  paymentDate DateTime      @default(now())
+  method      PaymentMethod
 
-  invoice            Invoice?              @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  user               User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  paymentMatches     PaymentInvoiceMatch[]
+  // QuickBooks integration fields
+  quickbooksId       String?   @unique
+  quickbooksSyncedAt DateTime?
+
+  // Manual entry tracking
+  userId Int // Who recorded this payment
+  notes  String? @db.Text
+
+  // Matching status
+  isMatched Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  invoice        Invoice?              @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  user           User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  paymentMatches PaymentInvoiceMatch[]
 
   @@map("payments")
 }
@@ -117,26 +144,26 @@ enum DocumentType {
 }
 
 model Document {
-  id           Int           @id @default(autoincrement())
-  userId       Int           // Who created/uploaded (audit trail - SHARED STORAGE!)
-  type         DocumentType  @default(file)  // 'file' or 'folder'
-  name         String                         // Universal name field
-  
+  id     Int          @id @default(autoincrement())
+  userId Int // Who created/uploaded (audit trail - SHARED STORAGE!)
+  type   DocumentType @default(file) // 'file' or 'folder'
+  name   String // Universal name field
+
   // File-specific fields (nullable for folders)
-  fileName     String?       // Unique filename stored in R2
-  originalName String?       // Original filename from user (deprecated - use 'name')
-  fileSize     BigInt?       // File size in bytes
-  fileType     String?       // MIME type
-  fileUrl      String?       // Public R2 URL
-  
+  fileName     String? // Unique filename stored in R2
+  originalName String? // Original filename from user (deprecated - use 'name')
+  fileSize     BigInt? // File size in bytes
+  fileType     String? // MIME type
+  fileUrl      String? // Public R2 URL
+
   // Hierarchy (self-referencing)
-  parentId     Int?          // NULL = root level
-  parent       Document?     @relation("DocumentHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
-  children     Document[]    @relation("DocumentHierarchy")
-  
+  parentId Int? // NULL = root level
+  parent   Document?  @relation("DocumentHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children Document[] @relation("DocumentHierarchy")
+
   // Timestamps
-  uploadedAt   DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  uploadedAt DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -151,84 +178,135 @@ model PaymentInvoiceMatch {
   invoiceId Int
   amount    Decimal  @db.Decimal(10, 2) // How much of this payment goes to this invoice
   createdAt DateTime @default(now())
-  
-  payment   Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
-  invoice   Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId    Int      // Who created this match
-  
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId  Int // Who created this match
+
   @@unique([paymentId, invoiceId])
   @@map("payment_invoice_matches")
 }
 
 model DeletedDocument {
-  id              Int           @id @default(autoincrement())
-  
+  id Int @id @default(autoincrement())
+
   // Original document information
-  originalDocId   Int           // Original document ID (before deletion)
-  userId          Int           // Original uploader (audit trail)
-  type            DocumentType  @default(file)  // 'file' or 'folder'
-  name            String        // Name at time of deletion
-  
+  originalDocId Int // Original document ID (before deletion)
+  userId        Int // Original uploader (audit trail)
+  type          DocumentType @default(file) // 'file' or 'folder'
+  name          String // Name at time of deletion
+
   // For folders: store serialized children structure
-  folderContents  Json?         // Nested structure of deleted folder
-  
+  folderContents Json? // Nested structure of deleted folder
+
   // Original hierarchy position
-  originalParentId Int?         // Where it was before deletion
-  parentPath       String?      @db.VarChar(1000)  // Breadcrumb path for display
-  
+  originalParentId Int? // Where it was before deletion
+  parentPath       String? @db.VarChar(1000) // Breadcrumb path for display
+
   // File-specific (nullable for folders)
-  fileName        String?       // R2 filename (keep in storage)
-  originalName    String?       // DEPRECATED: use 'name' (kept for compatibility)
-  fileSize        BigInt?       // File size in bytes
-  fileType        String?       // MIME type
-  fileUrl         String?       // R2 URL (still valid)
-  uploadedAt      DateTime      // Original upload timestamp
-  
+  fileName     String? // R2 filename (keep in storage)
+  originalName String? // DEPRECATED: use 'name' (kept for compatibility)
+  fileSize     BigInt? // File size in bytes
+  fileType     String? // MIME type
+  fileUrl      String? // R2 URL (still valid)
+  uploadedAt   DateTime // Original upload timestamp
+
   // Deletion tracking
-  deletedBy       Int           // Who deleted it
-  deletedAt       DateTime      @default(now())
-  deleteReason    String?       @db.Text // Optional reason for deletion
-  
+  deletedBy    Int // Who deleted it
+  deletedAt    DateTime @default(now())
+  deleteReason String?  @db.Text // Optional reason for deletion
+
   // Relations
-  originalUploader User         @relation("DeletedDocOriginalUploader", fields: [userId], references: [id], onDelete: Cascade)
-  deleter          User         @relation("DeletedDocDeleter", fields: [deletedBy], references: [id], onDelete: Cascade)
-  
+  originalUploader User @relation("DeletedDocOriginalUploader", fields: [userId], references: [id], onDelete: Cascade)
+  deleter          User @relation("DeletedDocDeleter", fields: [deletedBy], references: [id], onDelete: Cascade)
+
   @@map("deleted_documents")
 }
 
 model QuickBooksConnection {
-  id                Int      @id @default(autoincrement())
-  userId            Int      @unique
-  realmId           String   // QuickBooks Company/Realm ID
-  accessToken       String   @db.Text
-  refreshToken      String   @db.Text
-  tokenExpiry       DateTime
-  isActive          Boolean  @default(true)
-  lastSyncAt        DateTime?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  webhookLogs       QuickBooksWebhookLog[]
-  
+  id           Int       @id @default(autoincrement())
+  userId       Int       @unique
+  realmId      String // QuickBooks Company/Realm ID
+  accessToken  String    @db.Text
+  refreshToken String    @db.Text
+  tokenExpiry  DateTime
+  isActive     Boolean   @default(true)
+  lastSyncAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  user        User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  webhookLogs QuickBooksWebhookLog[]
+
   @@map("quickbooks_connections")
 }
 
+model Term {
+  id        Int      @id @default(autoincrement())
+  title     String? // optional short title for this terms set
+  // Up to 5 numbered points stored as JSON array of strings
+  lines     Json
+  isDefault Boolean  @default(false)
+  createdBy Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  creator  User      @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+  invoices Invoice[]
+
+  @@map("terms")
+}
+
 model QuickBooksWebhookLog {
-  id                     Int      @id @default(autoincrement())
-  connectionId           Int
-  eventType              String   // e.g., "Payment.Create", "Payment.Update"
-  entityId               String   // QuickBooks entity ID
-  entityName             String   // e.g., "Payment"
-  payload                Json     // Full webhook payload
-  processed              Boolean  @default(false)
-  processedAt            DateTime?
-  errorMessage           String?  @db.Text
-  createdPaymentId       Int?     // Reference to created payment in our system
-  createdAt              DateTime @default(now())
-  
-  connection             QuickBooksConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
-  
+  id               Int       @id @default(autoincrement())
+  connectionId     Int
+  eventType        String // e.g., "Payment.Create", "Payment.Update"
+  entityId         String // QuickBooks entity ID
+  entityName       String // e.g., "Payment"
+  payload          Json // Full webhook payload
+  processed        Boolean   @default(false)
+  processedAt      DateTime?
+  errorMessage     String?   @db.Text
+  createdPaymentId Int? // Reference to created payment in our system
+  createdAt        DateTime  @default(now())
+
+  connection QuickBooksConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
   @@map("quickbooks_webhook_logs")
+}
+
+model AttendanceEntry {
+  id         Int       @id @default(autoincrement())
+  userId     Int
+  date       DateTime // date (start of day) for the entry
+  checkIn    DateTime?
+  checkOut   DateTime?
+  totalHours Decimal?  @db.Decimal(6, 2)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@map("attendance_entries")
+}
+
+model RegularizationRequest {
+  id                Int                  @id @default(autoincrement())
+  userId            Int
+  forDate           DateTime // date the request is for
+  type              RegularizationType   @default(manual)
+  requestedCheckIn  DateTime?
+  requestedCheckOut DateTime?
+  reason            String?              @db.Text
+  status            RegularizationStatus @default(pending)
+  reviewedBy        Int?
+  reviewedAt        DateTime?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("regularization_requests")
 }
