@@ -29,6 +29,7 @@ function SettingsContent() {
   const [isLoading, setIsLoading] = useState(true);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
 
   useEffect(() => {
@@ -85,6 +86,37 @@ function SettingsContent() {
 
   const handleDisconnect = async () => {
     setShowDisconnectConfirm(true);
+  };
+
+  const handleSync = async () => {
+    setIsSyncing(true);
+    try {
+      const res = await fetch('/api/quickbooks/sync', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          daysBack: 30 // Sync last 30 days
+        })
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        showSuccess(
+          `Sync completed: ${data.created} created, ${data.updated} updated, ${data.skipped} skipped`
+        );
+        fetchConnectionStatus();
+      } else {
+        const error = await res.json();
+        showError(`Sync failed: ${error.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Sync error:', error);
+      showError('Failed to sync with QuickBooks');
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   const confirmDisconnect = async () => {
@@ -178,6 +210,15 @@ function SettingsContent() {
 
               <div className="flex gap-3">
                 <button
+                  onClick={handleSync}
+                  disabled={isSyncing}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center disabled:opacity-50"
+                >
+                  <FiRefreshCw className={`mr-2 ${isSyncing ? 'animate-spin' : ''}`} />
+                  {isSyncing ? 'Syncing...' : 'Sync Now'}
+                </button>
+                
+                <button
                   onClick={handleDisconnect}
                   disabled={isDisconnecting}
                   className="px-4 py-2 border border-red-300 text-red-700 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50"
@@ -188,7 +229,7 @@ function SettingsContent() {
                 {qbConnection.connection?.isExpired && (
                   <button
                     onClick={handleConnect}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center"
+                    className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors flex items-center"
                   >
                     <FiRefreshCw className="mr-2" />
                     Reconnect
@@ -221,17 +262,27 @@ function SettingsContent() {
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           <h2 className="text-xl font-semibold text-gray-900 mb-4">Webhook Configuration</h2>
           <p className="text-gray-600 mb-4">
-            Configure this webhook URL in your QuickBooks Developer Dashboard to receive payment notifications:
+            Configure this webhook URL in your QuickBooks Developer Dashboard to receive automatic payment notifications:
           </p>
           
           <div className="bg-gray-50 border text-black border-gray-200 rounded-lg p-4 font-mono text-sm break-all">
             {process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/quickbooks/webhook
           </div>
           
-          <p className="text-sm text-gray-500 mt-4">
-            <strong>Note:</strong> For local development, you'll need to use a service like ngrok to expose 
-            your local server to the internet, as QuickBooks requires a public HTTPS URL for webhooks.
-          </p>
+          <div className="mt-4 space-y-2">
+            <p className="text-sm text-gray-700 font-medium">Setup Instructions:</p>
+            <ol className="text-sm text-gray-600 space-y-1 list-decimal list-inside">
+              <li>Go to <a href="https://developer.intuit.com/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">QuickBooks Developer Dashboard</a></li>
+              <li>Navigate to your app → <strong>Webhooks</strong> section</li>
+              <li>Generate a <strong>Verifier Token</strong> and add it to your <code className="bg-gray-100 px-1 rounded">QUICKBOOKS_WEBHOOK_VERIFIER</code> env variable</li>
+              <li>Set the webhook URL above (must be HTTPS in production)</li>
+              <li>Subscribe to <strong>Payment</strong> events (Create, Update)</li>
+            </ol>
+            <p className="text-sm text-amber-600 mt-3">
+              <strong>Development:</strong> Use <a href="https://ngrok.com/" target="_blank" rel="noopener noreferrer" className="underline">ngrok</a> or similar to expose localhost.
+              QuickBooks requires a public HTTPS URL for webhooks.
+            </p>
+          </div>
         </div>
       </div>
 
