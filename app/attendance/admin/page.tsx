@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Navigation from "../../../components/Navigation";
 import AttendanceFilters, {
@@ -15,7 +15,7 @@ interface User {
   createdAt?: string;
 }
 
-export default function AttendanceAdminPage() {
+function AttendanceAdminContent() {
   const params = useSearchParams();
   const userId = params?.get("userId");
   const [entries, setEntries] = useState<any[]>([]);
@@ -214,5 +214,21 @@ export default function AttendanceAdminPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function AttendanceAdminPage() {
+  return (
+    <Suspense fallback={
+      <div className="bg-gray-50 hero-pattern min-h-screen">
+        <Navigation />
+        <div className="max-w-5xl mx-auto px-4 py-8">
+          <h1 className="text-2xl font-bold mb-4">Attendance (Admin)</h1>
+          <p className="text-sm text-gray-600">Loading...</p>
+        </div>
+      </div>
+    }>
+      <AttendanceAdminContent />
+    </Suspense>
   );
 }
