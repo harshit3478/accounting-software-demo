@@ -31,7 +31,7 @@ cd /var/www
 # Check if directory exists to avoid error
 if [ ! -d "accounting" ]; then
     # REPLACE WITH YOUR ACTUAL REPO URL
-    git clone https://github.com/yourusername/acnting-software.git accounting
+    git clone https://github.com/harshit3478/acnting-software.git accounting
 else
     echo "Directory already exists, pulling latest..."
     cd accounting

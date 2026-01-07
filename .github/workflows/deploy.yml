@@ -13,25 +13,40 @@ jobs:
           host: ${{ secrets.DROPLET_IP }}
           username: root
           key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script_stop: true
           script: |
-            # 1. Go to folder (create if missing)
-            mkdir -p /var/www/accounting
+            # 1. Validate Repository Exists
+            if [ ! -d "/var/www/accounting/.git" ]; then
+              echo "🔴 Error: Repository not found in /var/www/accounting."
+              echo "Please SSH into the server and run the setup-droplet.sh script first!"
+              exit 1
+            fi
+
             cd /var/www/accounting
             
-            # 2. Pull latest code (you must init git repo on server first once)
-            # If this is the FIRST time, you might need to git clone manually.
-            # Assuming repo exists:
-            git pull origin main
+            # 2. Add safe directory exception to avoid permission issues
+            git config --global --add safe.directory /var/www/accounting
+
+            # 3. Pull latest code
+            echo "🔵 Pulling latest code..."
+            git fetch origin main
+            git reset --hard origin/main
             
-            # 3. Install & Build
+            # 4. Install & Build
+            echo "🔵 Installing dependencies..."
             npm install
             
-            # 4. Database Migrations
+            # 5. Database Migrations
+            echo "🔵 Running migrations..."
             npx prisma migrate deploy
             
-            # 5. Build Next.js
+            # 6. Build Next.js
+            echo "🔵 Building application..."
             npm run build
             
-            # 6. Restart PM2
+            # 7. Restart PM2
+            echo "🔵 Restarting PM2..."
             pm2 restart ecosystem.config.js --env production
             pm2 save
+            
+            echo "✅ Deployment Successful!"
