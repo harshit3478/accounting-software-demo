@@ -6,6 +6,7 @@ import Link from "next/link";
 import { generateAttendancePDF } from "../../lib/attendance-pdf-export";
 
 export default function AttendancePage() {
+  const WORKING_HOURS = parseFloat(process.env.NEXT_PUBLIC_WORKING_HOURS_PER_DAY || "8");
   const [status, setStatus] = useState<string | null>(null);
   const [entries, setEntries] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -195,10 +196,17 @@ export default function AttendancePage() {
                   <th>Check In</th>
                   <th>Check Out</th>
                   <th>Total Hours</th>
+                  <th>Overtime</th>
                 </tr>
               </thead>
               <tbody>
-                {entries.map((e: any) => (
+                {entries.map((e: any) => {
+                  let overtime = "-";
+                  const numTotal = parseFloat(e.totalHours);
+                  if (!isNaN(numTotal) && numTotal > WORKING_HOURS) {
+                    overtime = (numTotal - WORKING_HOURS).toFixed(2);
+                  }
+                  return (
                   <tr key={e.id} className="border-t">
                     <td className="py-2">
                       {new Date(e.date).toLocaleDateString()}
@@ -214,8 +222,9 @@ export default function AttendancePage() {
                         : "-"}
                     </td>
                     <td className="py-2">{e.totalHours ?? "-"}</td>
+                    <td className="py-2 text-orange-600 font-medium">{overtime}</td>
                   </tr>
-                ))}
+                )})}
               </tbody>
             </table>
           )}

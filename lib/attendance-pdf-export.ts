@@ -74,25 +74,34 @@ export function generateAttendancePDF(data: AttendanceData) {
   }
 
   // Calculate summary statistics
+  const WORKING_HOURS = parseFloat(process.env.NEXT_PUBLIC_WORKING_HOURS_PER_DAY || "8");
   const totalDays = data.entries.length;
   let totalHoursWorked = 0;
+  let totalOvertime = 0;
   let daysWithFullData = 0;
 
   data.entries.forEach((entry) => {
+    let hours = 0;
     if (entry.totalHours && entry.totalHours > 0) {
-      totalHoursWorked += Number(entry.totalHours);
-      daysWithFullData++;
+      hours = Number(entry.totalHours);
     } else if (entry.checkIn && entry.checkOut) {
       try {
         const checkIn = new Date(entry.checkIn).getTime();
         const checkOut = new Date(entry.checkOut).getTime();
-        const hours = (checkOut - checkIn) / (1000 * 60 * 60);
-        if (isFinite(hours) && hours > 0) {
-          totalHoursWorked += hours;
-          daysWithFullData++;
+        const computed = (checkOut - checkIn) / (1000 * 60 * 60);
+        if (isFinite(computed) && computed > 0) {
+          hours = computed;
         }
       } catch (err) {
         // Skip invalid dates
+      }
+    }
+
+    if (hours > 0) {
+      totalHoursWorked += hours;
+      daysWithFullData++;
+      if (hours > WORKING_HOURS) {
+        totalOvertime += (hours - WORKING_HOURS);
       }
     }
   });
@@ -103,9 +112,9 @@ export function generateAttendancePDF(data: AttendanceData) {
   // Summary section in a box
   doc.setTextColor(0);
   doc.setFillColor(245, 247, 250);
-  doc.roundedRect(15, yPos, 180, 30, 3, 3, "F");
+  doc.roundedRect(15, yPos, 180, 36, 3, 3, "F");
   doc.setDrawColor(200, 200, 200);
-  doc.roundedRect(15, yPos, 180, 30, 3, 3, "S");
+  doc.roundedRect(15, yPos, 180, 36, 3, 3, "S");
 
   yPos += 8;
   doc.setFontSize(11);
@@ -133,6 +142,12 @@ export function generateAttendancePDF(data: AttendanceData) {
     90,
     yPos
   );
+  yPos += 6;
+  doc.text(
+    `Total Overtime: ${totalOvertime.toFixed(2)} hrs`,
+    90,
+    yPos
+  );
 
   yPos += 15;
 
@@ -153,14 +168,19 @@ export function generateAttendancePDF(data: AttendanceData) {
       : "-";
 
     let totalHours = "-";
+    let overtime = "-";
+    let hoursVal = 0;
+
     if (entry.totalHours && entry.totalHours > 0) {
-      totalHours = Number(entry.totalHours).toFixed(2);
+      hoursVal = Number(entry.totalHours);
+      totalHours = hoursVal.toFixed(2);
     } else if (entry.checkIn && entry.checkOut) {
       try {
         const checkInTime = new Date(entry.checkIn).getTime();
         const checkOutTime = new Date(entry.checkOut).getTime();
         const hours = (checkOutTime - checkInTime) / (1000 * 60 * 60);
         if (isFinite(hours) && hours > 0) {
+          hoursVal = hours;
           totalHours = hours.toFixed(2);
         }
       } catch (err) {
@@ -168,13 +188,17 @@ export function generateAttendancePDF(data: AttendanceData) {
       }
     }
 
-    return [date, checkIn, checkOut, totalHours, entry.notes || "-"];
+    if (hoursVal > WORKING_HOURS) {
+      overtime = (hoursVal - WORKING_HOURS).toFixed(2);
+    }
+
+    return [date, checkIn, checkOut, totalHours, overtime, entry.notes || "-"];
   });
 
   // Generate professional table with autoTable
   autoTable(doc, {
     startY: yPos,
-    head: [["Date", "Check In", "Check Out", "Total Hours", "Notes"]],
+    head: [["Date", "Check In", "Check Out", "Total Hours", "Overtime", "Notes"]],
     body: tableData,
     theme: "striped",
     headStyles: {
@@ -198,8 +222,9 @@ export function generateAttendancePDF(data: AttendanceData) {
       0: { cellWidth: 23 },
       1: { cellWidth: 23 },
       2: { cellWidth: 23 },
-      3: { halign: "center", cellWidth: 23 },
-      4: { cellWidth: 88, overflow: "linebreak" },
+      3: { halign: "center", cellWidth: 20 },
+      4: { halign: "center", cellWidth: 20 },
+      5: { cellWidth: 68, overflow: "linebreak" },
     },
     margin: { left: 15, right: 15 },
   });

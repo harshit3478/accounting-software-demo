@@ -6,6 +6,7 @@ import Navigation from "../../../components/Navigation";
 import AttendanceFilters, {
   DateRange,
 } from "../../../components/attendance/AttendanceFilters";
+import { generateAttendancePDF } from "../../../lib/attendance-pdf-export";
 
 interface User {
   id: number;
@@ -24,6 +25,14 @@ function AttendanceAdminContent() {
   const [loadingUser, setLoadingUser] = useState(false);
   const [dateRange, setDateRange] = useState<DateRange | null>(null);
   const [currentPreset, setCurrentPreset] = useState<string>("thisMonth");
+
+  // Export states
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportStartDate, setExportStartDate] = useState("");
+  const [exportEndDate, setExportEndDate] = useState("");
+  const [exporting, setExporting] = useState(false);
+
+  const WORKING_HOURS = parseFloat(process.env.NEXT_PUBLIC_WORKING_HOURS_PER_DAY || "8");
 
   useEffect(() => {
     if (userId) {
@@ -89,6 +98,60 @@ function AttendanceAdminContent() {
     }
   }
 
+  function setQuickRange(preset: string) {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    let start = new Date(today);
+    const end = new Date(today);
+
+    switch (preset) {
+      case "thisMonth": {
+        start = new Date(today.getFullYear(), today.getMonth(), 1);
+        break;
+      }
+      case "lastMonth": {
+        start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        end.setDate(0); // Last day of previous month
+        break;
+      }
+      case "last3Months": {
+        start.setMonth(today.getMonth() - 3);
+        break;
+      }
+    }
+
+    setExportStartDate(start.toISOString().split("T")[0]);
+    setExportEndDate(end.toISOString().split("T")[0]);
+  }
+
+  async function handleExportPDF() {
+    if (!exportStartDate || !exportEndDate || !userId) {
+      alert("Please select both start and end dates");
+      return;
+    }
+
+    setExporting(true);
+    try {
+      const url = `/api/attendance/admin/export-pdf?userId=${userId}&startDate=${exportStartDate}&endDate=${exportEndDate}`;
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        generateAttendancePDF(data.data);
+        setShowExportModal(false);
+        setExportStartDate("");
+        setExportEndDate("");
+      } else {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || "Failed to export attendance");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Error exporting attendance");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <div className="bg-gray-50 hero-pattern min-h-screen">
       <Navigation />
@@ -110,6 +173,28 @@ function AttendanceAdminContent() {
                     {user.email} • {user.role}
                   </p>
                 )}
+              </div>
+              <div>
+                <button
+                  onClick={() => setShowExportModal(true)}
+                  className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 flex items-center gap-2 text-sm"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-4 w-4"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                    />
+                  </svg>
+                  Export History
+                </button>
               </div>
             </div>
 
@@ -148,6 +233,7 @@ function AttendanceAdminContent() {
                       <th className="px-4 py-3">Check In</th>
                       <th className="px-4 py-3">Check Out</th>
                       <th className="px-4 py-3">Total Hours</th>
+                      <th className="px-4 py-3">Overtime</th>
                       <th className="px-4 py-3">Notes</th>
                     </tr>
                   </thead>
@@ -155,7 +241,7 @@ function AttendanceAdminContent() {
                     {entries.length === 0 && (
                       <tr>
                         <td
-                          colSpan={5}
+                          colSpan={6}
                           className="px-4 py-6 text-center text-gray-500"
                         >
                           No attendance records found for this user.
@@ -182,6 +268,12 @@ function AttendanceAdminContent() {
                         }
                       }
 
+                      let overtime = "-";
+                      const numTotal = parseFloat(total);
+                      if (!isNaN(numTotal) && numTotal > WORKING_HOURS) {
+                        overtime = (numTotal - WORKING_HOURS).toFixed(2);
+                      }
+
                       return (
                         <tr key={e.id} className="border-t hover:bg-gray-50">
                           <td className="px-4 py-3">
@@ -200,6 +292,9 @@ function AttendanceAdminContent() {
                           <td className="px-4 py-3 font-medium">
                             {total ?? "-"}
                           </td>
+                          <td className="px-4 py-3 text-orange-600 font-medium">
+                            {overtime}
+                          </td>
                           <td className="px-4 py-3 text-gray-500">
                             {e.notes || "-"}
                           </td>
@@ -213,6 +308,86 @@ function AttendanceAdminContent() {
           </div>
         )}
       </div>
+
+      {/* Export PDF Modal */}
+      {showExportModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full">
+            <h2 className="text-xl font-bold mb-4">Export Attendance as PDF</h2>
+            
+            <div className="mb-4">
+              <p className="text-sm text-gray-600 mb-3">
+                Select quick range or choose custom dates:
+              </p>
+              <div className="flex flex-wrap gap-2 mb-4">
+                <button
+                  onClick={() => setQuickRange("thisMonth")}
+                  className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded"
+                >
+                  This Month
+                </button>
+                <button
+                  onClick={() => setQuickRange("lastMonth")}
+                  className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded"
+                >
+                  Last Month
+                </button>
+                <button
+                  onClick={() => setQuickRange("last3Months")}
+                  className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded"
+                >
+                  Last 3 Months
+                </button>
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Start Date
+              </label>
+              <input
+                type="date"
+                value={exportStartDate}
+                onChange={(e) => setExportStartDate(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                End Date
+              </label>
+              <input
+                type="date"
+                value={exportEndDate}
+                onChange={(e) => setExportEndDate(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => {
+                  setShowExportModal(false);
+                  setExportStartDate("");
+                  setExportEndDate("");
+                }}
+                disabled={exporting}
+                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleExportPDF}
+                disabled={exporting || !exportStartDate || !exportEndDate}
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+              >
+                {exporting ? "Exporting..." : "Export PDF"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,0 +1,37 @@
+name: Deploy to DigitalOcean
+on:
+  push:
+    branches: [ main ] 
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.DROPLET_IP }}
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            # 1. Go to folder (create if missing)
+            mkdir -p /var/www/accounting
+            cd /var/www/accounting
+            
+            # 2. Pull latest code (you must init git repo on server first once)
+            # If this is the FIRST time, you might need to git clone manually.
+            # Assuming repo exists:
+            git pull origin main
+            
+            # 3. Install & Build
+            npm install
+            
+            # 4. Database Migrations
+            npx prisma migrate deploy
+            
+            # 5. Build Next.js
+            npm run build
+            
+            # 6. Restart PM2
+            pm2 restart ecosystem.config.js --env production
+            pm2 save
