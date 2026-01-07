@@ -8,6 +8,7 @@ export async function GET() {
     
     // Generate authorization URL
     const authUri = getQuickBooksAuthUri();
+    console.log('Generated Auth URI:', authUri);
     
     return NextResponse.json({ authUri });
   } catch (error: any) {

@@ -1,5 +1,7 @@
 'use client';
 
+import { FileText, CheckCircle, AlertCircle, Clock, Filter } from 'lucide-react';
+
 interface InvoiceStatsProps {
   stats: {
     total: number;
@@ -36,54 +38,66 @@ export default function InvoiceStats({ stats, showFiltered = false }: InvoiceSta
     {
       title: isFiltered ? 'Filtered Invoices' : 'Total Invoices',
       value: displayStats.total.toString(),
-      color: 'bg-blue-50 border-blue-200',
-      icon: '📄',
+      icon: FileText,
+      color: 'text-blue-600',
+      bg: 'bg-blue-50',
+      border: 'border-blue-100'
     },
     {
-      title: isFiltered ? 'Filtered Paid' : 'Paid This Month',
+      title: isFiltered ? 'Filtered Paid' : 'Paid (Month)',
       value: `$${displayStats.paidThisMonth.toFixed(2)}`,
-      color: 'bg-green-50 border-green-200',
-      icon: '💰',
+      icon: CheckCircle,
+      color: 'text-emerald-600',
+      bg: 'bg-emerald-50',
+      border: 'border-emerald-100'
     },
     {
       title: isFiltered ? 'Filtered Overdue' : 'Overdue',
       value: displayStats.overdue.toString(),
-      color: 'bg-red-50 border-red-200',
-      icon: '⚠️',
+      icon: AlertCircle,
+      color: 'text-red-600',
+      bg: 'bg-red-50',
+      border: 'border-red-100'
     },
     {
       title: isFiltered ? 'Filtered Pending' : 'Pending',
       value: displayStats.pending.toString(),
-      color: 'bg-yellow-50 border-yellow-200',
-      icon: '⏳',
+      icon: Clock,
+      color: 'text-amber-600',
+      bg: 'bg-amber-50',
+      border: 'border-amber-100'
     },
   ];
 
   return (
-    <>
+    <div className="space-y-3">
       {isFiltered && (
-        <div className="mb-3 px-4 py-2 bg-indigo-50 border border-indigo-200 rounded-lg text-sm text-indigo-700">
-          📊 Showing statistics for filtered results
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 border border-indigo-100 rounded-md text-xs font-medium text-indigo-700 w-fit">
+          <Filter className="w-3.5 h-3.5" />
+          Showing filtered results
         </div>
       )}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {cards.map((card) => (
           <div
             key={card.title}
-            className={`${card.color} border rounded-lg p-6 shadow-sm`}
+            className="flex items-center p-3 bg-white border border-gray-200 rounded-lg shadow-sm hover:border-gray-300 transition-colors"
           >
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600 mb-1">
-                  {card.title}
-                </p>
-                <p className="text-2xl font-bold text-gray-900">{card.value}</p>
-              </div>
-              <div className="text-3xl">{card.icon}</div>
+            <div className={`p-2 rounded-md ${card.bg} ${card.color} mr-3`}>
+              <card.icon className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                {card.title}
+              </p>
+              <p className="text-lg font-bold text-gray-900 leading-tight">
+                {card.value}
+              </p>
             </div>
           </div>
         ))}
       </div>
-    </>
+    </div>
   );
 }

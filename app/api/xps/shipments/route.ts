@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import prisma from "../../../../lib/prisma";
 import {
-  createShipmentWithXps,
+  putOrderToXps,
   updateShipmentWithXps,
   cancelShipmentWithXps,
 } from "../../../../lib/xps";
@@ -9,7 +9,7 @@ import {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { invoiceId, address } = body;
+    const { invoiceId, address, packages } = body;
 
     if (!invoiceId) {
       return NextResponse.json(
@@ -25,20 +25,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
     }
 
-    const res = await createShipmentWithXps(invoice, address || {});
+    const res = await putOrderToXps(invoice, address || {}, packages || []);
 
-    const dataToUpdate: any = {
-      shipmentId: res.shipmentId || null,
-      trackingNumber: res.trackingNumber || null,
-    };
-
-    const updated = await prisma.invoice.update({
-      where: { id: Number(invoiceId) },
-      // cast to any because Prisma client types may need regenerate after schema change
-      data: dataToUpdate,
-    });
-
-    return NextResponse.json({ invoice: updated, xps: res });
+    // We don't get a shipment ID or tracking number immediately from Put Order
+    // But we can mark it as "sent to XPS"
+    // For now, we won't update shipmentId/trackingNumber until we get a webhook or manual update
+    
+    return NextResponse.json({ success: true, message: "Order sent to XPS", xps: res });
   } catch (err: any) {
     console.error("Create shipment error", err);
     return NextResponse.json(

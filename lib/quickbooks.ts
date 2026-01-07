@@ -1,4 +1,5 @@
 import QuickBooks from 'node-quickbooks';
+import OAuthClient from 'intuit-oauth';
 import prisma from './prisma';
 
 export interface QuickBooksConfig {
@@ -17,17 +18,32 @@ export function getQuickBooksConfig(): QuickBooksConfig {
   };
 }
 
-export function getQuickBooksAuthUri(): string {
+export function getOAuthClient() {
   const config = getQuickBooksConfig();
-  return QuickBooks.authorizeUrl({
+  return new OAuthClient({
     clientId: config.clientId,
-    redirectUri: config.redirectUri,
+    clientSecret: config.clientSecret,
+    environment: config.environment,
+    redirectUri: config.redirectUri
+  });
+}
+
+export function getQuickBooksAuthUri(): string {
+  const oauthClient = getOAuthClient();
+  return oauthClient.authorizeUri({
+    scope: [
+      OAuthClient.scopes.Accounting,
+      OAuthClient.scopes.OpenId,
+      OAuthClient.scopes.Profile,
+      OAuthClient.scopes.Email
+    ],
     state: generateStateToken()
-  }, config.environment);
+  });
 }
 
 export function generateStateToken(): string {
   return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+
 }
 
 export async function createQuickBooksClient(userId: number): Promise<QuickBooks | null> {

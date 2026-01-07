@@ -27,10 +27,13 @@ export async function POST(request: NextRequest) {
     // Verify signature
     if (!signature || !verifyWebhookSignature(rawBody, signature)) {
       console.error('Invalid webhook signature');
+      // For testing purposes, we might want to log the payload even if signature fails
+      console.log('Webhook Payload (Signature Failed):', rawBody);
       return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
     }
 
     const payload = JSON.parse(rawBody);
+    console.log('Webhook Payload Received:', JSON.stringify(payload, null, 2));
     
     // Process each event in the webhook
     const results = [];

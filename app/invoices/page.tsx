@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, Suspense } from "react";
 import Navigation from "../../components/Navigation";
 import {
   CreateInvoiceModal,
@@ -13,10 +13,9 @@ import {
 import { ToastProvider, useToastContext } from "../../components/ToastContext";
 import Pagination from "../../components/Pagination";
 import CSVUploadModal from "../../components/CSVUploadModal";
-import InvoicePageHeader from "../../components/invoices/InvoicePageHeader";
-import InvoiceFiltersNew from "../../components/invoices/InvoiceFiltersNew";
 import InvoiceStats from "../../components/invoices/InvoiceStats";
 import InvoiceTable from "../../components/invoices/InvoiceTable";
+import InvoiceToolbar from "../../components/invoices/InvoiceToolbar";
 import { useInvoices } from "../../hooks/useInvoices";
 import Footer from "@/components/Footer";
 
@@ -28,8 +27,10 @@ function InvoicesPageContent() {
     filteredInvoices,
     paginatedInvoices,
     isLoading,
-    filter,
-    setFilter,
+    statusFilter,
+    setStatusFilter,
+    typeFilter,
+    setTypeFilter,
     searchTerm,
     setSearchTerm,
     sortBy,
@@ -101,73 +102,61 @@ function InvoicesPageContent() {
   }, [setShowCreateModal]);
 
   return (
-    <div className="bg-gray-50 hero-pattern min-h-screen">
+    <div className="bg-gray-50 h-screen flex flex-col overflow-hidden">
       <Navigation />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Page Header */}
-        <InvoicePageHeader
-          stats={stats}
-          onCreateClick={() => setShowCreateModal(true)}
-          onBulkUploadClick={() => setShowCSVUploadModal(true)}
-          onExportClick={handleExportCSV}
-          onExportPDF={handleExportPDF}
-        />
-
-        {/* Stats Cards */}
-        <InvoiceStats
-          stats={stats}
-          showFiltered={
-            filter !== "all" || searchTerm !== "" || dateRange !== null
-          }
-        />
-
-        {/* Filters */}
-        <InvoiceFiltersNew
-          filter={filter}
-          onFilterChange={setFilter}
+      {/* Fixed Header Section */}
+      <div className="flex-none px-4 sm:px-6 lg:px-8 pt-6 pb-4 space-y-4 bg-gray-50 z-10">
+        <InvoiceToolbar
+          statusFilter={statusFilter}
+          onStatusFilterChange={setStatusFilter}
+          typeFilter={typeFilter}
+          onTypeFilterChange={setTypeFilter}
           searchTerm={searchTerm}
           onSearchChange={setSearchTerm}
-          sortBy={sortBy}
-          onSortChange={setSortBy}
-          totalCount={invoices.length}
-          filteredCount={filteredInvoices.length}
           dateRange={dateRange}
           onDateRangeChange={setDateRange}
+          onCreateClick={() => setShowCreateModal(true)}
+          onExportClick={handleExportCSV}
+          onImportClick={() => setShowCSVUploadModal(true)}
         />
-
-        {/* Table */}
-        <InvoiceTable
-          invoices={filteredInvoices}
-          paginatedInvoices={paginatedInvoices}
-          isLoading={isLoading}
-          onView={handleViewInvoice}
-          onEdit={handleEditInvoice}
-          onPay={handleOpenPaymentModal}
-          onDelete={handleDeleteClick}
-          onShip={handleOpenShipModal}
-          onCreateFirst={() => setShowCreateModal(true)}
-          searchTerm={searchTerm}
-          filter={filter}
-          sortBy={sortBy}
-          onSortChange={setSortBy}
-        />
-
-        {/* Pagination */}
-        {filteredInvoices.length > 0 && (
-          <Pagination
-            currentPage={currentPage}
-            totalPages={totalPages}
-            totalItems={filteredInvoices.length}
-            itemsPerPage={itemsPerPage}
-            onPageChange={handlePageChange}
-            onItemsPerPageChange={handleItemsPerPageChange}
-          />
-        )}
+        <InvoiceStats stats={stats} showFiltered={statusFilter !== 'all' || typeFilter !== 'all' || !!searchTerm || !!dateRange} />
       </div>
 
-      {/* Footer */}
-      <Footer />
+      <main className="flex-1 px-4 sm:px-6 lg:px-8 pb-4 min-h-0 flex flex-col">
+        <div className="flex-1 min-h-0">
+          <InvoiceTable
+            invoices={filteredInvoices}
+            paginatedInvoices={paginatedInvoices}
+            isLoading={isLoading}
+            onView={handleViewInvoice}
+            onEdit={handleEditInvoice}
+            onPay={handleOpenPaymentModal}
+            onDelete={handleDeleteClick}
+            onShip={handleOpenShipModal}
+            onCreateFirst={() => setShowCreateModal(true)}
+            searchTerm={searchTerm}
+            statusFilter={statusFilter}
+            typeFilter={typeFilter}
+            sortBy={sortBy}
+            onSortChange={setSortBy}
+          />
+        </div>
+
+        {/* Pagination */}
+        {!isLoading && (
+          <div className="flex-none mt-4">
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onPageChange={handlePageChange}
+              itemsPerPage={itemsPerPage}
+              onItemsPerPageChange={handleItemsPerPageChange}
+              totalItems={stats.total}
+            />
+          </div>
+        )}
+      </main>
 
       {/* Modals */}
       <CreateInvoiceModal
@@ -264,7 +253,9 @@ function InvoicesPageContent() {
 export default function InvoicesPage() {
   return (
     <ToastProvider>
-      <InvoicesPageContent />
+      <Suspense fallback={<div className="h-screen flex items-center justify-center">Loading invoices...</div>}>
+        <InvoicesPageContent />
+      </Suspense>
     </ToastProvider>
   );
 }

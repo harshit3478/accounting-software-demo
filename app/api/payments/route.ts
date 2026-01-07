@@ -9,7 +9,18 @@ export async function GET(request: NextRequest) {
   try {
     const user = await requireAuth();
     const { searchParams } = new URL(request.url);
+    
+    // Pagination params
+    const page = parseInt(searchParams.get("page") || "1");
+    const limit = parseInt(searchParams.get("limit") || "10");
+    const skip = (page - 1) * limit;
+
+    // Filter params
     const invoiceId = searchParams.get('invoiceId');
+    const search = searchParams.get("search") || "";
+    const method = searchParams.get("method") || "all";
+    const startDate = searchParams.get("startDate");
+    const endDate = searchParams.get("endDate");
 
     let where: any = {};
     
@@ -17,6 +28,37 @@ export async function GET(request: NextRequest) {
     if (invoiceId) {
       where.invoiceId = parseInt(invoiceId);
     }
+
+    // Search filter
+    if (search) {
+      where.OR = [
+        { notes: { contains: search } },
+        { 
+          invoice: { 
+            OR: [
+              { invoiceNumber: { contains: search } },
+              { clientName: { contains: search } }
+            ]
+          } 
+        }
+      ];
+    }
+
+    // Method filter
+    if (method !== "all") {
+      where.method = method;
+    }
+
+    // Date range filter
+    if (startDate && endDate) {
+      where.paymentDate = {
+        gte: new Date(startDate),
+        lte: new Date(new Date(endDate).setHours(23, 59, 59, 999)),
+      };
+    }
+
+    // Get total count
+    const total = await prisma.payment.count({ where });
 
     const payments = await prisma.payment.findMany({
       where,
@@ -37,7 +79,9 @@ export async function GET(request: NextRequest) {
       },
       orderBy: {
         createdAt: 'desc'
-      }
+      },
+      skip,
+      take: limit,
     });
 
     // Convert Decimal to number for JSON serialization
@@ -54,7 +98,15 @@ export async function GET(request: NextRequest) {
       } : null
     }));
 
-    return NextResponse.json(serializedPayments);
+    return NextResponse.json({
+      payments: serializedPayments,
+      pagination: {
+        total,
+        pages: Math.ceil(total / limit),
+        page,
+        limit,
+      },
+    });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 403 });
   }

@@ -45,13 +45,13 @@ export default function PaymentTableRow({ payment }: PaymentTableRowProps) {
           <span className="text-gray-400">No invoice</span>
         )}
       </td>
-      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 max-w-[200px] truncate">
         {payment.invoice ? (
-          payment.invoice.clientName
+          <span title={payment.invoice.clientName}>{payment.invoice.clientName}</span>
         ) : payment.paymentMatches && payment.paymentMatches.length > 0 ? (
           <div className="flex flex-col space-y-1">
             {payment.paymentMatches.map((match) => (
-              <span key={match.id}>
+              <span key={match.id} className="truncate" title={match.invoice.clientName}>
                 {match.invoice.clientName}
               </span>
             ))}

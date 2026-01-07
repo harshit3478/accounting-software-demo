@@ -1,20 +1,23 @@
 'use client';
 
+import { useState, Suspense } from 'react';
+import { useRouter } from 'next/navigation';
 import Navigation from '../../components/Navigation';
 import Pagination from '../../components/Pagination';
 import { RecordPaymentModal, ViewPaymentModal } from '../../components/payments';
 import { ToastProvider, useToastContext } from '../../components/ToastContext';
 import CSVUploadModal from '../../components/CSVUploadModal';
-import PaymentPageHeader from '../../components/payments/PaymentPageHeader';
+import PaymentToolbar from '../../components/payments/PaymentToolbar';
 import PaymentSourceCards from '../../components/payments/PaymentSourceCards';
-import PaymentFiltersNew from '../../components/payments/PaymentFiltersNew';
 import PaymentTable from '../../components/payments/PaymentTable';
 import { usePayments } from '../../hooks/usePayments';
 import Footer from '@/components/Footer';
 
 function PaymentsPageContent() {
+  const router = useRouter();
   const { showSuccess, showError } = useToastContext();
-  
+  const [isSyncing, setIsSyncing] = useState(false);
+
   const {
     filteredPayments,
     paginatedPayments,
@@ -31,6 +34,7 @@ function PaymentsPageContent() {
     handleSort,
     currentPage,
     totalPages,
+    totalItems,
     itemsPerPage,
     showRecordModal,
     setShowRecordModal,
@@ -46,7 +50,37 @@ function PaymentsPageContent() {
     handleExportPDF,
     stats,
     filteredStats,
-  } = usePayments(showSuccess, showError);
+  } = usePayments();
+
+  const handleSync = async () => {
+    showSuccess('Sync started...');
+    setIsSyncing(true);
+    try {
+      const res = await fetch('/api/quickbooks/sync', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          daysBack: 30 // Sync last 30 days
+        })
+      });
+      
+      const data = await res.json();
+      
+      if (res.ok) {
+        showSuccess(`Sync complete! Created: ${data.created}, Updated: ${data.updated}`);
+        fetchPayments(); // Refresh payments list
+      } else {
+        showError(`Sync failed: ${data.error}`);
+      }
+    } catch (error) {
+      console.error('Sync error:', error);
+      showError('Failed to sync with QuickBooks');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   // Check if any filters are active
   const isFiltered = 
@@ -55,20 +89,26 @@ function PaymentsPageContent() {
     dateRange !== null;
 
   return (
-    <div className="bg-gray-50 hero-pattern min-h-screen">
+    <div className="bg-gray-50 h-screen flex flex-col overflow-hidden">
       <Navigation />
 
-      {/* Page Header */}
-      <PaymentPageHeader
-        unmatchedCount={unmatchedCount}
-        totalToday={stats.totalToday}
-        onRecordClick={() => setShowRecordModal(true)}
-        onBulkUploadClick={() => setShowCSVUploadModal(true)}
-        onExportPDF={handleExportPDF}
-      />
-
-      {/* Payment Sources */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      {/* Fixed Header Section */}
+      <div className="flex-none px-4 sm:px-6 lg:px-8 pt-6 pb-4 space-y-4 bg-gray-50 z-10">
+        <PaymentToolbar
+          filterMethod={filterMethod}
+          onFilterChange={setFilterMethod}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          dateRange={dateRange}
+          onDateRangeChange={setDateRange}
+          onRecordClick={() => setShowRecordModal(true)}
+          onExportClick={handleExportPDF}
+          onImportClick={() => setShowCSVUploadModal(true)}
+          onSyncClick={handleSync}
+          isSyncing={isSyncing}
+          onMatchClick={() => router.push('/payments/matching')}
+          unmatchedCount={unmatchedCount}
+        />
         <PaymentSourceCards
           stats={stats}
           filteredStats={filteredStats}
@@ -76,39 +116,32 @@ function PaymentsPageContent() {
           onFilterChange={setFilterMethod}
           showFiltered={isFiltered}
         />
+      </div>
 
-        {/* Filter Buttons */}
-        <PaymentFiltersNew
-          filterMethod={filterMethod}
-          onFilterChange={setFilterMethod}
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          dateRange={dateRange}
-          onDateRangeChange={setDateRange}
-          onExportPDF={handleExportPDF}
-        />
+      <main className="flex-1 px-4 sm:px-6 lg:px-8 pb-4 min-h-0 flex flex-col">
+        <div className="flex-1 min-h-0">
+          <PaymentTable
+            payments={filteredPayments}
+            paginatedPayments={paginatedPayments}
+            isLoading={isLoading}
+            sortBy={sortBy}
+            sortDirection={sortDirection}
+            onSort={handleSort}
+            totalItems={totalItems}
+          />
+        </div>
 
-        {/* Payment History Table */}
-        <PaymentTable
-          payments={filteredPayments}
-          paginatedPayments={paginatedPayments}
-          isLoading={isLoading}
-          sortBy={sortBy}
-          sortDirection={sortDirection}
-          onSort={handleSort}
-        />
-
-        {filteredPayments.length > 0 && (
+        <div className="flex-none mt-4">
           <Pagination
             currentPage={currentPage}
             totalPages={totalPages}
-            totalItems={filteredPayments.length}
+            totalItems={totalItems}
             itemsPerPage={itemsPerPage}
             onPageChange={handlePageChange}
             onItemsPerPageChange={handleItemsPerPageChange}
           />
-        )}
-      </div>
+        </div>
+      </main>
 
       <RecordPaymentModal
         isOpen={showRecordModal}
@@ -141,8 +174,6 @@ function PaymentsPageContent() {
         validateUrl="/api/payments/bulk/validate"
         uploadUrl="/api/payments/bulk/upload"
       />
-
-      <Footer />
     </div>
   );
 }
@@ -150,7 +181,9 @@ function PaymentsPageContent() {
 export default function PaymentsPage() {
   return (
     <ToastProvider>
-      <PaymentsPageContent />
+      <Suspense fallback={<div className="h-screen flex items-center justify-center">Loading payments...</div>}>
+        <PaymentsPageContent />
+      </Suspense>
     </ToastProvider>
   );
 }

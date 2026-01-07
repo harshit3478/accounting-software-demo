@@ -11,6 +11,7 @@ interface PaymentTableProps {
   sortBy: PaymentSortField;
   sortDirection: SortDirection;
   onSort: (field: PaymentSortField) => void;
+  totalItems?: number;
 }
 
 export default function PaymentTable({
@@ -20,6 +21,7 @@ export default function PaymentTable({
   sortBy,
   sortDirection,
   onSort,
+  totalItems,
 }: PaymentTableProps) {
   const getSortIcon = (field: PaymentSortField) => {
     if (sortBy !== field) {
@@ -28,9 +30,9 @@ export default function PaymentTable({
     return sortDirection === 'asc' ? <span className="text-blue-600">↑</span> : <span className="text-blue-600">↓</span>;
   };
 
-  const SortableHeader = ({ field, children }: { field: PaymentSortField; children: React.ReactNode }) => (
+  const SortableHeader = ({ field, children, className = "" }: { field: PaymentSortField; children: React.ReactNode; className?: string }) => (
     <th
-      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors"
+      className={`px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors bg-gray-50 ${className}`}
       onClick={() => onSort(field)}
     >
       <div className="flex items-center space-x-1">
@@ -79,30 +81,30 @@ export default function PaymentTable({
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-lg border border-gray-200 mb-8">
-      <div className="px-6 py-4 border-b border-gray-200">
+    <div className="bg-white rounded-xl shadow-lg border border-gray-200 flex flex-col h-full">
+      <div className="px-6 py-4 border-b border-gray-200 flex-none">
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-semibold text-gray-900">Payment History</h3>
           <span className="text-sm text-gray-500">
-            {payments.length} payment{payments.length !== 1 ? 's' : ''}
+            {totalItems !== undefined ? totalItems : payments.length} payment{(totalItems !== undefined ? totalItems : payments.length) !== 1 ? 's' : ''}
           </span>
         </div>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
+      <div className="flex-1 overflow-auto min-h-0">
+        <table className="min-w-full divide-y divide-gray-200 relative">
+          <thead className="bg-gray-50 sticky top-0 z-10 shadow-sm">
             <tr>
-              <SortableHeader field="date">Date</SortableHeader>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <SortableHeader field="date" className="w-[120px]">Date</SortableHeader>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 w-[140px]">
                 Invoice
               </th>
-              <SortableHeader field="client">Client</SortableHeader>
-              <SortableHeader field="amount">Amount</SortableHeader>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <SortableHeader field="client" className="min-w-[200px]">Client</SortableHeader>
+              <SortableHeader field="amount" className="w-[120px]">Amount</SortableHeader>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 w-[120px]">
                 Method
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 w-[200px]">
                 Notes
               </th>
             </tr>

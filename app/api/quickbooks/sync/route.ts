@@ -145,10 +145,11 @@ export async function POST(request: NextRequest) {
 async function fetchPaymentsFromQuickBooks(qbo: any, startDate: string): Promise<any[]> {
   return new Promise((resolve, reject) => {
     // Query payments from QuickBooks
-    // Note: QuickBooks query language uses YYYY-MM-DD format
-    const query = `SELECT * FROM Payment WHERE TxnDate >= '${startDate}' MAXRESULTS 1000`;
+    // We use findPayments with a raw WHERE clause string.
+    // node-quickbooks appends this string to "select * from payment"
+    const criteria = `WHERE TxnDate >= '${startDate}' MAXRESULTS 1000`;
     
-    qbo.findPayments({ query }, (err: any, payments: any) => {
+    qbo.findPayments(criteria, (err: any, payments: any) => {
       if (err) {
         reject(err);
         return;

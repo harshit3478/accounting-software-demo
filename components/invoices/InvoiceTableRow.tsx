@@ -59,7 +59,7 @@ export default function InvoiceTableRow({
           </span>
         )}
       </td>
-      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 max-w-[200px] truncate" title={invoice.clientName}>
         {invoice.clientName}
       </td>
       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
@@ -84,7 +84,7 @@ export default function InvoiceTableRow({
       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
         {invoice.shipmentId ? invoice.shipmentId : "-"}
       </td>
-      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 max-w-[150px] truncate" title={invoice.trackingNumber || ""}>
         {invoice.trackingNumber ? invoice.trackingNumber : "-"}
       </td>
       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
@@ -122,12 +122,7 @@ export default function InvoiceTableRow({
           </button>
         </div>
       </td>
-      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-        {invoice.shipmentId ? invoice.shipmentId : "-"}
-      </td>
-      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-        {invoice.trackingNumber ? invoice.trackingNumber : "-"}
-      </td>
+     
     </tr>
   );
 }

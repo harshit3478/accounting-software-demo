@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import QuickBooks from 'node-quickbooks';
 import prisma from '../../../../lib/prisma';
 import { requireAuth } from '../../../../lib/auth';
-import { getQuickBooksConfig } from '../../../../lib/quickbooks';
+import { getOAuthClient } from '../../../../lib/quickbooks';
 
 export async function GET(request: NextRequest) {
   try {
@@ -26,21 +25,12 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const config = getQuickBooksConfig();
+    const oauthClient = getOAuthClient();
 
     // Exchange authorization code for tokens
-    const tokenResponse = await new Promise<any>((resolve, reject) => {
-      QuickBooks.createToken(
-        config.redirectUri,
-        code,
-        config.clientId,
-        config.clientSecret,
-        (err: any, response: any) => {
-          if (err) reject(err);
-          else resolve(response);
-        }
-      );
-    });
+    // intuit-oauth expects the full URL to extract params
+    const authResponse = await oauthClient.createToken(request.url);
+    const tokenResponse = authResponse.getJson();
 
     // Calculate token expiry
     const tokenExpiry = new Date(Date.now() + tokenResponse.expires_in * 1000);

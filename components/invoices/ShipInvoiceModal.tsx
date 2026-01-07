@@ -25,6 +25,13 @@ export default function ShipInvoiceModal({
   const [postalCode, setPostalCode] = useState("");
   const [country, setCountry] = useState("US");
   const [phone, setPhone] = useState("");
+  
+  // Package details
+  const [weight, setWeight] = useState("1");
+  const [length, setLength] = useState("10");
+  const [width, setWidth] = useState("10");
+  const [height, setHeight] = useState("10");
+  
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
@@ -51,12 +58,18 @@ export default function ShipInvoiceModal({
         body: JSON.stringify({
           invoiceId: invoice.id,
           address: { name, street, city, state, postalCode, country, phone },
+          packages: [{
+            weight,
+            length,
+            width,
+            height
+          }]
         }),
       });
 
       const data = await res.json();
       if (!res.ok) {
-        const err = data?.error || "Failed to create shipment";
+        const err = data?.error || "Failed to send order to XPS";
         onError?.(err);
       } else {
         onSuccess?.(data);
@@ -64,7 +77,7 @@ export default function ShipInvoiceModal({
       }
     } catch (err: any) {
       console.error("Ship invoice error", err);
-      onError?.(err?.message || "Failed to create shipment");
+      onError?.(err?.message || "Failed to send order to XPS");
     } finally {
       setIsLoading(false);
     }
@@ -241,6 +254,64 @@ export default function ShipInvoiceModal({
                 value={country}
                 onChange={(e) => setCountry(e.target.value)}
               />
+            </div>
+
+            <div>
+              <label
+                htmlFor="phone"
+                className="block text-sm font-medium text-gray-700 mb-1"
+              >
+                Phone
+              </label>
+              <input
+                id="phone"
+                className="input h-12 px-4 text-sm w-full"
+                placeholder="Phone"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+              />
+            </div>
+
+            <div className="md:col-span-2 border-t pt-4 mt-2">
+              <h4 className="text-lg font-medium text-gray-900 mb-4">Package Details</h4>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Weight (lb)</label>
+                  <input
+                    type="number"
+                    className="input h-10 px-3 text-sm w-full"
+                    value={weight}
+                    onChange={(e) => setWeight(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Length (in)</label>
+                  <input
+                    type="number"
+                    className="input h-10 px-3 text-sm w-full"
+                    value={length}
+                    onChange={(e) => setLength(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Width (in)</label>
+                  <input
+                    type="number"
+                    className="input h-10 px-3 text-sm w-full"
+                    value={width}
+                    onChange={(e) => setWidth(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Height (in)</label>
+                  <input
+                    type="number"
+                    className="input h-10 px-3 text-sm w-full"
+                    value={height}
+                    onChange={(e) => setHeight(e.target.value)}
+                  />
+                </div>
+              </div>
             </div>
 
             <div className="md:col-span-2">

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { requirePermission } from '@/lib/auth';
-import { uploadToR2 } from '@/lib/r2-client';
+import { uploadToR2, deleteFromR2 } from '@/lib/r2-client';
 import { DocumentType } from '@prisma/client';
 import {
   MAX_FILE_SIZE,
@@ -119,16 +119,18 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
+      // Generate unique filename for R2 storage
+      const uniqueFileName = generateUniqueFileName(file.name);
+      let uploadedToR2 = false;
+
       try {
         // Convert file to buffer
         const arrayBuffer = await file.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
 
-        // Generate unique filename for R2 storage
-        const uniqueFileName = generateUniqueFileName(file.name);
-
         // Upload to R2
         const fileUrl = await uploadToR2(buffer, uniqueFileName, file.type);
+        uploadedToR2 = true;
 
         // Save metadata to database (userId for audit trail)
         const document = await prisma.document.create({
@@ -165,6 +167,17 @@ export async function POST(request: NextRequest) {
         });
       } catch (error) {
         console.error(`Error uploading file ${file.name}:`, error);
+        
+        // Cleanup R2 if database save failed but R2 upload succeeded
+        if (uploadedToR2) {
+          try {
+            await deleteFromR2(uniqueFileName);
+            console.log(`Cleaned up orphaned file from R2: ${uniqueFileName}`);
+          } catch (cleanupError) {
+            console.error(`Failed to cleanup orphaned file from R2: ${uniqueFileName}`, cleanupError);
+          }
+        }
+
         errors.push({
           fileName: file.name,
           error: 'Failed to upload file',

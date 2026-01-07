@@ -65,9 +65,10 @@ function DashboardContent() {
   } = useClientCache(
     'dashboard-invoices',
     async () => {
-      const res = await fetch('/api/invoices');
+      const res = await fetch('/api/invoices?limit=1000');
       if (!res.ok) throw new Error('Failed to fetch invoices');
-      return res.json();
+      const data = await res.json();
+      return data.invoices || data;
     },
     { 
       staleTime: 2 * 60 * 1000,
@@ -82,9 +83,10 @@ function DashboardContent() {
   } = useClientCache(
     'dashboard-payments',
     async () => {
-      const res = await fetch('/api/payments');
+      const res = await fetch('/api/payments?limit=1000');
       if (!res.ok) throw new Error('Failed to fetch payments');
-      return res.json();
+      const data = await res.json();
+      return data.payments || data;
     },
     { 
       staleTime: 2 * 60 * 1000,

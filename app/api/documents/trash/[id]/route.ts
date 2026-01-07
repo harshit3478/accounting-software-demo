@@ -310,21 +310,37 @@ export async function DELETE(
     }
 
     if (deletedDoc.type === DocumentType.folder) {
-      // For folders, just remove from trash (no R2 files to delete)
+      // For folders, we must delete all contained files from R2
+      let deletedCount = 0;
+      
+      if (deletedDoc.folderContents) {
+        const contents = deletedDoc.folderContents as any;
+        const descendants = contents.descendants || [];
+        
+        // Iterate through all descendants and delete files from R2
+        for (const item of descendants) {
+          // Check if it's a file (using string check or enum if available in JSON)
+          // The JSON data might have 'file' or 'folder' strings or enum values
+          if ((item.type === 'file' || item.type === DocumentType.file) && item.fileName) {
+            try {
+              await deleteFromR2(item.fileName);
+              deletedCount++;
+            } catch (r2Error) {
+              console.error(`Failed to delete nested file ${item.fileName} from R2:`, r2Error);
+              // Continue deleting others
+            }
+          }
+        }
+      }
+
+      // Remove from trash table
       await prisma.deletedDocument.delete({
         where: { id: deletedDocId }
       });
 
-      // Parse folder contents to get count
-      let itemCount = 0;
-      if (deletedDoc.folderContents) {
-        const contents = deletedDoc.folderContents as any;
-        itemCount = contents.totalItems || 0;
-      }
-
       return NextResponse.json({
         success: true,
-        message: `Folder "${deletedDoc.name}" and its contents (${itemCount} items) permanently deleted`,
+        message: `Folder "${deletedDoc.name}" and its contents (${deletedCount} files cleaned from storage) permanently deleted`,
         type: 'folder'
       });
     } else {

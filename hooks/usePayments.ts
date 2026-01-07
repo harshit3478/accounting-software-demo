@@ -1,6 +1,8 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from "react";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import { useToastContext } from "../components/ToastContext";
 
 export interface Payment {
   id: number;
@@ -73,6 +75,7 @@ interface UsePaymentsReturn {
   // Pagination
   currentPage: number;
   totalPages: number;
+  totalItems: number;
   itemsPerPage: number;
   setCurrentPage: (page: number) => void;
   setItemsPerPage: (items: number) => void;
@@ -102,10 +105,12 @@ interface UsePaymentsReturn {
   filteredStats: PaymentStats;
 }
 
-export function usePayments(
-  showSuccess: (message: string) => void,
-  showError: (message: string) => void
-): UsePaymentsReturn {
+export function usePayments(): UsePaymentsReturn {
+  const { showSuccess, showError, showInfo } = useToastContext();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
   const [payments, setPayments] = useState<Payment[]>([]);
   const [unmatchedCount, setUnmatchedCount] = useState(0);
   const [stats, setStats] = useState<PaymentStats>({
@@ -120,24 +125,118 @@ export function usePayments(
     totalToday: 0,
   });
   
-  const [filterMethod, setFilterMethod] = useState<PaymentMethodFilter>('all');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [dateRange, setDateRange] = useState<DateRange | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
+
+  // Initialize state from URL params
+  const [filterMethod, setFilterMethodState] = useState<PaymentMethodFilter>(
+    (searchParams.get("method") as PaymentMethodFilter) || "all"
+  );
+  const [searchQuery, setSearchQueryState] = useState(searchParams.get("search") || "");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState(searchQuery);
   
-  // Sorting states
+  const [dateRange, setDateRangeState] = useState<DateRange | null>(
+    searchParams.get("startDate") && searchParams.get("endDate")
+      ? {
+          startDate: searchParams.get("startDate")!,
+          endDate: searchParams.get("endDate")!,
+        }
+      : null
+  );
+
   const [sortBy, setSortBy] = useState<PaymentSortField>('date');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   
-  // Pagination states
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(20);
-  
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(
+    parseInt(searchParams.get("page") || "1")
+  );
+  const [itemsPerPage, setItemsPerPageState] = useState(10);
+
+  // Load itemsPerPage from localStorage
+  useEffect(() => {
+    const savedItemsPerPage = localStorage.getItem("paymentsItemsPerPage");
+    if (savedItemsPerPage) {
+      setItemsPerPageState(parseInt(savedItemsPerPage));
+    }
+  }, []);
+
   // Modal states
   const [showRecordModal, setShowRecordModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
   const [showCSVUploadModal, setShowCSVUploadModal] = useState(false);
   const [viewingPayment, setViewingPayment] = useState<Payment | null>(null);
+
+  // Update URL helper
+  const updateUrl = useCallback((params: Record<string, string | null>) => {
+    const newSearchParams = new URLSearchParams(searchParams.toString());
+    
+    Object.entries(params).forEach(([key, value]) => {
+      if (value === null || value === "" || value === "all") {
+        newSearchParams.delete(key);
+      } else {
+        newSearchParams.set(key, value);
+      }
+    });
+
+    router.push(`${pathname}?${newSearchParams.toString()}`);
+  }, [pathname, router, searchParams]);
+
+  // Wrappers
+  const setFilterMethod = (method: PaymentMethodFilter) => {
+    setFilterMethodState(method);
+    setCurrentPage(1);
+    updateUrl({ method, page: "1" });
+  };
+
+  const setSearchQuery = (query: string) => {
+    setSearchQueryState(query);
+  };
+
+  const setDateRange = (range: DateRange | null) => {
+    setDateRangeState(range);
+    setCurrentPage(1);
+    updateUrl({
+      startDate: range?.startDate || null,
+      endDate: range?.endDate || null,
+      page: "1"
+    });
+  };
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    updateUrl({ page: page.toString() });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleItemsPerPageChange = (items: number) => {
+    setItemsPerPageState(items);
+    localStorage.setItem("paymentsItemsPerPage", items.toString());
+    setCurrentPage(1);
+    updateUrl({ limit: items.toString(), page: "1" });
+  };
+
+  const handleSort = (field: PaymentSortField) => {
+    if (sortBy === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(field);
+      setSortDirection('asc');
+    }
+  };
+
+  // Debounce search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+      if (searchQuery !== (searchParams.get("search") || "")) {
+        setCurrentPage(1);
+        updateUrl({ search: searchQuery, page: "1" });
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery, updateUrl, searchParams]);
 
   // Fetch unmatched count
   const fetchUnmatchedCount = async () => {
@@ -153,21 +252,35 @@ export function usePayments(
   };
 
   // Fetch payments
-  const fetchPayments = async () => {
+  const fetchPayments = useCallback(async () => {
     setIsLoading(true);
     try {
-      const res = await fetch('/api/payments');
+      const params = new URLSearchParams();
+      params.set("page", currentPage.toString());
+      params.set("limit", itemsPerPage.toString());
+      if (filterMethod !== "all") params.set("method", filterMethod);
+      if (debouncedSearchQuery) params.set("search", debouncedSearchQuery);
+      if (dateRange) {
+        params.set("startDate", dateRange.startDate);
+        params.set("endDate", dateRange.endDate);
+      }
+
+      const res = await fetch(`/api/payments?${params.toString()}`);
       if (res.ok) {
         const data = await res.json();
-        setPayments(data.map((payment: any) => ({
+        const fetchedPayments = data.payments.map((payment: any) => ({
           ...payment,
           paymentDate: payment.paymentDate ? new Date(payment.paymentDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
           createdAt: payment.createdAt ? new Date(payment.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-        })));
+        }));
+        
+        setPayments(fetchedPayments);
+        setTotalPages(data.pagination.pages);
+        setTotalItems(data.pagination.total);
 
-        // Calculate today's stats
+        // Calculate today's stats (Note: This only calculates based on the fetched page)
         const today = new Date().toISOString().split('T')[0];
-        const todayPayments = data.filter((p: any) => {
+        const todayPayments = fetchedPayments.filter((p: any) => {
           const paymentDate = p.paymentDate ? new Date(p.paymentDate).toISOString().split('T')[0] : null;
           return paymentDate === today;
         });
@@ -185,6 +298,8 @@ export function usePayments(
         };
         
         setStats(newStats);
+      } else {
+        showError('Failed to fetch payments');
       }
     } catch (error) {
       console.error('Failed to fetch payments:', error);
@@ -192,43 +307,46 @@ export function usePayments(
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [currentPage, itemsPerPage, filterMethod, debouncedSearchQuery, dateRange, showError]);
+
+  const [lastUpdateTimestamp, setLastUpdateTimestamp] = useState<string | null>(null);
+
+  // Polling for updates
+  useEffect(() => {
+    const checkUpdates = async () => {
+      try {
+        const res = await fetch('/api/payments/last-updated');
+        if (!res.ok) return;
+        
+        const data = await res.json();
+        if (data.lastUpdated) {
+          if (lastUpdateTimestamp && data.lastUpdated !== lastUpdateTimestamp) {
+            showInfo('New payments detected. Refreshing...');
+            await fetchPayments();
+          }
+          setLastUpdateTimestamp(data.lastUpdated);
+        }
+      } catch (error) {
+        console.error('Error checking for updates:', error);
+      }
+    };
+
+    const intervalId = setInterval(checkUpdates, 10000); // Check every 10 seconds
+    checkUpdates(); // Initial check
+
+    return () => clearInterval(intervalId);
+  }, [lastUpdateTimestamp, fetchPayments, showInfo]);
 
   // Initial fetch
   useEffect(() => {
     fetchPayments();
     fetchUnmatchedCount();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [filterMethod, debouncedSearchQuery, dateRange, currentPage, itemsPerPage]);
 
-  // Reset to page 1 when filters change
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [filterMethod, searchQuery, dateRange]);
-
-  // Handlers
   const handleViewPayment = (payment: Payment) => {
     setViewingPayment(payment);
     setShowViewModal(true);
-  };
-
-  const handlePageChange = (page: number) => {
-    setCurrentPage(page);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const handleItemsPerPageChange = (items: number) => {
-    setItemsPerPage(items);
-    setCurrentPage(1);
-  };
-
-  const handleSort = (field: PaymentSortField) => {
-    if (sortBy === field) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortBy(field);
-      setSortDirection('asc');
-    }
   };
 
   const handleExportPDF = async () => {
@@ -266,21 +384,21 @@ export function usePayments(
       doc.setFontSize(10);
       doc.setFont('helvetica', 'normal');
       
-      doc.text(`Total Payments: ${filteredPayments.length}`, 20, yPos);
-      doc.text(`Total Amount: $${filteredStats.totalToday.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, 110, yPos);
+      doc.text(`Total Payments: ${payments.length}`, 20, yPos);
+      doc.text(`Total Amount: $${stats.totalToday.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, 110, yPos);
       yPos += 7;
       
-      doc.text(`Cash: $${filteredStats.cashToday.toLocaleString('en-US', { minimumFractionDigits: 2 })} (${filteredStats.cashCount})`, 20, yPos);
-      doc.text(`Zelle: $${filteredStats.zelleToday.toLocaleString('en-US', { minimumFractionDigits: 2 })} (${filteredStats.zelleCount})`, 110, yPos);
+      doc.text(`Cash: $${stats.cashToday.toLocaleString('en-US', { minimumFractionDigits: 2 })} (${stats.cashCount})`, 20, yPos);
+      doc.text(`Zelle: $${stats.zelleToday.toLocaleString('en-US', { minimumFractionDigits: 2 })} (${stats.zelleCount})`, 110, yPos);
       yPos += 7;
       
-      doc.text(`QuickBooks: $${filteredStats.quickbooksToday.toLocaleString('en-US', { minimumFractionDigits: 2 })} (${filteredStats.quickbooksCount})`, 20, yPos);
-      doc.text(`Layaway: $${filteredStats.layawayToday.toLocaleString('en-US', { minimumFractionDigits: 2 })} (${filteredStats.layawayCount})`, 110, yPos);
+      doc.text(`QuickBooks: $${stats.quickbooksToday.toLocaleString('en-US', { minimumFractionDigits: 2 })} (${stats.quickbooksCount})`, 20, yPos);
+      doc.text(`Layaway: $${stats.layawayToday.toLocaleString('en-US', { minimumFractionDigits: 2 })} (${stats.layawayCount})`, 110, yPos);
       
       yPos += 15;
       
       // Prepare table data
-      const tableData = filteredPayments.map(payment => {
+      const tableData = payments.map(payment => {
         const date = new Date(payment.paymentDate).toLocaleDateString();
         const invoice = payment.invoice?.invoiceNumber || 
                        payment.paymentMatches?.map(m => m.invoice.invoiceNumber).join(', ') || 
@@ -367,109 +485,10 @@ export function usePayments(
     }
   };
 
-  // Filter logic
-  const filteredPayments = payments
-    .filter(payment => {
-      // Method filter
-      if (filterMethod !== 'all' && payment.method !== filterMethod) return false;
-      
-      // Search filter
-      if (searchQuery) {
-        const query = searchQuery.toLowerCase();
-        const clientName = payment.invoice?.clientName || payment.paymentMatches?.[0]?.invoice.clientName || '';
-        const invoiceNumber = payment.invoice?.invoiceNumber || payment.paymentMatches?.map(m => m.invoice.invoiceNumber).join(' ') || '';
-        const notes = payment.notes || '';
-        
-        if (
-          !clientName.toLowerCase().includes(query) &&
-          !invoiceNumber.toLowerCase().includes(query) &&
-          !notes.toLowerCase().includes(query)
-        ) {
-          return false;
-        }
-      }
-      
-      // Date range filter
-      if (dateRange) {
-        const paymentDate = new Date(payment.paymentDate);
-        const start = new Date(dateRange.startDate);
-        const end = new Date(dateRange.endDate);
-        if (paymentDate < start || paymentDate > end) return false;
-      }
-      
-      return true;
-    })
-    .sort((a, b) => {
-      let comparison = 0;
-      
-      switch (sortBy) {
-        case 'date':
-          comparison = new Date(a.paymentDate).getTime() - new Date(b.paymentDate).getTime();
-          break;
-        case 'amount':
-          comparison = a.amount - b.amount;
-          break;
-        case 'client':
-          const clientA = a.invoice?.clientName || a.paymentMatches?.[0]?.invoice.clientName || '';
-          const clientB = b.invoice?.clientName || b.paymentMatches?.[0]?.invoice.clientName || '';
-          comparison = clientA.localeCompare(clientB);
-          break;
-      }
-      
-      return sortDirection === 'asc' ? comparison : -comparison;
-    });
-
-  // Calculate filtered statistics
-  const filteredStats = filteredPayments.reduce(
-    (acc, payment) => {
-      const amount = payment.amount;
-      acc.totalToday += amount;
-      
-      switch (payment.method) {
-        case 'cash':
-          acc.cashToday += amount;
-          acc.cashCount++;
-          break;
-        case 'zelle':
-          acc.zelleToday += amount;
-          acc.zelleCount++;
-          break;
-        case 'quickbooks':
-          acc.quickbooksToday += amount;
-          acc.quickbooksCount++;
-          break;
-        case 'layaway':
-          acc.layawayToday += amount;
-          acc.layawayCount++;
-          break;
-      }
-      
-      return acc;
-    },
-    {
-      cashToday: 0,
-      cashCount: 0,
-      zelleToday: 0,
-      zelleCount: 0,
-      quickbooksToday: 0,
-      quickbooksCount: 0,
-      layawayToday: 0,
-      layawayCount: 0,
-      totalToday: 0,
-    }
-  );
-
-  // Pagination
-  const totalPages = Math.ceil(filteredPayments.length / itemsPerPage);
-  const paginatedPayments = filteredPayments.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
-  );
-
   return {
     payments,
-    filteredPayments,
-    paginatedPayments,
+    filteredPayments: payments, // Alias for compatibility
+    paginatedPayments: payments, // Alias for compatibility
     isLoading,
     unmatchedCount,
     filterMethod,
@@ -483,9 +502,10 @@ export function usePayments(
     handleSort,
     currentPage,
     totalPages,
+    totalItems,
     itemsPerPage,
-    setCurrentPage,
-    setItemsPerPage,
+    setCurrentPage: handlePageChange,
+    setItemsPerPage: handleItemsPerPageChange,
     showRecordModal,
     setShowRecordModal,
     showViewModal,
@@ -501,6 +521,6 @@ export function usePayments(
     handleItemsPerPageChange,
     handleExportPDF,
     stats,
-    filteredStats,
+    filteredStats: stats, // Alias for compatibility
   };
 }

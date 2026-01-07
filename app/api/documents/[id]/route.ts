@@ -2,6 +2,29 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { requireAdmin, requirePermission } from '@/lib/auth';
 import { deleteFromR2, extractFileNameFromUrl } from '@/lib/r2-client';
+import { DocumentType } from '@prisma/client';
+
+// Helper to recursively get all descendants of a folder
+async function getFolderDescendants(folderId: number) {
+  const descendants = [];
+  const queue = [folderId];
+
+  while (queue.length > 0) {
+    const currentId = queue.shift();
+    // Get immediate children
+    const children = await prisma.document.findMany({
+      where: { parentId: currentId }
+    });
+
+    for (const child of children) {
+      descendants.push(child);
+      if (child.type === DocumentType.folder) {
+        queue.push(child.id);
+      }
+    }
+  }
+  return descendants;
+}
 
 export async function DELETE(
   request: NextRequest,
@@ -37,13 +60,25 @@ export async function DELETE(
       );
     }
 
+    // If it's a folder, get all contents before they are cascaded deleted
+    let folderContents = null;
+    if (document.type === DocumentType.folder) {
+      const descendants = await getFolderDescendants(document.id);
+      folderContents = {
+        totalItems: descendants.length,
+        descendants: descendants
+      };
+    }
+
     // Move to DeletedDocument table (soft delete - file stays in R2)
     await prisma.deletedDocument.create({
       data: {
         originalDocId: document.id,
         userId: document.userId,
-        type: 'file',
+        type: document.type,
         name: document.name,
+        folderContents: folderContents ? (folderContents as any) : undefined,
+        originalParentId: document.parentId,
         fileName: document.fileName,
         fileSize: document.fileSize,
         fileType: document.fileType,

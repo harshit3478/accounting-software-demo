@@ -15,7 +15,8 @@ interface InvoiceTableProps {
   onShip: (invoice: Invoice) => void;
   onCreateFirst: () => void;
   searchTerm: string;
-  filter: string;
+  statusFilter: string;
+  typeFilter: string;
   sortBy: string;
   onSortChange: (sort: string) => void;
 }
@@ -31,7 +32,8 @@ export default function InvoiceTable({
   onShip,
   onCreateFirst,
   searchTerm,
-  filter,
+  statusFilter,
+  typeFilter,
   sortBy,
   onSortChange,
 }: InvoiceTableProps) {
@@ -87,11 +89,11 @@ export default function InvoiceTable({
             No invoices found
           </h3>
           <p className="text-gray-500 mb-4">
-            {searchTerm || filter !== "all"
+            {searchTerm || statusFilter !== "all" || typeFilter !== "all"
               ? "Try adjusting your search or filter to find what you're looking for."
               : "Get started by creating your first invoice."}
           </p>
-          {!searchTerm && filter === "all" && (
+          {!searchTerm && statusFilter === "all" && typeFilter === "all" && (
             <button
               onClick={onCreateFirst}
               className="px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
@@ -105,8 +107,8 @@ export default function InvoiceTable({
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
-      <div className="px-6 py-4 border-b border-gray-200">
+    <div className="bg-white rounded-xl shadow-lg border border-gray-200 flex flex-col h-full">
+      <div className="px-6 py-4 border-b border-gray-200 flex-none">
         <h3 className="text-lg font-semibold text-gray-900">
           Invoice List
           {paginatedInvoices.length !== invoices.length && (
@@ -117,16 +119,16 @@ export default function InvoiceTable({
         </h3>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
+      <div className="flex-1 overflow-auto min-h-0">
+        <table className="min-w-full divide-y divide-gray-200 relative">
+          <thead className="bg-gray-50 sticky top-0 z-10 shadow-sm">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 w-[140px]">
                 Invoice #
               </th>
               <th
                 onClick={() => handleSort("client")}
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors"
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors bg-gray-50 min-w-[200px]"
               >
                 <div className="flex items-center gap-1">
                   Client {getSortIcon("client")}
@@ -134,28 +136,28 @@ export default function InvoiceTable({
               </th>
               <th
                 onClick={() => handleSort("amount")}
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors"
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors bg-gray-50 w-[120px]"
               >
                 <div className="flex items-center gap-1">
                   Amount {getSortIcon("amount")}
                 </div>
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 w-[120px]">
                 Paid
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 w-[120px]">
                 Due Date
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 w-[100px]">
                 Status
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 w-[120px]">
                 Shipment ID
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 w-[150px]">
                 Tracking #
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 w-[180px]">
                 Actions
               </th>
             </tr>
