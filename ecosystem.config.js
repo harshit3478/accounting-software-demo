@@ -7,7 +7,10 @@ module.exports = {
       env: {
         NODE_ENV: "production",
         PORT: 3000,
-        // Add your DB credentials here or read them from .env
+      },
+      env_production: {
+        NODE_ENV: "production",
+        PORT: 3000,
       },
     },
   ],
