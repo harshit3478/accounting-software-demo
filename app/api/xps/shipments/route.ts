@@ -27,11 +27,16 @@ export async function POST(req: Request) {
 
     const res = await putOrderToXps(invoice, address || {}, packages || []);
 
-    // We don't get a shipment ID or tracking number immediately from Put Order
-    // But we can mark it as "sent to XPS"
-    // For now, we won't update shipmentId/trackingNumber until we get a webhook or manual update
+    // Save the shipment ID (which corresponds to invoice.id in XPS) to the database
+    // so the UI knows this invoice has a pending shipment.
+    const updatedInvoice = await prisma.invoice.update({
+      where: { id: Number(invoiceId) },
+      data: {
+        shipmentId: invoice.id.toString(),
+      },
+    });
     
-    return NextResponse.json({ success: true, message: "Order sent to XPS", xps: res });
+    return NextResponse.json({ success: true, message: "Order sent to XPS", xps: res, invoice: updatedInvoice });
   } catch (err: any) {
     console.error("Create shipment error", err);
     return NextResponse.json(
@@ -44,7 +49,7 @@ export async function POST(req: Request) {
 export async function PATCH(req: Request) {
   try {
     const body = await req.json();
-    const { shipmentId, invoiceId, address } = body;
+    const { shipmentId, invoiceId, address, packages } = body;
 
     let id = shipmentId;
     let invoice = null;
@@ -71,23 +76,31 @@ export async function PATCH(req: Request) {
         { status: 400 }
       );
 
-    const res = await updateShipmentWithXps(id, address || {});
-
-    const dataToUpdate: any = {
-      trackingNumber: res.trackingNumber || null,
-    };
-
     if (!invoice) {
-      // find invoice by shipmentId
-      invoice = await prisma.invoice.findFirst({ where: { shipmentId: id } });
+       invoice = await prisma.invoice.findFirst({ where: { shipmentId: id } });
     }
 
+    if (!invoice) {
+       return NextResponse.json({ error: "Invoice not found for shipment" }, { status: 404 });
+    }
+
+    // Reuse the PUT order logic to update details
+    // Ensure we pass packages if provided, otherwise we might be overwriting with empty
+    // Ideally the UI should always send full state on update.
+    const res = await putOrderToXps(invoice, address || {}, packages || []);
+
+    const dataToUpdate: any = {
+      // If we got a tracking number from somewhere else we might update it, but putOrder usually doesn't return it
+      // trackingNumber: res.trackingNumber || null, 
+    };
+
     if (invoice) {
-      const updated = await prisma.invoice.update({
-        where: { id: invoice.id },
-        data: dataToUpdate as any,
-      });
-      return NextResponse.json({ invoice: updated, xps: res });
+       // Just returning the invoice for now as we didn't change DB state
+      // const updated = await prisma.invoice.update({
+      //   where: { id: invoice.id },
+      //   data: dataToUpdate as any,
+      // });
+      return NextResponse.json({ invoice: invoice, xps: res });
     }
 
     return NextResponse.json({ xps: res });

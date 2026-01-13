@@ -94,6 +94,12 @@ export default function ShipInvoiceModal({
           shipmentId: invoice.shipmentId,
           invoiceId: invoice.id,
           address: { name, street, city, state, postalCode, country, phone },
+          packages: [{
+            weight,
+            length,
+            width,
+            height
+          }]
         }),
       });
 
@@ -169,10 +175,26 @@ export default function ShipInvoiceModal({
               </label>
               <input
                 id="recipient-name"
-                className="input h-12 px-4 text-sm w-full"
+                className="input h-10 px-3 text-sm w-full border border-gray-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500"
                 placeholder="Recipient name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
+              />
+            </div>
+
+            <div className="md:col-span-1">
+              <label
+                htmlFor="phone"
+                className="block text-sm font-medium text-gray-700 mb-1"
+              >
+                Phone
+              </label>
+              <input
+                id="phone"
+                className="input h-10 px-3 text-sm w-full border border-gray-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500"
+                placeholder="Phone"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
               />
             </div>
 
@@ -185,7 +207,7 @@ export default function ShipInvoiceModal({
               </label>
               <input
                 id="street-address"
-                className="input h-12 px-4 text-sm w-full"
+                className="input h-10 px-3 text-sm w-full border border-gray-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500"
                 placeholder="Street address"
                 value={street}
                 onChange={(e) => setStreet(e.target.value)}
@@ -201,7 +223,7 @@ export default function ShipInvoiceModal({
               </label>
               <input
                 id="city"
-                className="input h-12 px-4 text-sm w-full"
+                className="input h-10 px-3 text-sm w-full border border-gray-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500"
                 placeholder="City"
                 value={city}
                 onChange={(e) => setCity(e.target.value)}
@@ -217,7 +239,7 @@ export default function ShipInvoiceModal({
               </label>
               <input
                 id="state"
-                className="input h-12 px-4 text-sm w-full"
+                className="input h-10 px-3 text-sm w-full border border-gray-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500"
                 placeholder="State"
                 value={state}
                 onChange={(e) => setState(e.target.value)}
@@ -233,7 +255,7 @@ export default function ShipInvoiceModal({
               </label>
               <input
                 id="postal-code"
-                className="input h-12 px-4 text-sm w-full"
+                className="input h-10 px-3 text-sm w-full border border-gray-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500"
                 placeholder="Postal code"
                 value={postalCode}
                 onChange={(e) => setPostalCode(e.target.value)}
@@ -249,26 +271,10 @@ export default function ShipInvoiceModal({
               </label>
               <input
                 id="country"
-                className="input h-12 px-4 text-sm w-full"
+                className="input h-10 px-3 text-sm w-full border border-gray-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500"
                 placeholder="Country"
                 value={country}
                 onChange={(e) => setCountry(e.target.value)}
-              />
-            </div>
-
-            <div>
-              <label
-                htmlFor="phone"
-                className="block text-sm font-medium text-gray-700 mb-1"
-              >
-                Phone
-              </label>
-              <input
-                id="phone"
-                className="input h-12 px-4 text-sm w-full"
-                placeholder="Phone"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
               />
             </div>
 
@@ -279,7 +285,7 @@ export default function ShipInvoiceModal({
                   <label className="block text-sm font-medium text-gray-700 mb-1">Weight (lb)</label>
                   <input
                     type="number"
-                    className="input h-10 px-3 text-sm w-full"
+                    className="input h-10 px-3 text-sm w-full border border-gray-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500"
                     value={weight}
                     onChange={(e) => setWeight(e.target.value)}
                   />
@@ -288,7 +294,7 @@ export default function ShipInvoiceModal({
                   <label className="block text-sm font-medium text-gray-700 mb-1">Length (in)</label>
                   <input
                     type="number"
-                    className="input h-10 px-3 text-sm w-full"
+                    className="input h-10 px-3 text-sm w-full border border-gray-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500"
                     value={length}
                     onChange={(e) => setLength(e.target.value)}
                   />
@@ -297,7 +303,7 @@ export default function ShipInvoiceModal({
                   <label className="block text-sm font-medium text-gray-700 mb-1">Width (in)</label>
                   <input
                     type="number"
-                    className="input h-10 px-3 text-sm w-full"
+                    className="input h-10 px-3 text-sm w-full border border-gray-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500"
                     value={width}
                     onChange={(e) => setWidth(e.target.value)}
                   />
@@ -306,28 +312,12 @@ export default function ShipInvoiceModal({
                   <label className="block text-sm font-medium text-gray-700 mb-1">Height (in)</label>
                   <input
                     type="number"
-                    className="input h-10 px-3 text-sm w-full"
+                    className="input h-10 px-3 text-sm w-full border border-gray-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500"
                     value={height}
                     onChange={(e) => setHeight(e.target.value)}
                   />
                 </div>
               </div>
-            </div>
-
-            <div className="md:col-span-2">
-              <label
-                htmlFor="phone"
-                className="block text-sm font-medium text-gray-700 mb-1"
-              >
-                Phone
-              </label>
-              <input
-                id="phone"
-                className="input h-12 px-4 text-sm w-full"
-                placeholder="Phone"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-              />
             </div>
           </div>
         </div>

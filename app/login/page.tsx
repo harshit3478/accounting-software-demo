@@ -7,8 +7,8 @@ import { useRouter } from 'next/navigation';
 import { FcGoogle } from 'react-icons/fc';
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('admin@example.com');
-  const [password, setPassword] = useState('admin123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -30,7 +30,7 @@ export default function LoginPage() {
         const data = await res.json();
         // Store token in localStorage
         localStorage.setItem('token', data.token);
-        console.log('Login successful, token stored');
+        
         // Hard redirect to ensure fresh state
         window.location.replace('/');
       } else {
