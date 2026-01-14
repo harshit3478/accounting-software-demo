@@ -10,3 +10,4 @@ export { default as InvoiceSummary } from "./InvoiceSummary";
 export { default as InvoiceFiltersNew } from "./InvoiceFiltersNew";
 export * from "./types";
 export { default as ShipInvoiceModal } from "./ShipInvoiceModal";
+export { default as ShipmentDetailsModal } from "./ShipmentDetailsModal";

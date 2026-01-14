@@ -4,7 +4,25 @@ import {
   putOrderToXps,
   updateShipmentWithXps,
   cancelShipmentWithXps,
+  getShipmentFromXps,
 } from "../../../../lib/xps";
+
+export async function GET(req: Request) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const invoiceId = searchParams.get('invoiceId');
+
+    if (!invoiceId) {
+      return NextResponse.json({ error: "Invoice ID required" }, { status: 400 });
+    }
+
+    const data = await getShipmentFromXps(invoiceId);
+    return NextResponse.json(data);
+  } catch (err: any) {
+    console.error("Get shipment error", err);
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}
 
 export async function POST(req: Request) {
   try {

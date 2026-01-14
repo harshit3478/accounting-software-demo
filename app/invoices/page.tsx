@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, Suspense } from "react";
+import { useEffect, useState, Suspense } from "react";
 import Navigation from "../../components/Navigation";
 import {
   CreateInvoiceModal,
@@ -9,6 +9,7 @@ import {
   PaymentModal,
   ConfirmModal,
   ShipInvoiceModal,
+  ShipmentDetailsModal,
 } from "../../components/invoices";
 import { ToastProvider, useToastContext } from "../../components/ToastContext";
 import Pagination from "../../components/Pagination";
@@ -79,6 +80,19 @@ function InvoicesPageContent() {
     stats,
   } = useInvoices(showSuccess, showError, showInfo);
 
+  // Shipment Details Modal State
+  const [showShipmentDetailsModal, setShowShipmentDetailsModal] = useState(false);
+  const [viewingShipmentInvoice, setViewingShipmentInvoice] = useState<any>(null);
+
+  const handleShipAction = (invoice: any) => {
+    if (invoice.shipmentId) {
+      setViewingShipmentInvoice(invoice);
+      setShowShipmentDetailsModal(true);
+    } else {
+      handleOpenShipModal(invoice);
+    }
+  };
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -133,7 +147,7 @@ function InvoicesPageContent() {
             onEdit={handleEditInvoice}
             onPay={handleOpenPaymentModal}
             onDelete={handleDeleteClick}
-            onShip={handleOpenShipModal}
+            onShip={handleShipAction}
             onCreateFirst={() => setShowCreateModal(true)}
             searchTerm={searchTerm}
             statusFilter={statusFilter}
@@ -246,6 +260,24 @@ function InvoicesPageContent() {
         validateUrl="/api/invoices/bulk/validate"
         uploadUrl="/api/invoices/bulk/upload"
       />
+
+      {viewingShipmentInvoice && (
+        <ShipmentDetailsModal
+          invoice={viewingShipmentInvoice}
+          onClose={() => {
+            setShowShipmentDetailsModal(false);
+            setViewingShipmentInvoice(null);
+          }}
+          onUpdate={() => {
+            setShowShipmentDetailsModal(false);
+            // Slight delay to allow the first modal to close cleanly before opening the next
+            setTimeout(() => {
+              handleOpenShipModal(viewingShipmentInvoice);
+              setViewingShipmentInvoice(null);
+            }, 100);
+          }}
+        />
+      )}
     </div>
   );
 }

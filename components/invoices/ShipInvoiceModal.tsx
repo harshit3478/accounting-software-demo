@@ -32,24 +32,78 @@ export default function ShipInvoiceModal({
   const [width, setWidth] = useState("10");
   const [height, setHeight] = useState("10");
   
-  const [isLoading, setIsLoading] = useState(false);
+  const [loadingAction, setLoadingAction] = useState<"create" | "update" | "cancel" | null>(null);
+  const [isFetching, setIsFetching] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
-    // prefill with client name if available
+
+    // Reset form first
     setName(invoice?.clientName || "");
-    // lock body scroll
+    setStreet("");
+    setCity("");
+    setState("");
+    setPostalCode("");
+    setCountry("US");
+    setPhone("");
+    setWeight("1");
+    setLength("10");
+    setWidth("10");
+    setHeight("10");
+
+    // Lock body scroll
     document.body.style.overflow = "hidden";
+
+    // If existing shipment, fetch details to prefill
+    if (invoice?.shipmentId) {
+      fetchShipmentDetails(invoice.id);
+    }
+
     return () => {
       document.body.style.overflow = "unset";
     };
   }, [isOpen, invoice]);
 
+  const fetchShipmentDetails = async (invoiceId: number) => {
+    setIsFetching(true);
+    try {
+      const res = await fetch(`/api/xps/shipments?invoiceId=${invoiceId}`);
+      if (res.ok) {
+        const data = await res.json();
+        // XPS often returns { "orders": [ ... ] } or just the order object depending on endpoint
+        // Based on our getShipmentFromXps, it targets /orders/{id}, which usually returns the single order object directly
+        // But the previous curl showed a list when querying the integrations list.
+        // Let's assume the getShipmentFromXps returns the single order object.
+        const order = data; // or data.orders?.[0] if specific list endpoint used
+        
+        if (order && order.destination) {
+          setName(order.destination.name || "");
+          setStreet(order.destination.address1 || "");
+          setCity(order.destination.city || "");
+          setState(order.destination.state || "");
+          setPostalCode(order.destination.zip || "");
+          setCountry(order.destination.country || "US");
+          setPhone(order.destination.phone || "");
+        }
+        
+        // XPS items/packages structure can be complex.
+        // If we want to prefill package, we look at 'packages' array if available
+        // The curl response didn't show "packages" explicitly in the order object, just "items".
+        // Often shipping info is in a separate field or implicit. 
+        // We will leave package defaults or try to parse if available.
+      }
+    } catch (e) {
+      console.error("Failed to fetch shipment details", e);
+    } finally {
+      setIsFetching(false);
+    }
+  };
+
   if (!isOpen) return null;
 
   const handleSubmit = async () => {
     if (!invoice) return;
-    setIsLoading(true);
+    setLoadingAction("create");
 
     try {
       const res = await fetch("/api/xps/shipments", {
@@ -79,13 +133,13 @@ export default function ShipInvoiceModal({
       console.error("Ship invoice error", err);
       onError?.(err?.message || "Failed to send order to XPS");
     } finally {
-      setIsLoading(false);
+      setLoadingAction(null);
     }
   };
 
   const handleUpdate = async () => {
     if (!invoice || !invoice.shipmentId) return;
-    setIsLoading(true);
+    setLoadingAction("update");
     try {
       const res = await fetch("/api/xps/shipments", {
         method: "PATCH",
@@ -114,14 +168,14 @@ export default function ShipInvoiceModal({
       console.error("Update shipment error", err);
       onError?.(err?.message || "Failed to update shipment");
     } finally {
-      setIsLoading(false);
+      setLoadingAction(null);
     }
   };
 
   const handleCancel = async () => {
     if (!invoice || !invoice.shipmentId) return;
     if (!confirm("Are you sure you want to cancel this shipment?")) return;
-    setIsLoading(true);
+    setLoadingAction("cancel");
     try {
       const res = await fetch("/api/xps/shipments", {
         method: "DELETE",
@@ -143,7 +197,7 @@ export default function ShipInvoiceModal({
       console.error("Cancel shipment error", err);
       onError?.(err?.message || "Failed to cancel shipment");
     } finally {
-      setIsLoading(false);
+      setLoadingAction(null);
     }
   };
 
@@ -151,7 +205,7 @@ export default function ShipInvoiceModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in">
       <div
         className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-all duration-300"
-        onClick={!isLoading ? onClose : undefined}
+        onClick={!loadingAction ? onClose : undefined}
         aria-hidden="true"
       ></div>
 
@@ -160,6 +214,18 @@ export default function ShipInvoiceModal({
         role="dialog"
         aria-modal="true"
       >
+        {isFetching && (
+          <div className="absolute inset-0 bg-white/80 z-10 flex items-center justify-center backdrop-blur-sm">
+            <div className="flex flex-col items-center">
+              <svg className="animate-spin h-8 w-8 text-sky-600 mb-2" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <p className="text-sm font-medium text-gray-600">Loading shipment details...</p>
+            </div>
+          </div>
+        )}
+
         <div className="p-8">
           <h3 className="text-2xl font-semibold text-gray-900 mb-6">
             Create Shipment for {invoice?.invoiceNumber}
@@ -325,7 +391,7 @@ export default function ShipInvoiceModal({
         <div className="bg-gray-50 px-6 py-4 rounded-b-2xl flex justify-end space-x-3">
           <button
             onClick={onClose}
-            disabled={isLoading}
+            disabled={!!loadingAction}
             className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-100 transition-colors"
           >
             Close
@@ -334,26 +400,26 @@ export default function ShipInvoiceModal({
             <>
               <button
                 onClick={handleCancel}
-                disabled={isLoading}
+                disabled={!!loadingAction}
                 className="px-4 py-2 border border-red-300 text-red-700 rounded-lg font-medium hover:bg-red-50 transition-colors"
               >
-                {isLoading ? "Processing…" : "Cancel Shipment"}
+                {loadingAction === "cancel" ? "Canceling…" : "Cancel Shipment"}
               </button>
               <button
                 onClick={handleUpdate}
-                disabled={isLoading}
+                disabled={!!loadingAction}
                 className="px-4 py-2 bg-amber-600 text-white rounded-lg font-medium hover:bg-amber-700 transition-colors"
               >
-                {isLoading ? "Updating…" : "Update Shipment"}
+                {loadingAction === "update" ? "Updating…" : "Update Shipment"}
               </button>
             </>
           ) : (
             <button
               onClick={handleSubmit}
-              disabled={isLoading}
+              disabled={!!loadingAction}
               className="px-4 py-2 bg-sky-600 text-white rounded-lg font-medium hover:bg-sky-700 transition-colors"
             >
-              {isLoading ? "Sending…" : "Create Shipment"}
+              {loadingAction === "create" ? "Sending…" : "Create Shipment"}
             </button>
           )}
         </div>

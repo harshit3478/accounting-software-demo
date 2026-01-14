@@ -200,3 +200,43 @@ export async function cancelShipmentWithXps(shipmentId: string) {
       return false;
   }
 }
+
+export async function getShipmentFromXps(invoiceId: string) {
+  const base = process.env.XPS_API_BASE || process.env.NEXT_PUBLIC_XPS_API_BASE;
+  const key = process.env.XPS_API_KEY || process.env.NEXT_PUBLIC_XPS_API_KEY;
+  const customerId = process.env.XPS_CUSTOMER_ID;
+  const integrationId = process.env.XPS_INTEGRATION_ID;
+
+  // Direct access via /orders/{id} is forbidden (403). We must search instead.
+  // Using keyword search to find the specific order.
+  const url = `${base?.replace(/\/+$/, "")}/customers/${customerId}/integrations/${integrationId}/orders?keyword=${invoiceId}`;
+  
+  console.log(`[XPS] Fetching shipment details via search: ${url}`);
+
+  const res = await fetch(url, {
+    method: "GET",
+    headers: { "Authorization": `RSIS ${key}` }
+  });
+
+  if (!res.ok) {
+    console.error(`[XPS] Fetch failed: ${res.status} ${res.statusText}`);
+    try {
+        const errBody = await res.text();
+        console.error(`[XPS] Error body:`, errBody);
+    } catch (e) {}
+    return null;
+  }
+
+  const data = await res.json();
+  
+  // Find the exact order from the list
+  if (data && data.orders && Array.isArray(data.orders)) {
+      const match = data.orders.find((order: any) => order.orderId === invoiceId);
+      if (match) {
+          return match;
+      }
+  }
+  
+  console.log(`[XPS] Order ${invoiceId} not found in search results`);
+  return null;
+}

@@ -31,6 +31,8 @@ interface Invoice {
   isLayaway: boolean;
   createdAt: string;
   description?: string;
+  shipmentId?: string | null;
+  trackingNumber?: string | null;
 }
 
 interface ViewInvoiceModalProps {
@@ -167,6 +169,26 @@ export default function ViewInvoiceModal({ isOpen, onClose, invoice }: ViewInvoi
             <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Created On</p>
             <p className="text-sm text-gray-700">{formatDate(invoice.createdAt)}</p>
           </div>
+          
+          {(invoice.shipmentId || invoice.trackingNumber) && (
+             <div className="mt-4 pt-4 border-t border-gray-300">
+               <h5 className="text-sm font-medium text-gray-900 mb-2">Shipment Details</h5>
+               <div className="grid grid-cols-2 gap-4">
+                 {invoice.shipmentId && (
+                   <div>
+                     <p className="text-xs text-gray-500 uppercase">Shipment ID</p>
+                     <p className="text-sm font-mono text-gray-700">{invoice.shipmentId}</p>
+                   </div>
+                 )}
+                 {invoice.trackingNumber && (
+                   <div>
+                     <p className="text-xs text-gray-500 uppercase">Tracking Number</p>
+                     <p className="text-sm font-mono text-gray-700">{invoice.trackingNumber}</p>
+                   </div>
+                 )}
+               </div>
+             </div>
+          )}
         </div>
 
         {/* Invoice Items */}

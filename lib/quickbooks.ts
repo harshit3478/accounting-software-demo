@@ -108,13 +108,18 @@ export async function refreshQuickBooksToken(userId: number): Promise<void> {
         return;
       }
 
+      // Calculate expiry date safely (default to 1 hour/3600s if missing)
+      const expiresIn = typeof refreshResponse.expires_in === 'number' 
+        ? refreshResponse.expires_in 
+        : 3600;
+
       // Update tokens in database
       prisma.quickBooksConnection.update({
         where: { userId },
         data: {
           accessToken: refreshResponse.access_token,
           refreshToken: refreshResponse.refresh_token,
-          tokenExpiry: new Date(Date.now() + refreshResponse.expires_in * 1000),
+          tokenExpiry: new Date(Date.now() + expiresIn * 1000),
           updatedAt: new Date()
         }
       }).then(() => resolve()).catch(reject);

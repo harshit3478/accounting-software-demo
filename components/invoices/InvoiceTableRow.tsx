@@ -84,9 +84,7 @@ export default function InvoiceTableRow({
       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
         {invoice.shipmentId ? invoice.shipmentId : "-"}
       </td>
-      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 max-w-[150px] truncate" title={invoice.trackingNumber || ""}>
-        {invoice.trackingNumber ? invoice.trackingNumber : "-"}
-      </td>
+      {/* Tracking ID column removed */}
       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
         <div className="flex items-center space-x-3">
           <button
@@ -108,10 +106,10 @@ export default function InvoiceTableRow({
           </button>
           <button
             onClick={() => onShip?.(invoice)}
-            className="text-sky-600 hover:text-sky-900"
-            title="Create shipment"
+            className={invoice.shipmentId ? "text-amber-600 hover:text-amber-900" : "text-sky-600 hover:text-sky-900"}
+            title={invoice.shipmentId ? "Manage shipment" : "Create shipment"}
           >
-            Ship
+            {invoice.shipmentId ? "Manage" : "Ship"}
           </button>
           <button
             onClick={() => onDelete(invoice)}

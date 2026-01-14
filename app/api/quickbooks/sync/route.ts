@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '../../../../lib/prisma';
 import { requireAuth } from '../../../../lib/auth';
-import { createQuickBooksClient, mapQuickBooksPaymentMethod } from '../../../../lib/quickbooks';
+import { createQuickBooksClient, mapQuickBooksPaymentMethod, refreshQuickBooksToken } from '../../../../lib/quickbooks';
 
 export async function POST(request: NextRequest) {
   try {
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
     const daysBack = body.daysBack || 30; // Default to last 30 days
 
     // Create QuickBooks client
-    const qbo = await createQuickBooksClient(user.id);
+    let qbo = await createQuickBooksClient(user.id);
     if (!qbo) {
       return NextResponse.json(
         { error: 'Failed to create QuickBooks client' },
@@ -39,8 +39,54 @@ export async function POST(request: NextRequest) {
 
     console.log(`Syncing payments from QuickBooks since ${startDateStr}`);
 
-    // Fetch payments from QuickBooks
-    const payments = await fetchPaymentsFromQuickBooks(qbo, startDateStr);
+    // Fetch payments from QuickBooks with retry logic for expired tokens
+    let payments;
+    try {
+      payments = await fetchPaymentsFromQuickBooks(qbo, startDateStr);
+    } catch (error: any) {
+      // Check for authentication error (401)
+      const isAuthError = 
+        error?.statusCode === 401 || 
+        error?.fault?.type === 'AUTHENTICATION' ||
+        JSON.stringify(error).includes('AuthenticationFailed');
+
+      if (isAuthError) {
+        console.log('QuickBooks token expired during sync, refreshing and retrying...');
+        try {
+          // Force refresh token
+          await refreshQuickBooksToken(user.id);
+          
+          // Re-create client with new token
+          qbo = await createQuickBooksClient(user.id);
+          if (!qbo) {
+            throw new Error('Failed to recreate QuickBooks client after refresh');
+          }
+          
+          // Retry fetch
+          payments = await fetchPaymentsFromQuickBooks(qbo, startDateStr);
+        } catch (retryError: any) {
+          console.error('Retry failed after token refresh:', retryError);
+          
+          // Check if the refresh failed due to invalid grant/token
+          // This happens when keys change (sandbox -> prod) but old token remains
+          const failureBody = retryError.response?.body;
+          const isInvalidGrant = 
+            (typeof failureBody === 'string' && failureBody.includes('invalid_grant')) ||
+            (failureBody?.error === 'invalid_grant');
+
+          if (isInvalidGrant) {
+            return NextResponse.json(
+              { error: 'QuickBooks authentication failed. Please disconnect and reconnect your account.' },
+              { status: 401 }
+            );
+          }
+
+          throw error; // Throw original error if retry fails
+        }
+      } else {
+        throw error;
+      }
+    }
     
     const results = {
       total: payments.length,
