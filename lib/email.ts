@@ -1,23 +1,11 @@
-import nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 
-const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com', 
-  port: 465,
-  secure: true,
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-  // Add timeouts to fail fast if blocked
-  connectionTimeout: 10000, // 10 seconds
-  greetingTimeout: 10000,
-  socketTimeout: 10000,
-});
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 export async function sendLoginOtp(email: string, otp: string) {
   try {
-    const mailOptions = {
-      from: process.env.EMAIL_USER,
+    const { data, error } = await resend.emails.send({
+      from: process.env.EMAIL_FROM || 'onboarding@resend.dev',
       to: email,
       subject: 'Your Login OTP code',
       text: `Your login code is: ${otp}\n\nThis code will expire in 10 minutes.`,
@@ -32,16 +20,16 @@ export async function sendLoginOtp(email: string, otp: string) {
           <p style="color: #6b7280; font-size: 14px;">If you didn't request this code, you can ignore this email.</p>
         </div>
       `,
-    };
+    });
 
-    await transporter.sendMail(mailOptions);
-    return { success: true };
+    if (error) {
+      console.error('Resend Error:', error);
+      return { success: false, error };
+    }
+
+    return { success: true, data };
   } catch (error) {
     console.error('Error sending OTP email:', error);
-    if (error instanceof Error && (error as any).responseCode === 535) {
-      console.error('Authentication failed. Please check your EMAIL_USER and EMAIL_PASS environment variables.');
-      console.error('Make sure you are using an App Password if 2FA is enabled.');
-    }
     return { success: false, error };
   }
 }
