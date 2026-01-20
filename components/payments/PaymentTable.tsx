@@ -11,7 +11,9 @@ interface PaymentTableProps {
   sortBy: PaymentSortField;
   sortDirection: SortDirection;
   onSort: (field: PaymentSortField) => void;
+  onLink?: (payment: Payment) => void;
   totalItems?: number;
+  children?: React.ReactNode;
 }
 
 export default function PaymentTable({
@@ -21,7 +23,9 @@ export default function PaymentTable({
   sortBy,
   sortDirection,
   onSort,
+  onLink,
   totalItems,
+  children
 }: PaymentTableProps) {
   const getSortIcon = (field: PaymentSortField) => {
     if (sortBy !== field) {
@@ -107,15 +111,23 @@ export default function PaymentTable({
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 w-[200px]">
                 Notes
               </th>
+              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 w-[80px]">
+                Actions
+              </th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
             {paginatedPayments.map((payment) => (
-              <PaymentTableRow key={payment.id} payment={payment} />
+              <PaymentTableRow key={payment.id} payment={payment} onLink={onLink} />
             ))}
           </tbody>
         </table>
       </div>
+      {children && (
+        <div className="border-t border-gray-200 px-6 py-4 bg-white rounded-b-xl">
+          {children}
+        </div>
+      )}
     </div>
   );
 }

@@ -11,6 +11,7 @@ interface InvoiceTableProps {
   onView: (invoice: Invoice) => void;
   onEdit: (invoice: Invoice) => void;
   onPay: (invoice: Invoice) => void;
+  onLink?: (invoice: Invoice) => void;
   onDelete: (invoice: Invoice) => void;
   onShip: (invoice: Invoice) => void;
   onCreateFirst: () => void;
@@ -19,6 +20,7 @@ interface InvoiceTableProps {
   typeFilter: string;
   sortBy: string;
   onSortChange: (sort: string) => void;
+  children?: React.ReactNode;
 }
 
 export default function InvoiceTable({
@@ -28,6 +30,7 @@ export default function InvoiceTable({
   onView,
   onEdit,
   onPay,
+  onLink,
   onDelete,
   onShip,
   onCreateFirst,
@@ -36,6 +39,7 @@ export default function InvoiceTable({
   typeFilter,
   sortBy,
   onSortChange,
+  children
 }: InvoiceTableProps) {
   const getSortIcon = (column: string) => {
     if (!sortBy.startsWith(column)) return null;
@@ -169,6 +173,7 @@ export default function InvoiceTable({
                 onView={onView}
                 onEdit={onEdit}
                 onPay={onPay}
+                onLink={onLink}
                 onDelete={onDelete}
                 onShip={onShip}
               />
@@ -176,6 +181,11 @@ export default function InvoiceTable({
           </tbody>
         </table>
       </div>
+      {children && (
+        <div className="border-t border-gray-200 px-6 py-4 bg-white rounded-b-xl">
+          {children}
+        </div>
+      )}
     </div>
   );
 }

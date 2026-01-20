@@ -10,6 +10,7 @@ import {
   ConfirmModal,
   ShipInvoiceModal,
   ShipmentDetailsModal,
+  LinkPaymentModal,
 } from "../../components/invoices";
 import { ToastProvider, useToastContext } from "../../components/ToastContext";
 import Pagination from "../../components/Pagination";
@@ -28,6 +29,7 @@ function InvoicesPageContent() {
     filteredInvoices,
     paginatedInvoices,
     isLoading,
+    totalItems,
     statusFilter,
     setStatusFilter,
     typeFilter,
@@ -83,6 +85,15 @@ function InvoicesPageContent() {
   // Shipment Details Modal State
   const [showShipmentDetailsModal, setShowShipmentDetailsModal] = useState(false);
   const [viewingShipmentInvoice, setViewingShipmentInvoice] = useState<any>(null);
+
+  // Link Payment Modal State
+  const [showLinkModal, setShowLinkModal] = useState(false);
+  const [linkingInvoice, setLinkingInvoice] = useState<any>(null);
+
+  const handleOpenLinkModal = (invoice: any) => {
+    setLinkingInvoice(invoice);
+    setShowLinkModal(true);
+  };
 
   const handleShipAction = (invoice: any) => {
     if (invoice.shipmentId) {
@@ -146,6 +157,7 @@ function InvoicesPageContent() {
             onView={handleViewInvoice}
             onEdit={handleEditInvoice}
             onPay={handleOpenPaymentModal}
+            onLink={handleOpenLinkModal}
             onDelete={handleDeleteClick}
             onShip={handleShipAction}
             onCreateFirst={() => setShowCreateModal(true)}
@@ -154,22 +166,20 @@ function InvoicesPageContent() {
             typeFilter={typeFilter}
             sortBy={sortBy}
             onSortChange={setSortBy}
-          />
+          >
+            {/* Pagination */}
+            {!isLoading && (
+              <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onPageChange={handlePageChange}
+                itemsPerPage={itemsPerPage}
+                onItemsPerPageChange={handleItemsPerPageChange}
+                totalItems={totalItems}
+              />
+            )}
+          </InvoiceTable>
         </div>
-
-        {/* Pagination */}
-        {!isLoading && (
-          <div className="flex-none mt-4">
-            <Pagination
-              currentPage={currentPage}
-              totalPages={totalPages}
-              onPageChange={handlePageChange}
-              itemsPerPage={itemsPerPage}
-              onItemsPerPageChange={handleItemsPerPageChange}
-              totalItems={stats.total}
-            />
-          </div>
-        )}
       </main>
 
       {/* Modals */}
@@ -245,6 +255,19 @@ function InvoicesPageContent() {
           showSuccess("Shipment created and attached to invoice");
         }}
         onError={showError}
+      />
+
+      <LinkPaymentModal
+        isOpen={showLinkModal}
+        onClose={() => {
+          setShowLinkModal(false);
+          setLinkingInvoice(null);
+        }}
+        invoice={linkingInvoice}
+        onSuccess={() => {
+          fetchInvoices();
+          showSuccess("Payment linked successfully!");
+        }}
       />
 
       <CSVUploadModal

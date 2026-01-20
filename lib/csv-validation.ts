@@ -43,7 +43,7 @@ export function isValidDate(dateString: string): boolean {
 }
 
 /**
- * Validate items format: "Item A x2;Item B x1"
+ * Validate items format: "Item A x2 @ 10;Item B x1 @ 50"
  */
 export function isValidItemsFormat(items: string): boolean {
   if (!items || items.trim() === '') return false;
@@ -53,13 +53,39 @@ export function isValidItemsFormat(items: string): boolean {
     const trimmed = item.trim();
     if (trimmed === '') continue;
     
-    // Check if contains 'x' followed by number
+    // Check if contains 'x' followed by number for quantity
+    // Basic format: Name xQuantity [@ Price]
+    // Regex: .+(x\s*\d+)(\s*@\s*\d+(\.\d+)?)?
+    
     if (!trimmed.includes(' x')) return false;
     
-    const parts = trimmed.split(' x');
-    if (parts.length !== 2) return false;
+    // Parse parts manually for validation
+    const qtyParts = trimmed.split(' x');
+    // widget @ 10 x 5 -> invalid.
+    // widget x 5 @ 10 -> valid.
     
-    const quantity = parseInt(parts[1]);
+    // The last part might contain price if split by ' x' carefully?
+    // Let's rely on a simpler check: must start with text, have ' x', and end with number or price
+    
+    // Split by '@' if present
+    const priceParts = trimmed.split('@');
+    let qtyPart = trimmed;
+    
+    if (priceParts.length > 2) return false; // multiple @
+    if (priceParts.length === 2) {
+        // Validation price part
+        const price = parseFloat(priceParts[1]);
+        if (isNaN(price) || price < 0) return false;
+        qtyPart = priceParts[0].trim();
+    }
+    
+    // Validate quantity part: "Item Name x 5"
+    const finalParts = qtyPart.split(' x');
+    if (finalParts.length < 2) return false; // Needs at least "Name" and "Qty"
+    
+    const qtyStr = finalParts[finalParts.length - 1].trim(); // Get the last part as quantity
+    const quantity = parseInt(qtyStr);
+    
     if (isNaN(quantity) || quantity <= 0) return false;
   }
   
@@ -100,7 +126,7 @@ export function validateInvoiceRow(row: InvoiceRow, rowIndex: number): Validatio
     errors.push({
       row: rowIndex,
       field: 'items',
-      error: 'Invalid items format. Use: "Item A x2;Item B x1"'
+      error: 'Invalid items format. Use: "Item A x2 @ 10; Item B x1 @ 5"'
     });
   }
   
@@ -266,13 +292,35 @@ export function parseItemsToJSON(itemsString: string): any[] {
     const trimmed = item.trim();
     if (trimmed === '') continue;
     
-    const parts = trimmed.split(' x');
-    if (parts.length === 2) {
-      items.push({
-        description: parts[0].trim(),
-        quantity: parseInt(parts[1]),
-        price: 0 // Will be calculated from subtotal
-      });
+    // Check for Price "@"
+    let descriptionPart = trimmed;
+    let priceItem = 0;
+    
+    if (trimmed.includes('@')) {
+        const parts = trimmed.split('@');
+        if (parts.length === 2) {
+            priceItem = parseFloat(parts[1]);
+            descriptionPart = parts[0].trim();
+        }
+    }
+    
+    // Split "Name x Qty"
+    // Use lastIndexOf to handle names with 'x' (though our splitter expected ' x')
+    // The validator enforces ' x'.
+    const xIndex = descriptionPart.lastIndexOf(' x');
+    
+    if (xIndex !== -1) {
+        const name = descriptionPart.substring(0, xIndex).trim();
+        const qtyStr = descriptionPart.substring(xIndex + 2).trim();
+        const quantity = parseInt(qtyStr);
+        
+        if (!isNaN(quantity)) {
+            items.push({
+                name: name, // Fixed: use 'name' instead of 'description' to match frontend/schema
+                quantity: quantity,
+                price: priceItem
+            });
+        }
     }
   }
   

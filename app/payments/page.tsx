@@ -4,7 +4,7 @@ import { useState, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
 import Navigation from '../../components/Navigation';
 import Pagination from '../../components/Pagination';
-import { RecordPaymentModal, ViewPaymentModal } from '../../components/payments';
+import { RecordPaymentModal, ViewPaymentModal, LinkInvoiceModal } from '../../components/payments';
 import { ToastProvider, useToastContext } from '../../components/ToastContext';
 import CSVUploadModal from '../../components/CSVUploadModal';
 import PaymentToolbar from '../../components/payments/PaymentToolbar';
@@ -51,6 +51,15 @@ function PaymentsPageContent() {
     stats,
     filteredStats,
   } = usePayments();
+
+  // Link Invoice Modal State
+  const [showLinkModal, setShowLinkModal] = useState(false);
+  const [linkingPayment, setLinkingPayment] = useState<any>(null);
+
+  const handleOpenLinkModal = (payment: any) => {
+    setLinkingPayment(payment);
+    setShowLinkModal(true);
+  };
 
   const handleSync = async () => {
     showSuccess('Sync started...');
@@ -127,19 +136,18 @@ function PaymentsPageContent() {
             sortBy={sortBy}
             sortDirection={sortDirection}
             onSort={handleSort}
+            onLink={handleOpenLinkModal}
             totalItems={totalItems}
-          />
-        </div>
-
-        <div className="flex-none mt-4">
-          <Pagination
-            currentPage={currentPage}
-            totalPages={totalPages}
-            totalItems={totalItems}
-            itemsPerPage={itemsPerPage}
-            onPageChange={handlePageChange}
-            onItemsPerPageChange={handleItemsPerPageChange}
-          />
+          >
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              totalItems={totalItems}
+              itemsPerPage={itemsPerPage}
+              onPageChange={handlePageChange}
+              onItemsPerPageChange={handleItemsPerPageChange}
+            />
+          </PaymentTable>
         </div>
       </main>
 
@@ -159,6 +167,19 @@ function PaymentsPageContent() {
           setViewingPayment(null);
         }}
         payment={viewingPayment}
+      />
+
+      <LinkInvoiceModal
+        isOpen={showLinkModal}
+        onClose={() => {
+          setShowLinkModal(false);
+          setLinkingPayment(null);
+        }}
+        payment={linkingPayment}
+        onSuccess={() => {
+          fetchPayments();
+          showSuccess("Invoice linked successfully!");
+        }}
       />
 
       <CSVUploadModal

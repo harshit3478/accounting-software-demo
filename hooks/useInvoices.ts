@@ -38,6 +38,7 @@ interface UseInvoicesReturn {
   filteredInvoices: Invoice[];
   paginatedInvoices: Invoice[];
   isLoading: boolean;
+  totalItems: number;
 
   // Filters
   statusFilter: InvoiceStatusFilter;
@@ -500,6 +501,7 @@ export function useInvoices(
     filteredInvoices,
     paginatedInvoices,
     isLoading,
+    totalItems,
     legacyFilter,
     setLegacyFilter,
     statusFilter,

@@ -4,9 +4,10 @@ import type { Payment } from '../../hooks/usePayments';
 
 interface PaymentTableRowProps {
   payment: Payment;
+  onLink?: (payment: Payment) => void;
 }
 
-export default function PaymentTableRow({ payment }: PaymentTableRowProps) {
+export default function PaymentTableRow({ payment, onLink }: PaymentTableRowProps) {
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
       year: 'numeric',
@@ -70,6 +71,16 @@ export default function PaymentTableRow({ payment }: PaymentTableRowProps) {
       </td>
       <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate">
         {payment.notes || <span className="text-gray-400">-</span>}
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+        {!payment.isMatched && onLink && (
+          <button
+            onClick={() => onLink(payment)}
+            className="text-indigo-600 hover:text-indigo-900"
+          >
+            Link
+          </button>
+        )}
       </td>
     </tr>
   );

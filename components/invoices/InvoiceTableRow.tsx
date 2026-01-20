@@ -8,6 +8,7 @@ interface InvoiceTableRowProps {
   onView: (invoice: Invoice) => void;
   onEdit: (invoice: Invoice) => void;
   onPay: (invoice: Invoice) => void;
+  onLink?: (invoice: Invoice) => void;
   onDelete: (invoice: Invoice) => void;
   onShip?: (invoice: Invoice) => void;
 }
@@ -18,6 +19,7 @@ export default function InvoiceTableRow({
   onView,
   onEdit,
   onPay,
+  onLink,
   onDelete,
   onShip,
 }: InvoiceTableRowProps) {
@@ -104,6 +106,15 @@ export default function InvoiceTableRow({
           >
             {invoice.status === "paid" ? "Paid" : "Pay"}
           </button>
+          {invoice.status !== "paid" && onLink && (
+            <button
+              onClick={() => onLink(invoice)}
+              className="text-teal-600 hover:text-teal-900"
+              title="Link existing payment"
+            >
+              Link
+            </button>
+          )}
           <button
             onClick={() => onShip?.(invoice)}
             className={invoice.shipmentId ? "text-amber-600 hover:text-amber-900" : "text-sky-600 hover:text-sky-900"}
