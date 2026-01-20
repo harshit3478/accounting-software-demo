@@ -27,8 +27,8 @@ export default function RootLayout({
       >
         <AuthProvider>
           {children}
-          <Analytics />
-          <SpeedInsights />
+          {/* <Analytics /> */}
+          {/* <SpeedInsights /> */}
 
         </AuthProvider>
       </body>
