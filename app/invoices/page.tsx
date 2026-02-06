@@ -80,6 +80,8 @@ function InvoicesPageContent() {
     handlePageChange,
     handleItemsPerPageChange,
     stats,
+    layawayOverdue,
+    setLayawayOverdue
   } = useInvoices(showSuccess, showError, showInfo);
 
   // Shipment Details Modal State
@@ -137,6 +139,8 @@ function InvoicesPageContent() {
           onStatusFilterChange={setStatusFilter}
           typeFilter={typeFilter}
           onTypeFilterChange={setTypeFilter}
+          layawayOverdue={layawayOverdue}
+          onLayawayOverdueChange={setLayawayOverdue}
           searchTerm={searchTerm}
           onSearchChange={setSearchTerm}
           dateRange={dateRange}

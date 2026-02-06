@@ -15,6 +15,8 @@ interface InvoiceToolbarProps {
   onStatusFilterChange: (filter: InvoiceStatusFilter) => void;
   typeFilter: InvoiceTypeFilter;
   onTypeFilterChange: (filter: InvoiceTypeFilter) => void;
+  layawayOverdue: boolean;
+  onLayawayOverdueChange: (overdue: boolean) => void;
   searchTerm: string;
   onSearchChange: (term: string) => void;
   dateRange: { start: string; end: string } | null;
@@ -29,6 +31,8 @@ export default function InvoiceToolbar({
   onStatusFilterChange,
   typeFilter,
   onTypeFilterChange,
+  layawayOverdue,
+  onLayawayOverdueChange,
   searchTerm,
   onSearchChange,
   dateRange,
@@ -139,6 +143,17 @@ export default function InvoiceToolbar({
             </PopoverContent>
           </Popover>
 
+          {/* Layaway Overdue Button */}
+          <Button
+            variant={layawayOverdue ? "default" : "outline"}
+            size="sm"
+            onClick={() => onLayawayOverdueChange(!layawayOverdue)}
+            className={`h-9 ${layawayOverdue ? 'bg-red-600 hover:bg-red-700 text-white' : 'border-dashed'}`}
+            title="Show Layaway invoices with 2 or more missed payment dates"
+          >
+           Overdue {'>'} 2
+          </Button>
+
           {/* Date Range Picker */}
           <Popover open={showDatePicker} onOpenChange={setShowDatePicker}>
             <PopoverTrigger asChild>
@@ -178,7 +193,7 @@ export default function InvoiceToolbar({
             </PopoverContent>
           </Popover>
 
-          {(statusFilter !== 'all' || typeFilter !== 'all' || dateRange || searchTerm) && (
+          {(statusFilter !== 'all' || typeFilter !== 'all' || layawayOverdue || dateRange || searchTerm) && (
             <Button 
               variant="ghost" 
               size="sm" 
@@ -186,6 +201,7 @@ export default function InvoiceToolbar({
               onClick={() => {
                 onStatusFilterChange('all');
                 onTypeFilterChange('all');
+                onLayawayOverdueChange(false);
                 onSearchChange('');
                 onDateRangeChange(null);
               }}

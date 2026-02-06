@@ -64,6 +64,11 @@ export default function InvoiceTableRow({
       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 max-w-[200px] truncate" title={invoice.clientName}>
         {invoice.clientName}
       </td>
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 max-w-[150px] truncate" title={invoice.items?.map(i => i.name).join(", ")}>
+        {invoice.items && invoice.items.length > 0 
+          ? invoice.items.map(i => i.name).join(", ")
+          : <span className="text-gray-400">-</span>}
+      </td>
       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
         ${invoice.amount.toLocaleString()}
       </td>
@@ -74,6 +79,9 @@ export default function InvoiceTableRow({
             {Math.round((invoice.paidAmount / invoice.amount) * 100)}% paid
           </div>
         )}
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+        {formatDate(invoice.createdAt)}
       </td>
       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
         {formatDate(invoice.dueDate)}

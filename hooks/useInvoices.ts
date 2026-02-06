@@ -45,6 +45,8 @@ interface UseInvoicesReturn {
   setStatusFilter: (filter: InvoiceStatusFilter) => void;
   typeFilter: InvoiceTypeFilter;
   setTypeFilter: (filter: InvoiceTypeFilter) => void;
+  layawayOverdue: boolean;
+  setLayawayOverdue: (overdue: boolean) => void;
   
   // Legacy filter support (to avoid breaking other components temporarily)
   legacyFilter: string; 
@@ -136,6 +138,10 @@ export function useInvoices(
   const [typeFilter, setTypeFilterState] = useState<InvoiceTypeFilter>(
     (searchParams.get("type") as InvoiceTypeFilter) || "all"
   );
+  const [layawayOverdue, setLayawayOverdueState] = useState(
+     searchParams.get("overdueDates") === "2"
+  );
+
   const [searchTerm, setSearchTermState] = useState(searchParams.get("search") || "");
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState(searchTerm);
   
@@ -195,6 +201,12 @@ export function useInvoices(
     setTypeFilterState(type);
     setCurrentPage(1);
     updateUrl({ type, page: "1" });
+  };
+
+  const setLayawayOverdue = (overdue: boolean) => {
+    setLayawayOverdueState(overdue);
+    setCurrentPage(1);
+    updateUrl({ overdueDates: overdue ? "2" : null, page: "1" });
   };
 
   const setLegacyFilter = (val: any) => {
@@ -272,7 +284,7 @@ export function useInvoices(
   // Fetch invoices when params change
   useEffect(() => {
     fetchInvoices();
-  }, [statusFilter, typeFilter, debouncedSearchTerm, sortBy, dateRange, currentPage, itemsPerPage]);
+  }, [statusFilter, typeFilter, layawayOverdue, debouncedSearchTerm, sortBy, dateRange, currentPage, itemsPerPage]);
 
   const fetchInvoices = async () => {
     setIsLoading(true);
@@ -282,6 +294,7 @@ export function useInvoices(
       params.set("limit", itemsPerPage.toString());
       if (statusFilter !== "all") params.set("status", statusFilter);
       if (typeFilter !== "all") params.set("type", typeFilter);
+      if (layawayOverdue) params.set("overdueDates", "2");
       if (debouncedSearchTerm) params.set("search", debouncedSearchTerm);
       if (dateRange) {
         params.set("startDate", dateRange.start);
@@ -556,5 +569,7 @@ export function useInvoices(
     handlePageChange,
     handleItemsPerPageChange,
     stats,
+    layawayOverdue,
+    setLayawayOverdue
   };
 }

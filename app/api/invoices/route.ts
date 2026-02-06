@@ -21,6 +21,7 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get("search") || "";
     const status = searchParams.get("status") || "all";
     const type = searchParams.get("type") || "all";
+    const overdueDates = searchParams.get("overdueDates"); // "2" for > 2 due dates logic
     const startDate = searchParams.get("startDate");
     const endDate = searchParams.get("endDate");
 
@@ -30,7 +31,7 @@ export async function GET(request: NextRequest) {
     // Search filter
     if (search) {
       where.OR = [
-        { invoiceNumber: { contains: search } }, // Removed mode: 'insensitive' for MySQL compatibility if needed, or keep if supported
+        { invoiceNumber: { contains: search } },
         { clientName: { contains: search } },
       ];
     }
@@ -45,6 +46,44 @@ export async function GET(request: NextRequest) {
       where.isLayaway = true;
     } else if (type === "cash") {
       where.isLayaway = false;
+    }
+
+    // Overdue Dates Logic (Layaway specific)
+    if (overdueDates === "2") {
+      where.isLayaway = true; // Implicitly layaway
+      if (status === "all") {
+         where.status = { not: "paid" }; // Only unpaid/partial/overdue
+      }
+
+      // Calculate cutoff date: Find the 2nd most recent 15th or 30th/End-of-Month
+      const now = new Date();
+      let datesFound = 0;
+      let checkDate = new Date(now);
+      
+      // Go back day by day until we find 2 due dates
+      while (datesFound < 2) {
+        checkDate.setDate(checkDate.getDate() - 1);
+        const day = checkDate.getDate();
+        // Check if this date is a due date (15th or last day of month)
+        const is15th = day === 15;
+        
+        const testDate = new Date(checkDate);
+        testDate.setDate(testDate.getDate() + 1);
+        const isLastDay = testDate.getDate() === 1; // If adding 1 day makes it 1st of next month, today is last day
+
+        // User restriction: "15th/30th". We'll assume end of month for 30th/31st/28th
+        if (is15th || isLastDay) {
+           datesFound++;
+        }
+      }
+      
+      // Any invoice created BEFORE this checkDate has passed at least 2 due dates
+      // We use start of day to be inclusive of the full checkDate? 
+      // If created ON checkDate (e.g. 15th), it is due immediately? Usually next cycle.
+      // Let's assume strict: if created BEFORE the 2nd payment date.
+      where.createdAt = {
+        lte: checkDate
+      };
     }
 
     // Date range filter
