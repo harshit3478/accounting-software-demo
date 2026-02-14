@@ -7,7 +7,7 @@ interface Payment {
   id: number;
   amount: number;
   paymentDate: string;
-  method: string;
+  method: { id: number; name: string; icon?: string; color?: string } | string;
   notes?: string;
   isMatched: boolean;
   paymentMatches: { amount: string | number }[];

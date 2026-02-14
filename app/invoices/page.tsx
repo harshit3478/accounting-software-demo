@@ -81,7 +81,9 @@ function InvoicesPageContent() {
     handleItemsPerPageChange,
     stats,
     layawayOverdue,
-    setLayawayOverdue
+    setLayawayOverdue,
+    customerIdFilter,
+    setCustomerIdFilter,
   } = useInvoices(showSuccess, showError, showInfo);
 
   // Shipment Details Modal State
@@ -150,6 +152,20 @@ function InvoicesPageContent() {
           onImportClick={() => setShowCSVUploadModal(true)}
         />
         <InvoiceStats stats={stats} showFiltered={statusFilter !== 'all' || typeFilter !== 'all' || !!searchTerm || !!dateRange} />
+        {customerIdFilter && (
+          <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+            </svg>
+            <span>Showing invoices for a specific client</span>
+            <button
+              onClick={() => setCustomerIdFilter(null)}
+              className="ml-auto text-blue-600 hover:text-blue-800 font-medium"
+            >
+              Clear
+            </button>
+          </div>
+        )}
       </div>
 
       <main className="flex-1 px-4 sm:px-6 lg:px-8 pb-4 min-h-0 flex flex-col">
@@ -164,6 +180,7 @@ function InvoicesPageContent() {
             onLink={handleOpenLinkModal}
             onDelete={handleDeleteClick}
             onShip={handleShipAction}
+            onFilterByClient={setCustomerIdFilter}
             onCreateFirst={() => setShowCreateModal(true)}
             searchTerm={searchTerm}
             statusFilter={statusFilter}
@@ -239,9 +256,9 @@ function InvoicesPageContent() {
           setDeletingInvoice(null);
         }}
         onConfirm={handleDeleteConfirm}
-        title="Delete Invoice"
-        message={`Are you sure you want to delete invoice ${deletingInvoice?.invoiceNumber}? This action cannot be undone.`}
-        confirmText="Delete Invoice"
+        title="Deactivate Invoice"
+        message={`Are you sure you want to deactivate invoice ${deletingInvoice?.invoiceNumber}? It will be marked as inactive and hidden from default views.`}
+        confirmText="Deactivate Invoice"
         cancelText="Cancel"
         type="danger"
         isLoading={isDeleting}

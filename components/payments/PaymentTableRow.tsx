@@ -16,14 +16,12 @@ export default function PaymentTableRow({ payment, onLink }: PaymentTableRowProp
     });
   };
 
-  const getMethodBadgeClass = (method: string) => {
-    const classes = {
-      cash: 'bg-amber-100 text-amber-800',
-      zelle: 'bg-green-100 text-green-800',
-      quickbooks: 'bg-blue-100 text-blue-800',
-      layaway: 'bg-purple-100 text-purple-800',
+  const getMethodBadgeStyle = (method: Payment['method']) => {
+    const color = method?.color || '#6B7280';
+    return {
+      backgroundColor: `${color}20`,
+      color: color,
     };
-    return `px-2 py-1 rounded-full text-xs font-medium ${classes[method as keyof typeof classes]}`;
   };
 
   return (
@@ -65,15 +63,18 @@ export default function PaymentTableRow({ payment, onLink }: PaymentTableRowProp
         ${payment.amount.toFixed(2)}
       </td>
       <td className="px-6 py-4 whitespace-nowrap">
-        <span className={getMethodBadgeClass(payment.method)}>
-          {payment.method.charAt(0).toUpperCase() + payment.method.slice(1)}
+        <span
+          className="px-2 py-1 rounded-full text-xs font-medium"
+          style={getMethodBadgeStyle(payment.method)}
+        >
+          {payment.method?.name || 'Unknown'}
         </span>
       </td>
       <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate">
         {payment.notes || <span className="text-gray-400">-</span>}
       </td>
       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-        {!payment.isMatched && onLink && (
+        {!payment.invoice && (!payment.paymentMatches || payment.paymentMatches.length === 0) && onLink && (
           <button
             onClick={() => onLink(payment)}
             className="text-indigo-600 hover:text-indigo-900"

@@ -1,6 +1,6 @@
 'use client';
 
-import type { PaymentMethodFilter, DateRange } from '../../hooks/usePayments';
+import type { PaymentMethodFilter, DateRange, PaymentMethodType } from '../../hooks/usePayments';
 import DateRangePicker from '../DateRangePicker';
 
 interface PaymentFiltersProps {
@@ -10,7 +10,8 @@ interface PaymentFiltersProps {
   onSearchChange: (query: string) => void;
   dateRange: DateRange | null;
   onDateRangeChange: (range: DateRange | null) => void;
-    onExportPDF?: () => void;
+  onExportPDF?: () => void;
+  paymentMethods?: PaymentMethodType[];
 }
 
 export default function PaymentFilters({
@@ -20,14 +21,16 @@ export default function PaymentFilters({
   onSearchChange,
   dateRange,
   onDateRangeChange,
-  onExportPDF
+  onExportPDF,
+  paymentMethods = [],
 }: PaymentFiltersProps) {
-  const filters: { value: PaymentMethodFilter; label: string; colorClass: string }[] = [
-    { value: 'all', label: 'All Payments', colorClass: 'bg-blue-600' },
-    { value: 'cash', label: 'Cash', colorClass: 'bg-amber-600' },
-    { value: 'zelle', label: 'Zelle', colorClass: 'bg-green-600' },
-    { value: 'quickbooks', label: 'QuickBooks', colorClass: 'bg-blue-600' },
-    { value: 'layaway', label: 'Layaway', colorClass: 'bg-purple-600' },
+  const filters: { value: PaymentMethodFilter; label: string; color: string }[] = [
+    { value: 'all', label: 'All Payments', color: '#2563EB' },
+    ...paymentMethods.map((m) => ({
+      value: String(m.id) as PaymentMethodFilter,
+      label: m.name,
+      color: m.color,
+    })),
   ];
 
   return (
@@ -88,9 +91,10 @@ export default function PaymentFilters({
               onClick={() => onFilterChange(filter.value)}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                 filterMethod === filter.value
-                  ? `${filter.colorClass} text-white`
+                  ? 'text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
+              style={filterMethod === filter.value ? { backgroundColor: filter.color } : undefined}
             >
               {filter.label}
             </button>

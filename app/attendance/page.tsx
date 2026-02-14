@@ -153,14 +153,14 @@ export default function AttendancePage() {
             disabled={checkingIn}
             className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 disabled:bg-gray-400"
           >
-            {checkingIn ? "Checking In..." : "Check In"}
+            {checkingIn ? "Logging In..." : "Log In"}
           </button>
           <button
             onClick={doCheckOut}
             disabled={checkingOut}
             className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 disabled:bg-gray-400"
           >
-            {checkingOut ? "Checking Out..." : "Check Out"}
+            {checkingOut ? "Logging Out..." : "Log Out"}
           </button>
           <button
             onClick={() => setShowExportModal(true)}
@@ -193,8 +193,8 @@ export default function AttendancePage() {
               <thead>
                 <tr className="text-left text-xs text-gray-500">
                   <th>Date</th>
-                  <th>Check In</th>
-                  <th>Check Out</th>
+                  <th>Log In</th>
+                  <th>Log Out</th>
                   <th>Total Hours</th>
                   <th>Overtime</th>
                 </tr>

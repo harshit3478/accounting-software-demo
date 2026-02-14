@@ -53,6 +53,7 @@ body {
 .status-pending { background-color: #fef3c7; color: #92400e; }
 .status-overdue { background-color: #fee2e2; color: #991b1b; }
 .status-partial { background-color: #e0e7ff; color: #3730a3; }
+.status-inactive { background-color: #f3f4f6; color: #6b7280; }
 
 .filter-active { background-color: #3b82f6; color: white; }
 

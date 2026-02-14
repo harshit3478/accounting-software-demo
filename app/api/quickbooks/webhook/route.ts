@@ -61,10 +61,14 @@ export async function POST(request: NextRequest) {
 async function processPaymentEvent(entity: any, event: any) {
   const qbPaymentId = entity.id;
   const operation = entity.operation;
-  
+
   try {
     const realmId = event.realmId;
-    
+
+    // Get all payment methods and create a mapping
+    const allMethods = await prisma.paymentMethodEntry.findMany();
+    const methodMap = new Map(allMethods.map(m => [m.name.toLowerCase(), m.id]));
+
     // Find the connection for this realm
     const connection = await prisma.quickBooksConnection.findFirst({
       where: {
@@ -133,14 +137,16 @@ async function processPaymentEvent(entity: any, event: any) {
       console.warn('Failed to fetch from QuickBooks API, using webhook payload:', error.message);
       paymentData = extractPaymentDataFromWebhook(entity, event);
     }
-    
+
     // Create payment in our system
     try {
+      const methodId = methodMap.get(paymentData.methodName.toLowerCase()) || methodMap.get('cash')!;
+
       const payment = await prisma.payment.create({
         data: {
           userId: connection.userId,
           amount: paymentData.amount,
-          method: paymentData.method,
+          methodId,
           paymentDate: paymentData.date,
           notes: paymentData.notes,
           quickbooksId: qbPaymentId,
@@ -189,7 +195,7 @@ async function processPaymentEvent(entity: any, event: any) {
 
 async function fetchPaymentFromQuickBooks(qbo: any, paymentId: string): Promise<{
   amount: number;
-  method: 'cash' | 'zelle' | 'quickbooks' | 'layaway';
+  methodName: string;
   date: Date;
   notes: string;
 }> {
@@ -203,12 +209,12 @@ async function fetchPaymentFromQuickBooks(qbo: any, paymentId: string): Promise<
       const amount = parseFloat(payment.TotalAmt || '0');
       const methodStr = payment.PaymentMethodRef?.name || payment.PaymentType || 'unknown';
       const date = payment.TxnDate ? new Date(payment.TxnDate) : new Date();
-      
+
       // Extract customer and reference info
       const customerName = payment.CustomerRef?.name || 'Unknown Customer';
       const refNumber = payment.PaymentRefNum || payment.DocNumber || '';
       const memo = payment.PrivateNote || '';
-      
+
       const notes = [
         `QuickBooks Payment`,
         `Customer: ${customerName}`,
@@ -218,7 +224,7 @@ async function fetchPaymentFromQuickBooks(qbo: any, paymentId: string): Promise<
 
       resolve({
         amount,
-        method: mapQuickBooksPaymentMethod(methodStr),
+        methodName: mapQuickBooksPaymentMethod(methodStr),
         date,
         notes
       });
@@ -228,7 +234,7 @@ async function fetchPaymentFromQuickBooks(qbo: any, paymentId: string): Promise<
 
 function extractPaymentDataFromWebhook(entity: any, event: any): {
   amount: number;
-  method: 'cash' | 'zelle' | 'quickbooks' | 'layaway';
+  methodName: string;
   date: Date;
   notes: string;
 } {
@@ -236,7 +242,7 @@ function extractPaymentDataFromWebhook(entity: any, event: any): {
   const amount = parseFloat(entity.amount || '0');
   const methodStr = entity.paymentMethod || 'unknown';
   const date = entity.txnDate ? new Date(entity.txnDate) : new Date();
-  
+
   // Extract customer/memo information
   const customerName = entity.customerName || event.customerRef?.name || 'Unknown Customer';
   const memo = entity.memo || '';
@@ -244,7 +250,7 @@ function extractPaymentDataFromWebhook(entity: any, event: any): {
 
   return {
     amount,
-    method: mapQuickBooksPaymentMethod(methodStr),
+    methodName: mapQuickBooksPaymentMethod(methodStr),
     date,
     notes
   };

@@ -79,6 +79,9 @@ export async function GET(request: NextRequest) {
       }
     });
 
+    // Fetch payment methods
+    const allMethods = await prisma.paymentMethodEntry.findMany({ where: { isActive: true }, orderBy: { sortOrder: 'asc' } });
+
     // Fetch payments within date range
     const payments = await prisma.payment.findMany({
       where: {
@@ -90,7 +93,7 @@ export async function GET(request: NextRequest) {
       select: {
         id: true,
         amount: true,
-        method: true,
+        methodId: true,
         paymentDate: true
       }
     });
@@ -116,46 +119,44 @@ export async function GET(request: NextRequest) {
       values: Object.values(revenueData)
     };
 
-    // Generate payment methods breakdown over time
-    const paymentMethodData: { [method: string]: { [date: string]: number } } = {
-      cash: {},
-      zelle: {},
-      quickbooks: {},
-      layaway: {}
-    };
+    // Generate payment methods breakdown over time (dynamic)
+    const methodMap = new Map(allMethods.map(m => [m.id, m]));
+    const paymentMethodData: { [methodId: number]: { [date: string]: number } } = {};
 
-    dates.forEach(date => {
-      const dateStr = date.toISOString().split('T')[0];
-      Object.keys(paymentMethodData).forEach(method => {
-        paymentMethodData[method][dateStr] = 0;
+    for (const m of allMethods) {
+      paymentMethodData[m.id] = {};
+      dates.forEach(date => {
+        paymentMethodData[m.id][date.toISOString().split('T')[0]] = 0;
       });
-    });
+    }
 
     payments.forEach(payment => {
       const dateStr = payment.paymentDate.toISOString().split('T')[0];
-      const method = payment.method.toLowerCase();
-      if (paymentMethodData[method] && paymentMethodData[method][dateStr] !== undefined) {
-        paymentMethodData[method][dateStr] += payment.amount.toNumber();
+      if (paymentMethodData[payment.methodId]?.[dateStr] !== undefined) {
+        paymentMethodData[payment.methodId][dateStr] += payment.amount.toNumber();
       }
     });
 
-    const paymentMethodsChartData = {
+    // Build dynamic chart data keyed by method name
+    const paymentMethodsChartData: any = {
       dates: dates.map(d => formatDate(d)),
-      cash: Object.values(paymentMethodData.cash),
-      zelle: Object.values(paymentMethodData.zelle),
-      quickbooks: Object.values(paymentMethodData.quickbooks),
-      layaway: Object.values(paymentMethodData.layaway)
+      methods: allMethods.map(m => ({
+        id: m.id,
+        name: m.name,
+        color: m.color,
+        values: Object.values(paymentMethodData[m.id] || {}),
+      })),
     };
 
     // Calculate totals for summary
     const totalRevenue = invoices.reduce((sum, inv) => sum + inv.amount.toNumber(), 0);
     const totalPayments = payments.reduce((sum, pay) => sum + pay.amount.toNumber(), 0);
-    const paymentsByMethod = {
-      cash: payments.filter(p => p.method === 'cash').reduce((sum, p) => sum + p.amount.toNumber(), 0),
-      zelle: payments.filter(p => p.method === 'zelle').reduce((sum, p) => sum + p.amount.toNumber(), 0),
-      quickbooks: payments.filter(p => p.method === 'quickbooks').reduce((sum, p) => sum + p.amount.toNumber(), 0),
-      layaway: payments.filter(p => p.method === 'layaway').reduce((sum, p) => sum + p.amount.toNumber(), 0)
-    };
+    const paymentsByMethod: Record<string, number> = {};
+    for (const m of allMethods) {
+      paymentsByMethod[m.name.toLowerCase()] = payments
+        .filter(p => p.methodId === m.id)
+        .reduce((sum, p) => sum + p.amount.toNumber(), 0);
+    }
 
     return NextResponse.json({
       revenueChart: revenueChartData,

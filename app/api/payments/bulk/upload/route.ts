@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '../../../../../lib/auth';
 import Papa from 'papaparse';
 import prisma from '../../../../../lib/prisma';
-import { PaymentMethod } from '@prisma/client';
 import {
   validatePaymentRow,
   detectPaymentDuplicates,
@@ -64,25 +63,33 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
+    // Look up all payment methods by name for mapping
+    const allMethods = await prisma.paymentMethodEntry.findMany();
+    const methodMap = new Map(allMethods.map(m => [m.name.toLowerCase(), m.id]));
+
     // Create all payments in a transaction
-    // All payments will be unmatched (isMatched=false, invoiceId=null)
     const createdPayments = await prisma.$transaction(async (tx) => {
       const payments = [];
 
       for (const row of rows) {
         const amount = parseFloat(row.amount);
         const paymentDate = new Date(row.paymentDate);
-        const method = row.method.toLowerCase() as PaymentMethod;
+        const methodId = methodMap.get(row.method.toLowerCase());
+
+        if (!methodId) {
+          throw new Error(`Unknown payment method: ${row.method}`);
+        }
 
         const payment = await tx.payment.create({
           data: {
             amount,
             paymentDate,
-            method,
+            methodId,
             notes: null,
             userId: user.id,
             invoiceId: null,
-            isMatched: false // Unmatched - requires manual matching
+            isMatched: false,
+            source: "csv_upload",
           }
         });
 

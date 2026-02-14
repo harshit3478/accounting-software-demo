@@ -20,19 +20,8 @@ export default function Navigation() {
       label: "Documents",
       active: pathname === "/documents",
     },
-    // { href: '/settings', label: 'Settings', active: pathname === '/settings' },
-    // { href: '/statements', label: 'Statements', active: pathname === '/statements' },
   ];
 
-  // Remove the push for Trash - will be moved to Documents page
-
-  if (isAdmin) {
-    navItems.push({
-      href: "/admin/users",
-      label: "User Management",
-      active: pathname === "/admin/users",
-    });
-  }
   // Attendance for regular users (staff/accountant) only
   if (user && (user.role === "staff" || user.role === "accountant")) {
     navItems.push({
@@ -41,14 +30,16 @@ export default function Navigation() {
       active: pathname === "/attendance",
     });
   }
-  // Terms & Conditions admin page (admin or superadmin only)
+
   const isSuperAdmin =
     user?.email === process.env.NEXT_PUBLIC_SUPERADMIN_EMAIL || user?.id === 1;
+
+  // Settings page (admin only) - combines User Management, Terms, Payment Methods, QuickBooks
   if (isAdmin || isSuperAdmin) {
     navItems.push({
-      href: "/terms",
-      label: "Terms & Conditions",
-      active: pathname === "/terms",
+      href: "/settings",
+      label: "Settings",
+      active: pathname === "/settings",
     });
   }
 

@@ -127,15 +127,15 @@ export async function refreshQuickBooksToken(userId: number): Promise<void> {
   });
 }
 
-export function mapQuickBooksPaymentMethod(qbMethod: string): 'cash' | 'zelle' | 'quickbooks' | 'layaway' {
+export function mapQuickBooksPaymentMethod(qbMethod: string): string {
   const method = qbMethod.toLowerCase();
-  
-  // Map QuickBooks payment methods to our system
-  if (method.includes('cash')) return 'cash';
-  if (method.includes('zelle')) return 'zelle';
-  if (method.includes('credit') || method.includes('debit') || method.includes('card')) return 'quickbooks';
-  if (method.includes('check') || method.includes('bank')) return 'quickbooks';
-  
-  // Default to quickbooks for unknown methods
-  return 'quickbooks';
+
+  // Map QuickBooks payment methods to our system payment method names
+  if (method.includes('cash')) return 'Cash';
+  if (method.includes('zelle')) return 'Zelle';
+  if (method.includes('credit') || method.includes('debit') || method.includes('card')) return 'Card';
+  if (method.includes('check') || method.includes('bank')) return 'Check';
+
+  // Default to Cash for unknown methods
+  return 'Cash';
 }

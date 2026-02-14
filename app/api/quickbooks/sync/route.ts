@@ -96,6 +96,10 @@ export async function POST(request: NextRequest) {
       errors: [] as any[]
     };
 
+    // Get all payment methods and create a mapping
+    const allMethods = await prisma.paymentMethodEntry.findMany();
+    const methodMap = new Map(allMethods.map(m => [m.name.toLowerCase(), m.id]));
+
     // Process each payment
     for (const qbPayment of payments) {
       try {
@@ -120,12 +124,12 @@ export async function POST(request: NextRequest) {
         const amount = parseFloat(qbPayment.TotalAmt || '0');
         const methodStr = qbPayment.PaymentMethodRef?.name || qbPayment.PaymentType || 'unknown';
         const date = qbPayment.TxnDate ? new Date(qbPayment.TxnDate) : new Date();
-        
+
         // Extract customer and reference info
         const customerName = qbPayment.CustomerRef?.name || 'Unknown Customer';
         const refNumber = qbPayment.PaymentRefNum || qbPayment.DocNumber || '';
         const memo = qbPayment.PrivateNote || '';
-        
+
         const notes = [
           `QuickBooks Payment (Manual Sync)`,
           `Customer: ${customerName}`,
@@ -135,11 +139,14 @@ export async function POST(request: NextRequest) {
 
         // Create payment in our system
         try {
+          const methodName = mapQuickBooksPaymentMethod(methodStr);
+          const methodId = methodMap.get(methodName.toLowerCase()) || methodMap.get('cash')!;
+
           await prisma.payment.create({
             data: {
               userId: user.id,
               amount,
-              method: mapQuickBooksPaymentMethod(methodStr),
+              methodId,
               paymentDate: date,
               notes,
               quickbooksId: qbPaymentId,

@@ -11,6 +11,7 @@ interface InvoiceTableRowProps {
   onLink?: (invoice: Invoice) => void;
   onDelete: (invoice: Invoice) => void;
   onShip?: (invoice: Invoice) => void;
+  onFilterByClient?: (customerId: number) => void;
 }
 
 export default function InvoiceTableRow({
@@ -22,6 +23,7 @@ export default function InvoiceTableRow({
   onLink,
   onDelete,
   onShip,
+  onFilterByClient,
 }: InvoiceTableRowProps) {
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString("en-US", {
@@ -37,6 +39,7 @@ export default function InvoiceTableRow({
       pending: "status-pending",
       overdue: "status-overdue",
       partial: "status-partial",
+      inactive: "status-inactive",
     };
     return `status-badge ${classes[status as keyof typeof classes]}`;
   };
@@ -62,7 +65,17 @@ export default function InvoiceTableRow({
         )}
       </td>
       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 max-w-[200px] truncate" title={invoice.clientName}>
-        {invoice.clientName}
+        {invoice.customerId && onFilterByClient ? (
+          <button
+            onClick={() => onFilterByClient(invoice.customerId!)}
+            className="text-gray-900 hover:text-blue-600 hover:underline transition-colors"
+            title="View all invoices for this client"
+          >
+            {invoice.clientName}
+          </button>
+        ) : (
+          invoice.clientName
+        )}
       </td>
       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 max-w-[150px] truncate" title={invoice.items?.map(i => i.name).join(", ")}>
         {invoice.items && invoice.items.length > 0 
@@ -106,15 +119,16 @@ export default function InvoiceTableRow({
           </button>
           <button
             onClick={() => onPay(invoice)}
-            disabled={invoice.status === "paid"}
+            disabled={invoice.status === "paid" || invoice.status === "inactive"}
             className="text-green-600 hover:text-green-900 disabled:text-green-400 disabled:cursor-not-allowed"
             title={
+              invoice.status === "inactive" ? "Invoice is inactive" :
               invoice.status === "paid" ? "Already paid" : "Record payment"
             }
           >
             {invoice.status === "paid" ? "Paid" : "Pay"}
           </button>
-          {invoice.status !== "paid" && onLink && (
+          {invoice.status !== "paid" && invoice.status !== "inactive" && onLink && (
             <button
               onClick={() => onLink(invoice)}
               className="text-teal-600 hover:text-teal-900"
@@ -130,13 +144,17 @@ export default function InvoiceTableRow({
           >
             {invoice.shipmentId ? "Manage" : "Ship"}
           </button>
-          <button
-            onClick={() => onDelete(invoice)}
-            className="text-red-600 hover:text-red-900"
-            title="Delete invoice"
-          >
-            Delete
-          </button>
+          {invoice.status !== "inactive" ? (
+            <button
+              onClick={() => onDelete(invoice)}
+              className="text-red-600 hover:text-red-900"
+              title="Deactivate invoice"
+            >
+              Deactivate
+            </button>
+          ) : (
+            <span className="text-gray-400 text-xs">Inactive</span>
+          )}
         </div>
       </td>
      

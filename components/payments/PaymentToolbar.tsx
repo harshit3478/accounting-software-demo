@@ -2,13 +2,14 @@
 'use client';
 
 import { useState } from 'react';
-import { Search, Filter, Calendar, ChevronDown, X, Plus, Download, Upload, DollarSign, Smartphone, Building2, Clock, RefreshCw, Link } from 'lucide-react';
+import { Search, Filter, Calendar, ChevronDown, X, Plus, Download, Upload, RefreshCw, Link } from 'lucide-react';
+import LucideIcon from '../LucideIcon';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { Calendar as CalendarComponent } from '../ui/calendar';
 import { format } from 'date-fns';
-import type { PaymentMethodFilter, DateRange } from '../../hooks/usePayments';
+import type { PaymentMethodFilter, DateRange, PaymentMethodType } from '../../hooks/usePayments';
 
 interface PaymentToolbarProps {
   filterMethod: PaymentMethodFilter;
@@ -24,6 +25,7 @@ interface PaymentToolbarProps {
   isSyncing: boolean;
   onMatchClick: () => void;
   unmatchedCount: number;
+  paymentMethods?: PaymentMethodType[];
 }
 
 export default function PaymentToolbar({
@@ -39,7 +41,8 @@ export default function PaymentToolbar({
   onSyncClick,
   isSyncing,
   onMatchClick,
-  unmatchedCount
+  unmatchedCount,
+  paymentMethods = [],
 }: PaymentToolbarProps) {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [dateFrom, setDateFrom] = useState<Date | undefined>(
@@ -67,14 +70,17 @@ export default function PaymentToolbar({
     setShowDatePicker(false);
   };
 
-  const getMethodIcon = (method: string) => {
-    switch (method) {
-      case 'cash': return <DollarSign className="h-4 w-4 mr-2" />;
-      case 'zelle': return <Smartphone className="h-4 w-4 mr-2" />;
-      case 'quickbooks': return <Building2 className="h-4 w-4 mr-2" />;
-      case 'layaway': return <Clock className="h-4 w-4 mr-2" />;
-      default: return <Filter className="h-4 w-4 mr-2" />;
-    }
+  const getMethodLabel = (methodFilter: string) => {
+    if (methodFilter === 'all') return 'All Methods';
+    const method = paymentMethods.find(m => String(m.id) === methodFilter);
+    return method?.name || methodFilter;
+  };
+
+  const getMethodIcon = (methodFilter: string) => {
+    if (methodFilter === 'all') return <Filter className="h-4 w-4 mr-2" />;
+    const method = paymentMethods.find(m => String(m.id) === methodFilter);
+    if (method?.icon) return <LucideIcon name={method.icon} fallback={method.name} size={14} className="mr-2" />;
+    return <Filter className="h-4 w-4 mr-2" />;
   };
 
   return (
@@ -101,25 +107,36 @@ export default function PaymentToolbar({
                 {filterMethod !== 'all' && (
                   <>
                     <span className="mx-2 h-4 w-[1px] bg-gray-200" />
-                    <span className="text-blue-600 capitalize">{filterMethod}</span>
+                    <span className="text-blue-600">{getMethodLabel(filterMethod)}</span>
                   </>
                 )}
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-[200px] p-0" align="start">
               <div className="p-2">
-                {['all', 'cash', 'zelle', 'quickbooks', 'layaway'].map((method) => (
-                  <div
-                    key={method}
-                    className={`px-3 py-2 text-sm rounded-md cursor-pointer hover:bg-gray-100 capitalize flex items-center ${
-                      filterMethod === method ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'
-                    }`}
-                    onClick={() => onFilterChange(method as PaymentMethodFilter)}
-                  >
-                    {method === 'all' ? null : getMethodIcon(method)}
-                    {method === 'all' ? 'All Methods' : method}
-                  </div>
-                ))}
+                <div
+                  className={`px-3 py-2 text-sm rounded-md cursor-pointer hover:bg-gray-100 flex items-center ${
+                    filterMethod === 'all' ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'
+                  }`}
+                  onClick={() => onFilterChange('all')}
+                >
+                  All Methods
+                </div>
+                {paymentMethods.map((method) => {
+                  const methodId = String(method.id);
+                  return (
+                    <div
+                      key={method.id}
+                      className={`px-3 py-2 text-sm rounded-md cursor-pointer hover:bg-gray-100 flex items-center ${
+                        filterMethod === methodId ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'
+                      }`}
+                      onClick={() => onFilterChange(methodId)}
+                    >
+                      {method.icon && <LucideIcon name={method.icon} fallback={method.name} size={14} className="mr-2" />}
+                      {method.name}
+                    </div>
+                  );
+                })}
               </div>
             </PopoverContent>
           </Popover>

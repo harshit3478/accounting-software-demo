@@ -2,6 +2,17 @@
 
 import { useState, useEffect } from 'react';
 import Modal from './Modal';
+import LucideIcon from '../LucideIcon';
+
+interface PaymentMethodType {
+  id: number;
+  name: string;
+  icon: string | null;
+  color: string;
+  isActive: boolean;
+  isSystem: boolean;
+  sortOrder: number;
+}
 
 interface Invoice {
   id: number;
@@ -20,17 +31,33 @@ interface PaymentModalProps {
 
 export default function PaymentModal({ isOpen, onClose, onSuccess, invoice }: PaymentModalProps) {
   const [paymentAmount, setPaymentAmount] = useState(0);
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'zelle' | 'quickbooks' | 'layaway'>('cash');
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodType[]>([]);
+  const [selectedMethodId, setSelectedMethodId] = useState<number | null>(null);
   const [paymentDate, setPaymentDate] = useState('');
   const [paymentNotes, setPaymentNotes] = useState('');
   const [isRecording, setIsRecording] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      fetch('/api/payment-methods')
+        .then(res => res.ok ? res.json() : [])
+        .then((data: PaymentMethodType[]) => {
+          const active = data.filter(m => m.isActive);
+          setPaymentMethods(active);
+          if (active.length > 0 && !selectedMethodId) {
+            setSelectedMethodId(active[0].id);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     if (invoice && isOpen) {
       const remainingBalance = invoice.amount - invoice.paidAmount;
       setPaymentAmount(remainingBalance);
       setPaymentDate(new Date().toISOString().split('T')[0]);
-      setPaymentMethod('cash');
+      setSelectedMethodId(prev => prev || (paymentMethods.length > 0 ? paymentMethods[0].id : null));
       setPaymentNotes('');
     }
   }, [invoice, isOpen]);
@@ -50,7 +77,7 @@ export default function PaymentModal({ isOpen, onClose, onSuccess, invoice }: Pa
         body: JSON.stringify({
           invoiceId: invoice.id,
           amount: paymentAmount,
-          method: paymentMethod,
+          methodId: selectedMethodId,
           date: paymentDate,
           notes: paymentNotes,
         }),
@@ -184,14 +211,15 @@ export default function PaymentModal({ isOpen, onClose, onSuccess, invoice }: Pa
                 Payment Method <span className="text-red-500">*</span>
               </label>
               <select
-                value={paymentMethod}
-                onChange={(e) => setPaymentMethod(e.target.value as any)}
+                value={selectedMethodId || ''}
+                onChange={(e) => setSelectedMethodId(parseInt(e.target.value))}
                 className="w-full px-4 py-2 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
               >
-                <option value="cash">Cash</option>
-                <option value="zelle">Zelle</option>
-                <option value="quickbooks">QuickBooks (Credit Card)</option>
-                <option value="layaway">Layaway Payment</option>
+                {paymentMethods.map((method) => (
+                  <option key={method.id} value={method.id}>
+                    {method.icon && <LucideIcon name={method.icon} fallback={method.name} size={16} className="inline mr-1" />}{method.name}
+                  </option>
+                ))}
               </select>
             </div>
           </div>
@@ -231,7 +259,7 @@ export default function PaymentModal({ isOpen, onClose, onSuccess, invoice }: Pa
                 <div className="text-sm flex-1">
                   <p className="font-medium text-blue-900">Payment Preview</p>
                   <p className="text-blue-700 mt-1">
-                    Recording ${paymentAmount.toFixed(2)} via {paymentMethod.charAt(0).toUpperCase() + paymentMethod.slice(1)}
+                    Recording ${paymentAmount.toFixed(2)} via {paymentMethods.find(m => m.id === selectedMethodId)?.name || 'Unknown'}
                   </p>
                   {paymentAmount >= remainingBalance && (
                     <p className="text-green-700 font-medium mt-2 flex items-center">

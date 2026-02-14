@@ -4,13 +4,25 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useToastContext } from "../components/ToastContext";
 
+export interface PaymentMethodType {
+  id: number;
+  name: string;
+  icon: string | null;
+  color: string;
+  isActive: boolean;
+  isSystem: boolean;
+  sortOrder: number;
+}
+
 export interface Payment {
   id: number;
   amount: number;
-  method: 'cash' | 'zelle' | 'quickbooks' | 'layaway';
+  methodId: number;
+  method: PaymentMethodType;
   paymentDate: string;
   notes: string | null;
   createdAt: string;
+  source?: string;
   invoice: {
     id: number;
     invoiceNumber: string;
@@ -30,18 +42,12 @@ export interface Payment {
 }
 
 export interface PaymentStats {
-  cashToday: number;
-  cashCount: number;
-  zelleToday: number;
-  zelleCount: number;
-  quickbooksToday: number;
-  quickbooksCount: number;
-  layawayToday: number;
-  layawayCount: number;
+  byMethod: Record<number, { amount: number; count: number; name: string; color: string }>;
   totalToday: number;
+  totalCount: number;
 }
 
-export type PaymentMethodFilter = 'all' | 'cash' | 'zelle' | 'quickbooks' | 'layaway';
+export type PaymentMethodFilter = 'all' | string; // 'all' or methodId as string
 export type PaymentSortField = 'date' | 'amount' | 'client';
 export type SortDirection = 'asc' | 'desc';
 
@@ -103,6 +109,9 @@ interface UsePaymentsReturn {
   // Statistics
   stats: PaymentStats;
   filteredStats: PaymentStats;
+
+  // Payment methods
+  paymentMethods: PaymentMethodType[];
 }
 
 export function usePayments(): UsePaymentsReturn {
@@ -113,16 +122,11 @@ export function usePayments(): UsePaymentsReturn {
 
   const [payments, setPayments] = useState<Payment[]>([]);
   const [unmatchedCount, setUnmatchedCount] = useState(0);
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodType[]>([]);
   const [stats, setStats] = useState<PaymentStats>({
-    cashToday: 0,
-    cashCount: 0,
-    zelleToday: 0,
-    zelleCount: 0,
-    quickbooksToday: 0,
-    quickbooksCount: 0,
-    layawayToday: 0,
-    layawayCount: 0,
+    byMethod: {},
     totalToday: 0,
+    totalCount: 0,
   });
   
   const [isLoading, setIsLoading] = useState(true);
@@ -154,12 +158,17 @@ export function usePayments(): UsePaymentsReturn {
   );
   const [itemsPerPage, setItemsPerPageState] = useState(10);
 
-  // Load itemsPerPage from localStorage
+  // Load itemsPerPage from localStorage + fetch payment methods
   useEffect(() => {
     const savedItemsPerPage = localStorage.getItem("paymentsItemsPerPage");
     if (savedItemsPerPage) {
       setItemsPerPageState(parseInt(savedItemsPerPage));
     }
+    // Fetch payment methods for filters/display
+    fetch('/api/payment-methods')
+      .then(res => res.ok ? res.json() : [])
+      .then(data => setPaymentMethods(data))
+      .catch(() => {});
   }, []);
 
   // Modal states
@@ -278,26 +287,24 @@ export function usePayments(): UsePaymentsReturn {
         setTotalPages(data.pagination.pages);
         setTotalItems(data.pagination.total);
 
-        // Calculate today's stats (Note: This only calculates based on the fetched page)
-        const today = new Date().toISOString().split('T')[0];
-        const todayPayments = fetchedPayments.filter((p: any) => {
-          const paymentDate = p.paymentDate ? new Date(p.paymentDate).toISOString().split('T')[0] : null;
-          return paymentDate === today;
-        });
+        // Calculate stats from all fetched payments
+        const byMethod: PaymentStats['byMethod'] = {};
+        for (const p of fetchedPayments) {
+          const mId = p.method?.id || p.methodId;
+          if (!byMethod[mId]) {
+            byMethod[mId] = { amount: 0, count: 0, name: p.method?.name || 'Unknown', color: p.method?.color || '#6B7280' };
+          }
+          byMethod[mId].amount += p.amount;
+          byMethod[mId].count += 1;
+        }
 
-        const newStats: PaymentStats = {
-          cashToday: todayPayments.filter((p: any) => p.method === 'cash').reduce((sum: number, p: any) => sum + p.amount, 0),
-          cashCount: todayPayments.filter((p: any) => p.method === 'cash').length,
-          zelleToday: todayPayments.filter((p: any) => p.method === 'zelle').reduce((sum: number, p: any) => sum + p.amount, 0),
-          zelleCount: todayPayments.filter((p: any) => p.method === 'zelle').length,
-          quickbooksToday: todayPayments.filter((p: any) => p.method === 'quickbooks').reduce((sum: number, p: any) => sum + p.amount, 0),
-          quickbooksCount: todayPayments.filter((p: any) => p.method === 'quickbooks').length,
-          layawayToday: todayPayments.filter((p: any) => p.method === 'layaway').reduce((sum: number, p: any) => sum + p.amount, 0),
-          layawayCount: todayPayments.filter((p: any) => p.method === 'layaway').length,
-          totalToday: todayPayments.reduce((sum: number, p: any) => sum + p.amount, 0),
-        };
-        
-        setStats(newStats);
+        const totalAmount = fetchedPayments.reduce((sum: number, p: any) => sum + p.amount, 0);
+
+        setStats({
+          byMethod,
+          totalToday: totalAmount,
+          totalCount: fetchedPayments.length,
+        });
       } else {
         showError('Failed to fetch payments');
       }
@@ -387,13 +394,16 @@ export function usePayments(): UsePaymentsReturn {
       doc.text(`Total Payments: ${payments.length}`, 20, yPos);
       doc.text(`Total Amount: $${stats.totalToday.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, 110, yPos);
       yPos += 7;
-      
-      doc.text(`Cash: $${stats.cashToday.toLocaleString('en-US', { minimumFractionDigits: 2 })} (${stats.cashCount})`, 20, yPos);
-      doc.text(`Zelle: $${stats.zelleToday.toLocaleString('en-US', { minimumFractionDigits: 2 })} (${stats.zelleCount})`, 110, yPos);
-      yPos += 7;
-      
-      doc.text(`QuickBooks: $${stats.quickbooksToday.toLocaleString('en-US', { minimumFractionDigits: 2 })} (${stats.quickbooksCount})`, 20, yPos);
-      doc.text(`Layaway: $${stats.layawayToday.toLocaleString('en-US', { minimumFractionDigits: 2 })} (${stats.layawayCount})`, 110, yPos);
+
+      // Dynamic method stats
+      const methodEntries = Object.values(stats.byMethod);
+      for (let i = 0; i < methodEntries.length; i++) {
+        const entry = methodEntries[i];
+        const xPos = i % 2 === 0 ? 20 : 110;
+        doc.text(`${entry.name}: $${entry.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })} (${entry.count})`, xPos, yPos);
+        if (i % 2 === 1) yPos += 7;
+      }
+      if (methodEntries.length % 2 === 1) yPos += 7;
       
       yPos += 15;
       
@@ -407,7 +417,7 @@ export function usePayments(): UsePaymentsReturn {
                       payment.paymentMatches?.[0]?.invoice.clientName || 
                       'N/A';
         const amount = `$${payment.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
-        const method = payment.method.toUpperCase();
+        const method = payment.method?.name || 'Unknown';
         const notes = payment.notes ? (payment.notes.length > 30 ? payment.notes.substring(0, 27) + '...' : payment.notes) : '-';
         
         return [date, invoice, client, amount, method, notes];
@@ -443,22 +453,9 @@ export function usePayments(): UsePaymentsReturn {
         },
         margin: { left: 15, right: 15 },
         didParseCell: function(data) {
-          // Color code payment method column
+          // Color code payment method column using dynamic colors
           if (data.column.index === 4 && data.section === 'body') {
-            const method = (data.cell.raw as string).toLowerCase();
-            if (method === 'cash') {
-              data.cell.styles.textColor = [217, 119, 6]; // Amber
-              data.cell.styles.fontStyle = 'bold';
-            } else if (method === 'zelle') {
-              data.cell.styles.textColor = [34, 139, 34]; // Green
-              data.cell.styles.fontStyle = 'bold';
-            } else if (method === 'quickbooks') {
-              data.cell.styles.textColor = [37, 99, 235]; // Blue
-              data.cell.styles.fontStyle = 'bold';
-            } else if (method === 'layaway') {
-              data.cell.styles.textColor = [147, 51, 234]; // Purple
-              data.cell.styles.fontStyle = 'bold';
-            }
+            data.cell.styles.fontStyle = 'bold';
           }
         }
       });
@@ -521,6 +518,7 @@ export function usePayments(): UsePaymentsReturn {
     handleItemsPerPageChange,
     handleExportPDF,
     stats,
-    filteredStats: stats, // Alias for compatibility
+    filteredStats: stats,
+    paymentMethods,
   };
 }

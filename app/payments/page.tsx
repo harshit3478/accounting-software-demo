@@ -50,6 +50,7 @@ function PaymentsPageContent() {
     handleExportPDF,
     stats,
     filteredStats,
+    paymentMethods,
   } = usePayments();
 
   // Link Invoice Modal State
@@ -117,6 +118,7 @@ function PaymentsPageContent() {
           isSyncing={isSyncing}
           onMatchClick={() => router.push('/payments/matching')}
           unmatchedCount={unmatchedCount}
+          paymentMethods={paymentMethods}
         />
         <PaymentSourceCards
           stats={stats}
@@ -124,6 +126,7 @@ function PaymentsPageContent() {
           filterMethod={filterMethod}
           onFilterChange={setFilterMethod}
           showFiltered={isFiltered}
+          paymentMethods={paymentMethods}
         />
       </div>
 

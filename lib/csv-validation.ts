@@ -95,9 +95,12 @@ export function isValidItemsFormat(items: string): boolean {
 /**
  * Validate payment method
  */
-export function isValidPaymentMethod(method: string): boolean {
-  const validMethods = ['cash', 'zelle', 'quickbooks', 'layaway'];
-  return validMethods.includes(method.toLowerCase());
+export function isValidPaymentMethod(method: string, validMethods?: string[]): boolean {
+  if (validMethods && validMethods.length > 0) {
+    return validMethods.map(m => m.toLowerCase()).includes(method.toLowerCase());
+  }
+  // Fallback: accept any non-empty string (methods are now dynamic in the DB)
+  return method.trim().length > 0;
 }
 
 /**

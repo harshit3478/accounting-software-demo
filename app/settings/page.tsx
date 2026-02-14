@@ -1,303 +1,93 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import Navigation from '../../components/Navigation';
 import { ToastProvider, useToastContext } from '../../components/ToastContext';
-import ConfirmModal from '../../components/ConfirmModal';
-import { FiCheck, FiX, FiRefreshCw } from 'react-icons/fi';
+import PaymentMethodsTab from '../../components/settings/PaymentMethodsTab';
+import UserManagementTab from '../../components/settings/UserManagementTab';
+import TermsConditionsTab from '../../components/settings/TermsConditionsTab';
+import QuickBooksTab from '../../components/settings/QuickBooksTab';
+import { CreditCard, Users, FileText, Link2 } from 'lucide-react';
 
-interface QuickBooksConnection {
-  connected: boolean;
-  connection: {
-    id: number;
-    realmId: string;
-    isActive: boolean;
-    isExpired: boolean;
-    lastSyncAt: string | null;
-    createdAt: string;
-    updatedAt: string;
-  } | null;
-}
+const TABS = [
+  { id: 'payment-methods', label: 'Payment Methods', icon: CreditCard },
+  { id: 'users', label: 'User Management', icon: Users },
+  { id: 'terms', label: 'Terms & Conditions', icon: FileText },
+  { id: 'quickbooks', label: 'QuickBooks', icon: Link2 },
+] as const;
+
+type TabId = typeof TABS[number]['id'];
 
 function SettingsContent() {
-  const router = useRouter();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const { showSuccess, showError } = useToastContext();
-  
-  const [qbConnection, setQbConnection] = useState<QuickBooksConnection | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isConnecting, setIsConnecting] = useState(false);
-  const [isDisconnecting, setIsDisconnecting] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
 
-  useEffect(() => {
-    fetchConnectionStatus();
-    
-    // Check for OAuth callback messages
-    const qbSuccess = searchParams?.get('qb_success');
-    const qbError = searchParams?.get('qb_error');
-    
-    if (qbSuccess) {
-      showSuccess('Successfully connected to QuickBooks!');
-      router.replace('/settings');
-    }
-    
-    if (qbError) {
-      showError(`QuickBooks connection failed: ${qbError}`);
-      router.replace('/settings');
-    }
-  }, [searchParams]);
+  const activeTab = (searchParams.get('tab') as TabId) || 'payment-methods';
 
-  const fetchConnectionStatus = async () => {
-    setIsLoading(true);
-    try {
-      const res = await fetch('/api/quickbooks/connection');
-      if (res.ok) {
-        const data = await res.json();
-        setQbConnection(data);
-      }
-    } catch (error) {
-      console.error('Failed to fetch connection status:', error);
-    } finally {
-      setIsLoading(false);
-    }
+  const setActiveTab = (tab: TabId) => {
+    router.push(`/settings?tab=${tab}`);
   };
 
-  const handleConnect = async () => {
-    setIsConnecting(true);
-    try {
-      const res = await fetch('/api/quickbooks/auth');
-      if (res.ok) {
-        const data = await res.json();
-        // Redirect to QuickBooks authorization page
-        window.location.href = data.authUri;
-      } else {
-        showError('Failed to initiate QuickBooks connection');
-        setIsConnecting(false);
-      }
-    } catch (error) {
-      console.error('Connection error:', error);
-      showError('Failed to connect to QuickBooks');
-      setIsConnecting(false);
-    }
-  };
-
-  const handleDisconnect = async () => {
-    setShowDisconnectConfirm(true);
-  };
-
-  const handleSync = async () => {
-    setIsSyncing(true);
-    try {
-      const res = await fetch('/api/quickbooks/sync', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          daysBack: 30 // Sync last 30 days
-        })
-      });
-      
-      if (res.ok) {
-        const data = await res.json();
-        showSuccess(
-          `Sync completed: ${data.created} created, ${data.updated} updated, ${data.skipped} skipped`
-        );
-        fetchConnectionStatus();
-      } else {
-        const error = await res.json();
-        showError(`Sync failed: ${error.error || 'Unknown error'}`);
-      }
-    } catch (error) {
-      console.error('Sync error:', error);
-      showError('Failed to sync with QuickBooks');
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
-  const confirmDisconnect = async () => {
-    setIsDisconnecting(true);
-    try {
-      const res = await fetch('/api/quickbooks/connection', {
-        method: 'DELETE'
-      });
-      
-      if (res.ok) {
-        showSuccess('Successfully disconnected from QuickBooks');
-        setShowDisconnectConfirm(false);
-        fetchConnectionStatus();
-      } else {
-        showError('Failed to disconnect from QuickBooks');
-      }
-    } catch (error) {
-      console.error('Disconnect error:', error);
-      showError('Failed to disconnect from QuickBooks');
-    } finally {
-      setIsDisconnecting(false);
+  const renderTabContent = () => {
+    switch (activeTab) {
+      case 'payment-methods':
+        return <PaymentMethodsTab showSuccess={showSuccess} showError={showError} />;
+      case 'users':
+        return <UserManagementTab showSuccess={showSuccess} showError={showError} />;
+      case 'terms':
+        return <TermsConditionsTab showSuccess={showSuccess} showError={showError} />;
+      case 'quickbooks':
+        return <QuickBooksTab showSuccess={showSuccess} showError={showError} />;
+      default:
+        return <PaymentMethodsTab showSuccess={showSuccess} showError={showError} />;
     }
   };
 
   return (
     <div className="bg-gray-50 min-h-screen">
       <Navigation />
-      
+
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-8">
+        <div className="mb-6">
           <h1 className="text-3xl font-bold text-gray-900">Settings</h1>
-          <p className="text-gray-600 mt-2">Manage your integrations and preferences</p>
+          <p className="text-gray-600 mt-1">Manage your system configuration and preferences</p>
         </div>
 
-        {/* QuickBooks Integration Card */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
-          <div className="flex items-start justify-between mb-6">
-            <div>
-              <h2 className="text-xl font-semibold text-gray-900 mb-2">QuickBooks Integration</h2>
-              <p className="text-gray-600">
-                Connect your QuickBooks account to automatically sync payments
-              </p>
-            </div>
-            <div className="flex-shrink-0">
-              <img 
-                src="https://rksbusiness.com/wp-content/uploads/2022/09/QuickBooks-Logo-Preferred-RGB-1200x381.png" 
-                alt="QuickBooks"
-                className="h-12"
-              />
-            </div>
-          </div>
-
-          {isLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            </div>
-          ) : qbConnection?.connected ? (
-            <div>
-              <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
-                <div className="flex items-center">
-                  <FiCheck className="text-green-600 text-xl mr-3" />
-                  <div className="flex-1">
-                    <p className="font-medium text-green-900">Connected to QuickBooks</p>
-                    <p className="text-sm text-green-700 mt-1">
-                      Company ID: {qbConnection.connection?.realmId}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <p className="text-sm text-gray-600 mb-1">Status</p>
-                  <p className="font-medium text-gray-900">
-                    {qbConnection.connection?.isExpired ? (
-                      <span className="text-amber-600">Token Expired - Reconnect</span>
-                    ) : (
-                      <span className="text-green-600">Active</span>
-                    )}
-                  </p>
-                </div>
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <p className="text-sm text-gray-600 mb-1">Last Sync</p>
-                  <p className="font-medium text-gray-900">
-                    {qbConnection.connection?.lastSyncAt 
-                      ? new Date(qbConnection.connection.lastSyncAt).toLocaleDateString()
-                      : 'Never'}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex gap-3">
-                <button
-                  onClick={handleSync}
-                  disabled={isSyncing}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center disabled:opacity-50"
-                >
-                  <FiRefreshCw className={`mr-2 ${isSyncing ? 'animate-spin' : ''}`} />
-                  {isSyncing ? 'Syncing...' : 'Sync Now'}
-                </button>
-                
-                <button
-                  onClick={handleDisconnect}
-                  disabled={isDisconnecting}
-                  className="px-4 py-2 border border-red-300 text-red-700 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50"
-                >
-                  {isDisconnecting ? 'Disconnecting...' : 'Disconnect'}
-                </button>
-                
-                {qbConnection.connection?.isExpired && (
+        <div className="flex gap-6">
+          {/* Sidebar */}
+          <div className="w-56 flex-shrink-0">
+            <nav className="space-y-1 sticky top-24">
+              {TABS.map((tab) => {
+                const Icon = tab.icon;
+                const isActive = activeTab === tab.id;
+                return (
                   <button
-                    onClick={handleConnect}
-                    className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors flex items-center"
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                      isActive
+                        ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                        : 'text-gray-700 hover:bg-gray-100 border border-transparent'
+                    }`}
                   >
-                    <FiRefreshCw className="mr-2" />
-                    Reconnect
+                    <Icon size={18} className={isActive ? 'text-blue-600' : 'text-gray-400'} />
+                    {tab.label}
                   </button>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div>
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-                <p className="text-sm text-blue-800">
-                  <strong>How it works:</strong> When you receive a payment in QuickBooks, 
-                  it will automatically create an unmatched payment entry in this system. 
-                  You can then match it to invoices using the Payment Matching feature.
-                </p>
-              </div>
-
-              <button
-                onClick={handleConnect}
-                disabled={isConnecting}
-                className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium disabled:opacity-50"
-              >
-                {isConnecting ? 'Connecting...' : 'Connect to QuickBooks'}
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Webhook Information Card */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Webhook Configuration</h2>
-          <p className="text-gray-600 mb-4">
-            Configure this webhook URL in your QuickBooks Developer Dashboard to receive automatic payment notifications:
-          </p>
-          
-          <div className="bg-gray-50 border text-black border-gray-200 rounded-lg p-4 font-mono text-sm break-all">
-            {process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/quickbooks/webhook
+                );
+              })}
+            </nav>
           </div>
-          
-          <div className="mt-4 space-y-2">
-            <p className="text-sm text-gray-700 font-medium">Setup Instructions:</p>
-            <ol className="text-sm text-gray-600 space-y-1 list-decimal list-inside">
-              <li>Go to <a href="https://developer.intuit.com/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">QuickBooks Developer Dashboard</a></li>
-              <li>Navigate to your app → <strong>Webhooks</strong> section</li>
-              <li>Generate a <strong>Verifier Token</strong> and add it to your <code className="bg-gray-100 px-1 rounded">QUICKBOOKS_WEBHOOK_VERIFIER</code> env variable</li>
-              <li>Set the webhook URL above (must be HTTPS in production)</li>
-              <li>Subscribe to <strong>Payment</strong> events (Create, Update)</li>
-            </ol>
-            <p className="text-sm text-amber-600 mt-3">
-              <strong>Development:</strong> Use <a href="https://ngrok.com/" target="_blank" rel="noopener noreferrer" className="underline">ngrok</a> or similar to expose localhost.
-              QuickBooks requires a public HTTPS URL for webhooks.
-            </p>
+
+          {/* Main Content */}
+          <div className="flex-1 min-w-0">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+              {renderTabContent()}
+            </div>
           </div>
         </div>
       </div>
-
-      {/* Disconnect Confirmation Modal */}
-      <ConfirmModal
-        isOpen={showDisconnectConfirm}
-        title="Disconnect QuickBooks"
-        message="Are you sure you want to disconnect QuickBooks? This will stop automatic payment syncing."
-        confirmText="Disconnect"
-        cancelText="Cancel"
-        onConfirm={confirmDisconnect}
-        onCancel={() => setShowDisconnectConfirm(false)}
-        isLoading={isDisconnecting}
-        danger={true}
-      />
     </div>
   );
 }
@@ -305,21 +95,33 @@ function SettingsContent() {
 export default function SettingsPage() {
   return (
     <ToastProvider>
-      <Suspense fallback={
-        <div className="bg-gray-50 min-h-screen">
-          <Navigation />
-          <div className="max-w-6xl mx-auto px-4 py-8">
-            <div className="animate-pulse">
-              <div className="h-8 bg-gray-200 rounded w-48 mb-8"></div>
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                <div className="h-6 bg-gray-200 rounded w-64 mb-4"></div>
-                <div className="h-4 bg-gray-200 rounded w-full mb-2"></div>
-                <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+      <Suspense
+        fallback={
+          <div className="bg-gray-50 min-h-screen">
+            <Navigation />
+            <div className="max-w-7xl mx-auto px-4 py-8">
+              <div className="animate-pulse">
+                <div className="h-8 bg-gray-200 rounded w-48 mb-8"></div>
+                <div className="flex gap-6">
+                  <div className="w-56">
+                    <div className="space-y-2">
+                      <div className="h-10 bg-gray-200 rounded"></div>
+                      <div className="h-10 bg-gray-200 rounded"></div>
+                      <div className="h-10 bg-gray-200 rounded"></div>
+                      <div className="h-10 bg-gray-200 rounded"></div>
+                    </div>
+                  </div>
+                  <div className="flex-1 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                    <div className="h-6 bg-gray-200 rounded w-64 mb-4"></div>
+                    <div className="h-4 bg-gray-200 rounded w-full mb-2"></div>
+                    <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      }>
+        }
+      >
         <SettingsContent />
       </Suspense>
     </ToastProvider>

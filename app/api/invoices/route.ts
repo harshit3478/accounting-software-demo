@@ -24,9 +24,21 @@ export async function GET(request: NextRequest) {
     const overdueDates = searchParams.get("overdueDates"); // "2" for > 2 due dates logic
     const startDate = searchParams.get("startDate");
     const endDate = searchParams.get("endDate");
+    const showInactive = searchParams.get("showInactive") === "true";
+    const customerId = searchParams.get("customerId");
 
     // Build where clause
     const where: any = {};
+
+    // By default, exclude inactive invoices unless explicitly requested
+    if (status === "inactive") {
+      where.status = "inactive";
+    } else if (showInactive) {
+      // Show all including inactive — no status filter applied here
+    } else {
+      // Default: exclude inactive
+      where.status = { not: "inactive" };
+    }
 
     // Search filter
     if (search) {
@@ -36,9 +48,14 @@ export async function GET(request: NextRequest) {
       ];
     }
 
-    // Status filter
-    if (status !== "all") {
+    // Status filter (applied on top of inactive exclusion)
+    if (status !== "all" && status !== "inactive") {
       where.status = status;
+    }
+
+    // Customer filter — see all invoices for a specific client
+    if (customerId) {
+      where.customerId = parseInt(customerId);
     }
 
     // Type filter
@@ -48,41 +65,21 @@ export async function GET(request: NextRequest) {
       where.isLayaway = false;
     }
 
-    // Overdue Dates Logic (Layaway specific)
+    // Overdue Dates Logic (Layaway specific) — uses LayawayInstallment table
     if (overdueDates === "2") {
-      where.isLayaway = true; // Implicitly layaway
+      where.isLayaway = true;
       if (status === "all") {
-         where.status = { not: "paid" }; // Only unpaid/partial/overdue
+        where.status = { not: "paid" };
       }
-
-      // Calculate cutoff date: Find the 2nd most recent 15th or 30th/End-of-Month
-      const now = new Date();
-      let datesFound = 0;
-      let checkDate = new Date(now);
-      
-      // Go back day by day until we find 2 due dates
-      while (datesFound < 2) {
-        checkDate.setDate(checkDate.getDate() - 1);
-        const day = checkDate.getDate();
-        // Check if this date is a due date (15th or last day of month)
-        const is15th = day === 15;
-        
-        const testDate = new Date(checkDate);
-        testDate.setDate(testDate.getDate() + 1);
-        const isLastDay = testDate.getDate() === 1; // If adding 1 day makes it 1st of next month, today is last day
-
-        // User restriction: "15th/30th". We'll assume end of month for 30th/31st/28th
-        if (is15th || isLastDay) {
-           datesFound++;
-        }
-      }
-      
-      // Any invoice created BEFORE this checkDate has passed at least 2 due dates
-      // We use start of day to be inclusive of the full checkDate? 
-      // If created ON checkDate (e.g. 15th), it is due immediately? Usually next cycle.
-      // Let's assume strict: if created BEFORE the 2nd payment date.
-      where.createdAt = {
-        lte: checkDate
+      // Find invoices that have overdue unpaid installments
+      where.layawayPlan = {
+        isCancelled: false,
+        installments: {
+          some: {
+            isPaid: false,
+            dueDate: { lt: new Date() },
+          },
+        },
       };
     }
 
@@ -97,11 +94,12 @@ export async function GET(request: NextRequest) {
     // Get total count for pagination
     const total = await (prisma as any).invoice.count({ where });
 
-    // cast include to any because Prisma client types may be out-of-date until prisma generate is run
     const includeAny: any = {
-      payments: true,
+      payments: { include: { method: true } },
       paymentMatches: true,
       terms: true,
+      customer: true,
+      layawayPlan: { include: { installments: { orderBy: { dueDate: "asc" } } } },
       user: {
         select: {
           id: true,
@@ -163,6 +161,9 @@ export async function POST(request: NextRequest) {
     const user = await requireAuth();
     const {
       clientName,
+      customerId,
+      externalInvoiceNumber,
+      source,
       items,
       subtotal,
       tax,
@@ -230,6 +231,9 @@ export async function POST(request: NextRequest) {
         status: "pending",
         isLayaway: isLayaway || false,
         description,
+        customerId: customerId || null,
+        externalInvoiceNumber: externalInvoiceNumber || null,
+        source: source || "manual",
         termsId: attachedTermsId,
         termsSnapshot: termsSnapshot || null,
       },

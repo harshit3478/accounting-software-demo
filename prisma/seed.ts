@@ -74,6 +74,24 @@ async function main() {
 
   console.log("Created staff user:", staff);
 
+  // Seed default payment methods
+  const paymentMethods = [
+    { name: "Cash", icon: "banknote", color: "#D97706", isSystem: true, sortOrder: 1 },
+    { name: "Zelle", icon: "smartphone", color: "#16A34A", isSystem: false, sortOrder: 2 },
+    { name: "Bank of America", icon: "building-2", color: "#1D4ED8", isSystem: false, sortOrder: 3 },
+    { name: "Layaway", icon: "clock", color: "#9333EA", isSystem: true, sortOrder: 4 },
+  ];
+
+  for (const pm of paymentMethods) {
+    await prisma.paymentMethodEntry.upsert({
+      where: { name: pm.name },
+      update: {},
+      create: pm,
+    });
+  }
+
+  console.log("Seeded payment methods:", paymentMethods.map(p => p.name).join(", "));
+
   // // Create default system folder for documents
   // const defaultFolder = await prisma.systemFolder.upsert({
   //   where: { id: 1 },

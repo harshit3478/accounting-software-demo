@@ -1,6 +1,8 @@
 'use client';
 
+import { useRef } from 'react';
 import Modal from '../invoices/Modal';
+import LucideIcon from '../LucideIcon';
 
 interface ViewPaymentModalProps {
   isOpen: boolean;
@@ -8,7 +10,12 @@ interface ViewPaymentModalProps {
   payment: {
     id: number;
     amount: number;
-    method: 'cash' | 'zelle' | 'quickbooks' | 'layaway';
+    method: {
+      id: number;
+      name: string;
+      icon: string | null;
+      color: string;
+    };
     paymentDate: string;
     notes: string | null;
     createdAt: string;
@@ -22,7 +29,36 @@ interface ViewPaymentModalProps {
 }
 
 export default function ViewPaymentModal({ isOpen, onClose, payment }: ViewPaymentModalProps) {
+  const receiptRef = useRef<HTMLDivElement>(null);
+
   if (!payment) return null;
+
+  const handleDownloadPDF = async () => {
+    const { generatePaymentReceiptPDF } = await import('../../lib/payment-receipt');
+    generatePaymentReceiptPDF({
+      id: payment.id,
+      amount: payment.amount,
+      date: payment.paymentDate,
+      notes: payment.notes,
+      method: payment.method,
+      invoice: payment.invoice ? {
+        invoiceNumber: payment.invoice.invoiceNumber,
+        clientName: payment.invoice.clientName,
+        amount: payment.invoice.amount,
+        paidAmount: payment.amount, // current payment is the latest
+      } : null,
+    });
+  };
+
+  const handleShareImage = async () => {
+    if (!receiptRef.current) return;
+    const { shareElementAsImage } = await import('../../lib/image-export');
+    await shareElementAsImage(
+      receiptRef.current,
+      `receipt-PAY-${String(payment.id).padStart(5, '0')}.png`,
+      `Payment Receipt #${payment.id}`
+    );
+  };
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -32,29 +68,12 @@ export default function ViewPaymentModal({ isOpen, onClose, payment }: ViewPayme
     });
   };
 
-  const getMethodIcon = (method: string) => {
-    const icons = {
-      cash: '💵',
-      zelle: '📱',
-      quickbooks: '💳',
-      layaway: '⏰',
-    };
-    return icons[method as keyof typeof icons] || '💰';
-  };
-
-  const getMethodColor = (method: string) => {
-    const colors = {
-      cash: 'text-amber-600 bg-amber-50',
-      zelle: 'text-green-600 bg-green-50',
-      quickbooks: 'text-blue-600 bg-blue-50',
-      layaway: 'text-purple-600 bg-purple-50',
-    };
-    return colors[method as keyof typeof colors] || 'text-gray-600 bg-gray-50';
-  };
+  const methodColor = payment.method?.color || '#6B7280';
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Payment Details" headerColor="purple" maxWidth="lg">
       <div className="space-y-6">
+        <div ref={receiptRef}>
         {/* Payment Summary */}
         <div className="bg-gradient-to-br from-purple-50 to-blue-50 rounded-xl p-6 border border-purple-200">
           <div className="flex items-center justify-between">
@@ -62,8 +81,8 @@ export default function ViewPaymentModal({ isOpen, onClose, payment }: ViewPayme
               <p className="text-sm text-gray-600 mb-1">Payment Amount</p>
               <p className="text-3xl font-bold text-gray-900">${payment.amount.toFixed(2)}</p>
             </div>
-            <div className={`text-5xl ${getMethodColor(payment.method)} rounded-full p-4`}>
-              {getMethodIcon(payment.method)}
+            <div className="text-5xl rounded-full p-4 flex items-center justify-center" style={{ backgroundColor: `${methodColor}15`, color: methodColor }}>
+              <LucideIcon name={payment.method?.icon} fallback={payment.method?.name || '?'} size={40} />
             </div>
           </div>
         </div>
@@ -72,7 +91,7 @@ export default function ViewPaymentModal({ isOpen, onClose, payment }: ViewPayme
         <div className="grid grid-cols-2 gap-4">
           <div className="bg-gray-50 rounded-lg p-4">
             <p className="text-sm text-gray-600 mb-1">Payment Method</p>
-            <p className="text-lg font-semibold text-gray-900 capitalize">{payment.method}</p>
+            <p className="text-lg font-semibold text-gray-900">{payment.method?.name || 'Unknown'}</p>
           </div>
           <div className="bg-gray-50 rounded-lg p-4">
             <p className="text-sm text-gray-600 mb-1">Payment Date</p>
@@ -134,9 +153,32 @@ export default function ViewPaymentModal({ isOpen, onClose, payment }: ViewPayme
             Payment ID: #{payment.id} • Recorded on {formatDate(payment.createdAt)}
           </p>
         </div>
+        </div>{/* end receiptRef */}
 
         {/* Action Buttons */}
-        <div className="flex items-center justify-end pt-4 border-t border-gray-200">
+        <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleDownloadPDF}
+              className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              PDF
+            </button>
+            <button
+              type="button"
+              onClick={handleShareImage}
+              className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors flex items-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+              </svg>
+              Share
+            </button>
+          </div>
           <button
             type="button"
             onClick={onClose}

@@ -100,15 +100,15 @@ export default function MyRegularizations() {
                 }
                 className="w-full border p-2 rounded"
               >
-                <option value="checkin">Check In</option>
-                <option value="checkout">Check Out</option>
+                <option value="checkin">Log In</option>
+                <option value="checkout">Log Out</option>
                 <option value="both">Both</option>
                 <option value="manual">Manual</option>
               </select>
             </div>
             <div>
               <label className="block text-sm text-gray-700 mb-1">
-                Requested Check In (optional)
+                Requested Log In (optional)
               </label>
               <input
                 type="time"
@@ -124,7 +124,7 @@ export default function MyRegularizations() {
             </div>
             <div>
               <label className="block text-sm text-gray-700 mb-1">
-                Requested Check Out (optional)
+                Requested Log Out (optional)
               </label>
               <input
                 type="time"

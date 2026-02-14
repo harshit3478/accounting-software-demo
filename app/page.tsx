@@ -279,7 +279,7 @@ function DashboardContent() {
       }
     },
     legend: {
-      data: ['Cash', 'Zelle', 'QuickBooks', 'Layaway'],
+      data: chartData.paymentMethodsChart.methods?.map((m: any) => m.name) || [],
       bottom: 0
     },
     grid: {
@@ -319,44 +319,15 @@ function DashboardContent() {
         }
       }
     },
-    series: [
-      {
-        name: 'Cash',
-        type: 'bar',
-        stack: 'total',
-        data: chartData.paymentMethodsChart.cash,
-        itemStyle: {
-          color: '#48bb78'
-        }
-      },
-      {
-        name: 'Zelle',
-        type: 'bar',
-        stack: 'total',
-        data: chartData.paymentMethodsChart.zelle,
-        itemStyle: {
-          color: '#4299e1'
-        }
-      },
-      {
-        name: 'QuickBooks',
-        type: 'bar',
-        stack: 'total',
-        data: chartData.paymentMethodsChart.quickbooks,
-        itemStyle: {
-          color: '#ed8936'
-        }
-      },
-      {
-        name: 'Layaway',
-        type: 'bar',
-        stack: 'total',
-        data: chartData.paymentMethodsChart.layaway,
-        itemStyle: {
-          color: '#9f7aea'
-        }
+    series: (chartData.paymentMethodsChart.methods || []).map((m: any) => ({
+      name: m.name,
+      type: 'bar',
+      stack: 'total',
+      data: m.values,
+      itemStyle: {
+        color: m.color || '#6B7280'
       }
-    ],
+    })),
     animationDuration: 2000,
     animationEasing: 'cubicOut'
   } : null;
@@ -620,13 +591,12 @@ function DashboardContent() {
           ) : (
             <div className="space-y-4">
               {recentPayments.map((payment: any) => {
-                const methodColors: Record<string, { bg: string; text: string; dot: string }> = {
-                  cash: { bg: 'bg-green-100', text: 'text-green-800', dot: 'bg-green-500' },
-                  zelle: { bg: 'bg-blue-100', text: 'text-blue-800', dot: 'bg-blue-500' },
-                  quickbooks: { bg: 'bg-purple-100', text: 'text-purple-800', dot: 'bg-purple-500' },
-                  layaway: { bg: 'bg-amber-100', text: 'text-amber-800', dot: 'bg-amber-500' }
-                };
-                const colors = methodColors[payment.method] || { bg: 'bg-gray-100', text: 'text-gray-800', dot: 'bg-gray-500' };
+                // payment.method is now an object { id, name, icon, color } from the API
+                const methodName = typeof payment.method === 'object' ? payment.method?.name : payment.method;
+                const methodColor = typeof payment.method === 'object' ? payment.method?.color : null;
+                const colors = methodColor
+                  ? { bg: '', text: '', dot: '', color: methodColor }
+                  : { bg: 'bg-gray-100', text: 'text-gray-800', dot: 'bg-gray-500', color: null };
                 
                 // Calculate time ago
                 const timeAgo = (() => {
@@ -646,7 +616,7 @@ function DashboardContent() {
 
                 return (
                   <div key={payment.id} className="flex items-center space-x-4 py-3 hover:bg-gray-50 rounded-lg px-2 transition-colors duration-150">
-                    <div className={`w-2 h-2 ${colors.dot} rounded-full animate-pulse`}></div>
+                    <div className={`w-2 h-2 rounded-full animate-pulse ${colors.dot || ''}`} style={colors.color ? { backgroundColor: colors.color } : undefined}></div>
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
                         <p className="text-sm text-gray-900">
@@ -654,8 +624,11 @@ function DashboardContent() {
                         </p>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${colors.bg} ${colors.text}`}>
-                          {payment.method.charAt(0).toUpperCase() + payment.method.slice(1)}
+                        <span
+                          className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
+                          style={colors.color ? { backgroundColor: `${colors.color}20`, color: colors.color } : undefined}
+                        >
+                          {methodName || 'Unknown'}
                         </span>
                         {payment.invoice && (
                           <span className="text-xs text-gray-500">

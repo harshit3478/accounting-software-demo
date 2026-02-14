@@ -14,6 +14,7 @@ interface InvoiceTableProps {
   onLink?: (invoice: Invoice) => void;
   onDelete: (invoice: Invoice) => void;
   onShip: (invoice: Invoice) => void;
+  onFilterByClient?: (customerId: number) => void;
   onCreateFirst: () => void;
   searchTerm: string;
   statusFilter: string;
@@ -33,6 +34,7 @@ export default function InvoiceTable({
   onLink,
   onDelete,
   onShip,
+  onFilterByClient,
   onCreateFirst,
   searchTerm,
   statusFilter,
@@ -182,6 +184,7 @@ export default function InvoiceTable({
                 onLink={onLink}
                 onDelete={onDelete}
                 onShip={onShip}
+                onFilterByClient={onFilterByClient}
               />
             ))}
           </tbody>

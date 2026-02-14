@@ -1,7 +1,8 @@
 'use client';
 
-import { DollarSign, CreditCard, Banknote, Clock, Filter } from 'lucide-react';
-import type { PaymentStats, PaymentMethodFilter } from '../../hooks/usePayments';
+import { Filter } from 'lucide-react';
+import LucideIcon from '../LucideIcon';
+import type { PaymentStats, PaymentMethodFilter, PaymentMethodType } from '../../hooks/usePayments';
 
 interface PaymentSourceCardsProps {
   stats: PaymentStats;
@@ -9,6 +10,7 @@ interface PaymentSourceCardsProps {
   filterMethod: PaymentMethodFilter;
   onFilterChange: (method: PaymentMethodFilter) => void;
   showFiltered: boolean;
+  paymentMethods: PaymentMethodType[];
 }
 
 export default function PaymentSourceCards({
@@ -17,51 +19,9 @@ export default function PaymentSourceCards({
   filterMethod,
   onFilterChange,
   showFiltered,
+  paymentMethods,
 }: PaymentSourceCardsProps) {
   const displayStats = showFiltered ? filteredStats : stats;
-  
-  const paymentSources = [
-    {
-      id: 'zelle' as PaymentMethodFilter,
-      name: 'Zelle',
-      amount: displayStats.zelleToday,
-      count: displayStats.zelleCount,
-      icon: DollarSign,
-      color: 'text-green-600',
-      bg: 'bg-green-50',
-      border: 'border-green-100'
-    },
-    {
-      id: 'quickbooks' as PaymentMethodFilter,
-      name: 'QuickBooks',
-      amount: displayStats.quickbooksToday,
-      count: displayStats.quickbooksCount,
-      icon: CreditCard,
-      color: 'text-blue-600',
-      bg: 'bg-blue-50',
-      border: 'border-blue-100'
-    },
-    {
-      id: 'cash' as PaymentMethodFilter,
-      name: 'Cash',
-      amount: displayStats.cashToday,
-      count: displayStats.cashCount,
-      icon: Banknote,
-      color: 'text-amber-600',
-      bg: 'bg-amber-50',
-      border: 'border-amber-100'
-    },
-    {
-      id: 'layaway' as PaymentMethodFilter,
-      name: 'Layaway',
-      amount: displayStats.layawayToday,
-      count: displayStats.layawayCount,
-      icon: Clock,
-      color: 'text-purple-600',
-      bg: 'bg-purple-50',
-      border: 'border-purple-100'
-    }
-  ];
 
   return (
     <div className="space-y-3">
@@ -72,35 +32,48 @@ export default function PaymentSourceCards({
         </div>
       )}
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {paymentSources.map((source) => (
-          <div
-            key={source.id}
-            onClick={() => onFilterChange(source.id === filterMethod ? 'all' : source.id)}
-            className={`flex items-center p-3 bg-white border rounded-lg shadow-sm cursor-pointer transition-all ${
-              filterMethod === source.id 
-                ? 'ring-2 ring-blue-500 border-blue-500' 
-                : 'border-gray-200 hover:border-gray-300'
-            }`}
-          >
-            <div className={`p-2 rounded-md ${source.bg} ${source.color} mr-3`}>
-              <source.icon className="w-5 h-5" />
-            </div>
-            <div>
-              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                {source.name}
-              </p>
-              <div className="flex items-baseline gap-2">
-                <p className="text-lg font-bold text-gray-900 leading-tight">
-                  ${source.amount.toFixed(2)}
+      <div
+        className="grid gap-3"
+        style={{ gridTemplateColumns: `repeat(${Math.min(paymentMethods.length || 2, 4)}, minmax(0, 1fr))` }}
+      >
+        {paymentMethods.map((method) => {
+          const methodId = String(method.id);
+          const methodStats = displayStats.byMethod[method.id];
+          const amount = methodStats?.amount || 0;
+          const count = methodStats?.count || 0;
+
+          return (
+            <div
+              key={method.id}
+              onClick={() => onFilterChange(methodId === filterMethod ? 'all' : methodId)}
+              className={`flex items-center p-3 bg-white border rounded-lg shadow-sm cursor-pointer transition-all ${
+                filterMethod === methodId
+                  ? 'ring-2 ring-blue-500 border-blue-500'
+                  : 'border-gray-200 hover:border-gray-300'
+              }`}
+            >
+              <div
+                className="p-2 rounded-md mr-3 text-lg flex items-center justify-center"
+                style={{ backgroundColor: `${method.color}20`, color: method.color }}
+              >
+                <LucideIcon name={method.icon} fallback={method.name} size={20} />
+              </div>
+              <div>
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                  {method.name}
                 </p>
-                <span className="text-xs text-gray-400">
-                  ({source.count})
-                </span>
+                <div className="flex items-baseline gap-2">
+                  <p className="text-lg font-bold text-gray-900 leading-tight">
+                    ${amount.toFixed(2)}
+                  </p>
+                  <span className="text-xs text-gray-400">
+                    ({count})
+                  </span>
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

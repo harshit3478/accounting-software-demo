@@ -21,14 +21,10 @@ enum InvoiceStatus {
   pending
   overdue
   partial
+  inactive
 }
 
-enum PaymentMethod {
-  cash
-  zelle
-  quickbooks
-  layaway
-}
+// PaymentMethod enum removed — replaced by PaymentMethodEntry table (dynamic, Super Admin configurable)
 
 enum RegularizationStatus {
   pending
@@ -78,6 +74,11 @@ model Invoice {
   invoiceNumber String @unique
   clientName    String
 
+  // Customer FK (nullable for backwards compat — clientName kept as denormalized field)
+  customerId            Int?
+  externalInvoiceNumber String? @unique // QuickBooks/external system invoice number
+  source                String  @default("manual") // "manual", "csv_upload", "quickbooks_import"
+
   // Item details (stored as JSON for simplicity)
   items Json? // [{name, quantity, pricePerItem}]
 
@@ -105,19 +106,24 @@ model Invoice {
   termsSnapshot Json?
 
   user           User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  customer       Customer?             @relation(fields: [customerId], references: [id], onDelete: SetNull)
   payments       Payment[]
   paymentMatches PaymentInvoiceMatch[]
   terms          Term?                 @relation(fields: [termsId], references: [id], onDelete: SetNull)
+  layawayPlan    LayawayPlan?
 
   @@map("invoices")
 }
 
 model Payment {
-  id          Int           @id @default(autoincrement())
+  id          Int      @id @default(autoincrement())
   invoiceId   Int? // Nullable for unmatched payments
-  amount      Decimal       @db.Decimal(10, 2)
-  paymentDate DateTime      @default(now())
-  method      PaymentMethod
+  amount      Decimal  @db.Decimal(10, 2)
+  paymentDate DateTime @default(now())
+  methodId    Int // FK to PaymentMethodEntry table
+
+  // Source tracking
+  source String @default("manual") // "manual", "csv_upload", "quickbooks_import"
 
   // QuickBooks integration fields
   quickbooksId       String?   @unique
@@ -135,6 +141,7 @@ model Payment {
 
   invoice        Invoice?              @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   user           User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  method         PaymentMethodEntry    @relation(fields: [methodId], references: [id])
   paymentMatches PaymentInvoiceMatch[]
 
   @@map("payments")
@@ -292,6 +299,71 @@ model AttendanceEntry {
 
   @@unique([userId, date])
   @@map("attendance_entries")
+}
+
+model Customer {
+  id        Int      @id @default(autoincrement())
+  name      String
+  email     String?
+  phone     String?
+  address   String?  @db.Text
+  notes     String?  @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  invoices Invoice[]
+
+  @@map("customers")
+}
+
+model PaymentMethodEntry {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  icon      String? // Lucide icon name: "banknote", "building-2", etc.
+  color     String   @default("#6B7280") // Hex color for badges/filters
+  isActive  Boolean  @default(true) // Soft delete — hide without breaking history
+  isSystem  Boolean  @default(false) // true for "Cash", "Layaway" — can't be deleted
+  sortOrder Int      @default(0) // Display order in dropdowns
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  payments Payment[]
+
+  @@map("payment_methods")
+}
+
+model LayawayPlan {
+  id               Int      @id @default(autoincrement())
+  invoiceId        Int      @unique
+  months           Int // Duration: 1, 2, 3, etc.
+  paymentFrequency String // "weekly", "bi-weekly", "monthly"
+  downPayment      Decimal  @db.Decimal(10, 2)
+  isCancelled      Boolean  @default(false)
+  notes            String?  @db.Text
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  invoice      Invoice              @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  installments LayawayInstallment[]
+
+  @@map("layaway_plans")
+}
+
+model LayawayInstallment {
+  id            Int       @id @default(autoincrement())
+  layawayPlanId Int
+  dueDate       DateTime
+  amount        Decimal   @db.Decimal(10, 2)
+  label         String // "Down payment", "1st Payment", etc.
+  isPaid        Boolean   @default(false)
+  paidDate      DateTime?
+  paidAmount    Decimal?  @db.Decimal(10, 2)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  layawayPlan LayawayPlan @relation(fields: [layawayPlanId], references: [id], onDelete: Cascade)
+
+  @@map("layaway_installments")
 }
 
 model RegularizationRequest {

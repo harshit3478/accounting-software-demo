@@ -10,10 +10,9 @@ interface Payment {
   amount: number;
   allocatedAmount?: number;
   remainingAmount?: number;
-  method: 'cash' | 'zelle' | 'quickbooks' | 'layaway';
+  method: { id: number; name: string; icon: string | null; color: string };
   paymentDate: string;
   notes: string | null;
-  isMatched: boolean;
   paymentMatches: any[];
 }
 
@@ -208,14 +207,12 @@ function PaymentMatchingPageContent() {
     });
   };
 
-  const getMethodColor = (method: string) => {
-    const colors = {
-      cash: 'bg-amber-100 text-amber-700',
-      zelle: 'bg-green-100 text-green-700',
-      quickbooks: 'bg-blue-100 text-blue-700',
-      layaway: 'bg-purple-100 text-purple-700'
+  const getMethodBadgeStyle = (method: Payment['method']) => {
+    const color = method?.color || '#6B7280';
+    return {
+      backgroundColor: `${color}20`,
+      color: color,
     };
-    return colors[method as keyof typeof colors] || 'bg-gray-100 text-gray-700';
   };
 
   const getConfidenceColor = (confidence: number) => {
@@ -302,8 +299,11 @@ function PaymentMatchingPageContent() {
                           </span>
                         )}
                       </div>
-                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${getMethodColor(payment.method)}`}>
-                        {payment.method.charAt(0).toUpperCase() + payment.method.slice(1)}
+                      <span
+                        className="px-3 py-1 rounded-full text-xs font-medium"
+                        style={getMethodBadgeStyle(payment.method)}
+                      >
+                        {payment.method?.name || 'Unknown'}
                       </span>
                     </div>
                     <div className="flex items-center text-sm text-gray-600">
@@ -484,7 +484,7 @@ function PaymentMatchingPageContent() {
             <div className="p-6 space-y-4">
               <div>
                 <p className="text-sm text-gray-600">Payment</p>
-                <p className="text-lg font-semibold text-gray-900">${selectedPayment.amount.toFixed(2)} via {selectedPayment.method}</p>
+                <p className="text-lg font-semibold text-gray-900">${selectedPayment.amount.toFixed(2)} via {selectedPayment.method?.name || 'Unknown'}</p>
               </div>
               <div>
                 <p className="text-sm text-gray-600">Invoice</p>

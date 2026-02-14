@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PaymentMethod } from '@prisma/client';
 import prisma from '../../../lib/prisma';
 import { requireAuth } from '../../../lib/auth';
-import { calculateInvoiceStatus, updateInvoiceAfterPayment } from '../../../lib/invoice-utils';
+import { updateInvoiceAfterPayment } from '../../../lib/invoice-utils';
 import { invalidateDashboard } from '../../../lib/cache-helpers';
 
 export async function GET(request: NextRequest) {
@@ -44,9 +43,12 @@ export async function GET(request: NextRequest) {
       ];
     }
 
-    // Method filter
+    // Method filter (now by methodId)
     if (method !== "all") {
-      where.method = method;
+      const methodId = parseInt(method);
+      if (!isNaN(methodId)) {
+        where.methodId = methodId;
+      }
     }
 
     // Date range filter
@@ -62,8 +64,9 @@ export async function GET(request: NextRequest) {
 
     const payments = await prisma.payment.findMany({
       where,
-      include: { 
+      include: {
         invoice: true,
+        method: true,
         user: {
           select: {
             id: true,
@@ -115,18 +118,24 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const user = await requireAuth();
-    const { invoiceId, amount, paymentDate, method, notes } = await request.json();
+    const { invoiceId, amount, paymentDate, methodId, notes, source } = await request.json();
+
+    if (!methodId) {
+      return NextResponse.json({ error: "Payment method is required" }, { status: 400 });
+    }
 
     const payment = await prisma.payment.create({
       data: {
         invoiceId: invoiceId ? parseInt(invoiceId) : null,
         amount: parseFloat(amount),
         paymentDate: paymentDate ? new Date(paymentDate) : new Date(),
-        method: method as PaymentMethod,
+        methodId: parseInt(methodId),
         notes,
         userId: user.id,
-        isMatched: !!invoiceId, // If invoiceId provided, it's matched
+        isMatched: !!invoiceId,
+        source: source || "manual",
       },
+      include: { method: true },
     });
 
     // Update invoice status if payment is linked

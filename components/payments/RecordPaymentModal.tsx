@@ -2,6 +2,17 @@
 
 import { useState, useEffect } from 'react';
 import Modal from '../invoices/Modal';
+import LucideIcon from '../LucideIcon';
+
+interface PaymentMethodType {
+  id: number;
+  name: string;
+  icon: string | null;
+  color: string;
+  isActive: boolean;
+  isSystem: boolean;
+  sortOrder: number;
+}
 
 interface RecordPaymentModalProps {
   isOpen: boolean;
@@ -20,9 +31,10 @@ interface Invoice {
 
 export default function RecordPaymentModal({ isOpen, onClose, onSuccess }: RecordPaymentModalProps) {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodType[]>([]);
   const [payment, setPayment] = useState({
     amount: '',
-    method: 'cash' as 'cash' | 'zelle' | 'quickbooks' | 'layaway',
+    methodId: '' as string,
     paymentDate: new Date().toISOString().split('T')[0],
     notes: '',
     invoiceId: '',
@@ -33,10 +45,11 @@ export default function RecordPaymentModal({ isOpen, onClose, onSuccess }: Recor
   useEffect(() => {
     if (isOpen) {
       fetchInvoices();
+      fetchPaymentMethods();
       // Reset form when modal opens
       setPayment({
         amount: '',
-        method: 'cash',
+        methodId: '',
         paymentDate: new Date().toISOString().split('T')[0],
         notes: '',
         invoiceId: '',
@@ -45,13 +58,30 @@ export default function RecordPaymentModal({ isOpen, onClose, onSuccess }: Recor
     }
   }, [isOpen]);
 
+  const fetchPaymentMethods = async () => {
+    try {
+      const res = await fetch('/api/payment-methods');
+      if (res.ok) {
+        const data = await res.json();
+        const activeMethods = data.filter((m: PaymentMethodType) => m.isActive);
+        setPaymentMethods(activeMethods);
+        if (activeMethods.length > 0) {
+          setPayment(prev => ({ ...prev, methodId: String(activeMethods[0].id) }));
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch payment methods:', error);
+    }
+  };
+
   const fetchInvoices = async () => {
     try {
       const res = await fetch('/api/invoices');
       if (res.ok) {
         const data = await res.json();
+        const invoiceList = data.invoices || data;
         // Only show unpaid or partially paid invoices
-        const unpaidInvoices = data.filter((inv: Invoice) => 
+        const unpaidInvoices = (Array.isArray(invoiceList) ? invoiceList : []).filter((inv: Invoice) => 
           inv.status !== 'paid' && inv.paidAmount < inv.amount
         );
         setInvoices(unpaidInvoices);
@@ -87,7 +117,7 @@ export default function RecordPaymentModal({ isOpen, onClose, onSuccess }: Recor
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           amount,
-          method: payment.method,
+          methodId: parseInt(payment.methodId),
           paymentDate: payment.paymentDate,
           notes: payment.notes || null,
           invoiceId: payment.invoiceId ? parseInt(payment.invoiceId) : null,
@@ -197,24 +227,19 @@ export default function RecordPaymentModal({ isOpen, onClose, onSuccess }: Recor
             Payment Method <span className="text-red-500">*</span>
           </label>
           <div className="grid grid-cols-2 gap-3">
-            {[
-              { value: 'cash', label: 'Cash', icon: '💵' },
-              { value: 'zelle', label: 'Zelle', icon: '📱' },
-              { value: 'quickbooks', label: 'QuickBooks', icon: '💳' },
-              { value: 'layaway', label: 'Layaway', icon: '⏰' },
-            ].map((method) => (
+            {paymentMethods.map((method) => (
               <button
-                key={method.value}
+                key={method.id}
                 type="button"
-                onClick={() => setPayment({ ...payment, method: method.value as any })}
+                onClick={() => setPayment({ ...payment, methodId: String(method.id) })}
                 className={`p-3 rounded-lg border-2 transition-all ${
-                  payment.method === method.value
+                  payment.methodId === String(method.id)
                     ? 'border-blue-500 bg-blue-50 text-blue-700'
                     : 'border-gray-300 hover:border-gray-400 text-gray-700'
                 }`}
               >
-                <span className="text-2xl mr-2">{method.icon}</span>
-                <span className="font-medium">{method.label}</span>
+                {method.icon && <LucideIcon name={method.icon} fallback={method.name} size={24} className="mr-2" />}
+                <span className="font-medium" style={{ color: payment.methodId === String(method.id) ? undefined : method.color }}>{method.name}</span>
               </button>
             ))}
           </div>

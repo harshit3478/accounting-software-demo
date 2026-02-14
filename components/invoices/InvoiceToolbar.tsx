@@ -97,7 +97,7 @@ export default function InvoiceToolbar({
             </PopoverTrigger>
             <PopoverContent className="w-[200px] p-0" align="start">
               <div className="p-2">
-                {['all', 'pending', 'paid', 'overdue', 'partial'].map((status) => (
+                {['all', 'pending', 'paid', 'overdue', 'partial', 'inactive'].map((status) => (
                   <div
                     key={status}
                     className={`px-3 py-2 text-sm rounded-md cursor-pointer hover:bg-gray-100 capitalize ${

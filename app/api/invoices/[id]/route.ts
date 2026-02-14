@@ -10,7 +10,7 @@ export async function PUT(
 ) {
   try {
     const user = await requireAuth();
-    const { clientName, items, subtotal, tax, discount, dueDate, description, isLayaway } = await request.json();
+    const { clientName, customerId, items, subtotal, tax, discount, dueDate, description, isLayaway } = await request.json();
     
     const { id } = await params;
     const invoiceId = parseInt(id);
@@ -41,6 +41,7 @@ export async function PUT(
         dueDate: new Date(dueDate),
         description,
         isLayaway: isLayaway || false,
+        customerId: customerId !== undefined ? (customerId || null) : undefined,
       },
     });
 
@@ -77,40 +78,22 @@ export async function DELETE(
     // Check if invoice exists
     const existingInvoice = await prisma.invoice.findUnique({
       where: { id: invoiceId },
-      include: {
-        payments: true,
-        paymentMatches: true,
-      }
     });
 
     if (!existingInvoice) {
       return NextResponse.json({ error: 'Invoice not found' }, { status: 404 });
     }
 
-    // Delete related payment matches first
-    if (existingInvoice.paymentMatches.length > 0) {
-      await prisma.paymentInvoiceMatch.deleteMany({
-        where: { invoiceId },
-      });
-    }
-
-    // Update payments that reference this invoice (set invoiceId to null)
-    if (existingInvoice.payments.length > 0) {
-      await prisma.payment.updateMany({
-        where: { invoiceId },
-        data: { invoiceId: null },
-      });
-    }
-
-    // Delete the invoice
-    await prisma.invoice.delete({
+    // Soft delete — set status to inactive
+    await prisma.invoice.update({
       where: { id: invoiceId },
+      data: { status: 'inactive' },
     });
 
     // Invalidate dashboard cache
     invalidateDashboard();
 
-    return NextResponse.json({ message: 'Invoice deleted successfully' });
+    return NextResponse.json({ message: 'Invoice deactivated successfully' });
   } catch (error: any) {
     console.error('Delete invoice error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });

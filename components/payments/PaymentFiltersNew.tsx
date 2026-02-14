@@ -9,18 +9,15 @@ import { Input } from '../ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { Calendar } from '../ui/calendar';
 import { Separator } from '../ui/separator';
-import { 
-  CalendarIcon, 
-  Search, 
-  X, 
-  Filter, 
+import {
+  CalendarIcon,
+  Search,
+  X,
+  Filter,
   ChevronDown,
-  DollarSign,
-  Smartphone,
-  Building2,
-  Clock
 } from 'lucide-react';
 import { format } from 'date-fns';
+import type { PaymentMethodType } from '../../hooks/usePayments';
 
 interface PaymentFiltersProps {
   filterMethod: PaymentMethodFilter;
@@ -30,6 +27,7 @@ interface PaymentFiltersProps {
   dateRange: DateRange | null;
   onDateRangeChange: (range: DateRange | null) => void;
   onExportPDF?: () => void;
+  paymentMethods?: PaymentMethodType[];
 }
 
 export default function PaymentFiltersNew({
@@ -40,6 +38,7 @@ export default function PaymentFiltersNew({
   dateRange,
   onDateRangeChange,
   onExportPDF,
+  paymentMethods = [],
 }: PaymentFiltersProps) {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [dateFrom, setDateFrom] = useState<Date | undefined>(
@@ -49,42 +48,24 @@ export default function PaymentFiltersNew({
     dateRange?.endDate ? new Date(dateRange.endDate) : undefined
   );
 
-  const filters: { 
-    value: PaymentMethodFilter; 
-    label: string; 
+  const filters: {
+    value: PaymentMethodFilter;
+    label: string;
     icon: React.ReactNode;
     colorClass: string;
   }[] = [
-    { 
-      value: 'all', 
-      label: 'All Payments', 
+    {
+      value: 'all',
+      label: 'All Payments',
       icon: <Filter className="h-4 w-4" />,
       colorClass: 'default'
     },
-    { 
-      value: 'cash', 
-      label: 'Cash', 
-      icon: <DollarSign className="h-4 w-4" />,
-      colorClass: 'secondary'
-    },
-    { 
-      value: 'zelle', 
-      label: 'Zelle', 
-      icon: <Smartphone className="h-4 w-4" />,
-      colorClass: 'default'
-    },
-    { 
-      value: 'quickbooks', 
-      label: 'QuickBooks', 
-      icon: <Building2 className="h-4 w-4" />,
-      colorClass: 'default'
-    },
-    { 
-      value: 'layaway', 
-      label: 'Layaway', 
-      icon: <Clock className="h-4 w-4" />,
-      colorClass: 'default'
-    },
+    ...paymentMethods.map((m) => ({
+      value: String(m.id) as PaymentMethodFilter,
+      label: m.name,
+      icon: m.icon ? <span className="text-sm">{m.icon}</span> : <Filter className="h-4 w-4" />,
+      colorClass: 'default',
+    })),
   ];
 
   const hasActiveFilters = 

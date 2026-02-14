@@ -1,19 +1,45 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import LucideIcon from '../LucideIcon';
 import Modal from './Modal';
 import { InvoiceItem } from './types';
 
 interface Payment {
   id: number;
   amount: number;
-  method: string;
+  method: {
+    id: number;
+    name: string;
+    icon: string | null;
+    color: string;
+  } | string;
   date: string;
   notes: string | null;
   createdAt: string;
   createdBy?: string;
   type?: 'direct' | 'matched';
   matchId?: number;
+}
+
+interface LayawayInstallment {
+  id: number;
+  dueDate: string;
+  amount: number;
+  label: string;
+  isPaid: boolean;
+  paidDate: string | null;
+  paidAmount: number | null;
+}
+
+interface LayawayPlan {
+  id: number;
+  months: number;
+  paymentFrequency: string;
+  downPayment: number;
+  isCancelled: boolean;
+  notes: string | null;
+  installments: LayawayInstallment[];
 }
 
 interface Invoice {
@@ -33,6 +59,9 @@ interface Invoice {
   description?: string;
   shipmentId?: string | null;
   trackingNumber?: string | null;
+  externalInvoiceNumber?: string | null;
+  customer?: { id: number; name: string; email: string | null; phone: string | null } | null;
+  layawayPlan?: LayawayPlan | null;
 }
 
 interface ViewInvoiceModalProps {
@@ -44,6 +73,23 @@ interface ViewInvoiceModalProps {
 export default function ViewInvoiceModal({ isOpen, onClose, invoice }: ViewInvoiceModalProps) {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [isLoadingPayments, setIsLoadingPayments] = useState(false);
+  const invoiceRef = useRef<HTMLDivElement>(null);
+
+  const handleDownloadPDF = async () => {
+    if (!invoice) return;
+    const { generateSingleInvoicePDF } = await import('../../lib/pdf-export');
+    generateSingleInvoicePDF(invoice as any);
+  };
+
+  const handleShareImage = async () => {
+    if (!invoiceRef.current) return;
+    const { shareElementAsImage } = await import('../../lib/image-export');
+    await shareElementAsImage(
+      invoiceRef.current,
+      `invoice-${invoice?.invoiceNumber}.png`,
+      `Invoice ${invoice?.invoiceNumber}`
+    );
+  };
 
   useEffect(() => {
     if (isOpen && invoice) {
@@ -91,43 +137,29 @@ export default function ViewInvoiceModal({ isOpen, onClose, invoice }: ViewInvoi
       pending: 'bg-amber-100 text-amber-800',
       overdue: 'bg-red-100 text-red-800',
       partial: 'bg-blue-100 text-blue-800',
+      inactive: 'bg-gray-200 text-gray-600',
     };
     return classes[status as keyof typeof classes] || 'bg-gray-100 text-gray-800';
   };
 
-  const getPaymentMethodIcon = (method: string) => {
-    switch (method.toLowerCase()) {
-      case 'cash':
-        return (
-          <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
-          </svg>
-        );
-      case 'zelle':
-        return (
-          <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
-          </svg>
-        );
-      case 'quickbooks':
-        return (
-          <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-          </svg>
-        );
-      case 'layaway':
-        return (
-          <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-          </svg>
-        );
-      default:
-        return (
-          <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
-          </svg>
-        );
+  const getPaymentMethodInfo = (method: Payment['method']) => {
+    if (typeof method === 'object' && method !== null) {
+      return { name: method.name, icon: method.icon, color: method.color };
     }
+    // Fallback for legacy string method
+    return { name: String(method), icon: null, color: '#6B7280' };
+  };
+
+  const getPaymentMethodIcon = (method: Payment['method']) => {
+    const info = getPaymentMethodInfo(method);
+    if (info.icon) {
+      return <LucideIcon name={info.icon} fallback={info.name} size={20} />;
+    }
+    return (
+      <svg className="w-5 h-5" style={{ color: info.color }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
+      </svg>
+    );
   };
 
   return (
@@ -139,6 +171,29 @@ export default function ViewInvoiceModal({ isOpen, onClose, invoice }: ViewInvoi
       headerColor="gray"
     >
       <div className="space-y-6">
+        {/* Export buttons */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleDownloadPDF}
+            className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            Download PDF
+          </button>
+          <button
+            onClick={handleShareImage}
+            className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors flex items-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+            </svg>
+            Share Image
+          </button>
+        </div>
+
+        <div ref={invoiceRef}>
         {/* Invoice Header */}
         <div className="bg-gradient-to-r from-gray-50 to-gray-100 p-6 rounded-xl border border-gray-200">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -165,9 +220,23 @@ export default function ViewInvoiceModal({ isOpen, onClose, invoice }: ViewInvoi
               )}
             </div>
           </div>
-          <div className="mt-4 pt-4 border-t border-gray-300">
-            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Created On</p>
-            <p className="text-sm text-gray-700">{formatDate(invoice.createdAt)}</p>
+          <div className="mt-4 pt-4 border-t border-gray-300 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Created On</p>
+              <p className="text-sm text-gray-700">{formatDate(invoice.createdAt)}</p>
+            </div>
+            {invoice.externalInvoiceNumber && (
+              <div>
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">External Invoice #</p>
+                <p className="text-sm font-mono text-gray-700">{invoice.externalInvoiceNumber}</p>
+              </div>
+            )}
+            {invoice.customer?.phone && (
+              <div>
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Phone</p>
+                <p className="text-sm text-gray-700">{invoice.customer.phone}</p>
+              </div>
+            )}
           </div>
           
           {(invoice.shipmentId || invoice.trackingNumber) && (
@@ -257,6 +326,71 @@ export default function ViewInvoiceModal({ isOpen, onClose, invoice }: ViewInvoi
           </div>
         </div>
 
+        {/* Layaway Schedule */}
+        {invoice.isLayaway && invoice.layawayPlan && (
+          <div className="bg-purple-50 p-6 rounded-xl border border-purple-200">
+            <div className="flex items-center justify-between mb-4">
+              <h4 className="text-lg font-semibold text-gray-900">Layaway Schedule</h4>
+              {invoice.layawayPlan.isCancelled && (
+                <span className="px-3 py-1 rounded-full text-sm font-medium bg-red-100 text-red-800">Cancelled</span>
+              )}
+            </div>
+            <div className="grid grid-cols-3 gap-4 mb-4">
+              <div>
+                <p className="text-xs text-gray-500 uppercase">Duration</p>
+                <p className="text-sm font-medium text-gray-900">{invoice.layawayPlan.months} month(s)</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 uppercase">Frequency</p>
+                <p className="text-sm font-medium text-gray-900 capitalize">{invoice.layawayPlan.paymentFrequency}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 uppercase">Down Payment</p>
+                <p className="text-sm font-medium text-gray-900">{formatCurrency(invoice.layawayPlan.downPayment)}</p>
+              </div>
+            </div>
+            {invoice.layawayPlan.notes && (
+              <p className="text-sm text-gray-600 italic mb-4">"{invoice.layawayPlan.notes}"</p>
+            )}
+            {invoice.layawayPlan.installments.length > 0 && (
+              <div className="border border-purple-200 rounded-lg overflow-hidden">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-purple-100 border-b border-purple-200">
+                      <th className="px-4 py-2 text-left text-xs font-semibold text-purple-800 uppercase">Label</th>
+                      <th className="px-4 py-2 text-right text-xs font-semibold text-purple-800 uppercase">Due Date</th>
+                      <th className="px-4 py-2 text-right text-xs font-semibold text-purple-800 uppercase">Amount</th>
+                      <th className="px-4 py-2 text-center text-xs font-semibold text-purple-800 uppercase">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-purple-100">
+                    {invoice.layawayPlan.installments.map((inst) => (
+                      <tr key={inst.id} className={inst.isPaid ? 'bg-green-50/50' : ''}>
+                        <td className="px-4 py-2 text-sm text-gray-900">{inst.label}</td>
+                        <td className="px-4 py-2 text-sm text-gray-900 text-right">{formatDate(inst.dueDate)}</td>
+                        <td className="px-4 py-2 text-sm text-gray-900 text-right">{formatCurrency(inst.amount)}</td>
+                        <td className="px-4 py-2 text-center">
+                          {inst.isPaid ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                              Paid {inst.paidDate ? `on ${new Date(inst.paidDate).toLocaleDateString()}` : ''}
+                            </span>
+                          ) : (
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                              new Date(inst.dueDate) < new Date() ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-800'
+                            }`}>
+                              {new Date(inst.dueDate) < new Date() ? 'Overdue' : 'Pending'}
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Payment History */}
         <div>
           <div className="flex items-center justify-between mb-4">
@@ -288,7 +422,7 @@ export default function ViewInvoiceModal({ isOpen, onClose, invoice }: ViewInvoi
                         <div className="flex items-center space-x-2">
                           <span className="font-semibold text-gray-900">{formatCurrency(payment.amount)}</span>
                           <span className="text-xs px-2 py-1 bg-gray-100 text-gray-700 rounded">
-                            {payment.method.charAt(0).toUpperCase() + payment.method.slice(1)}
+                            {getPaymentMethodInfo(payment.method).name}
                           </span>
                           {payment.type === 'matched' && (
                             <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded font-medium">
@@ -326,6 +460,7 @@ export default function ViewInvoiceModal({ isOpen, onClose, invoice }: ViewInvoi
             </div>
           )}
         </div>
+        </div>{/* end invoiceRef */}
       </div>
     </Modal>
   );

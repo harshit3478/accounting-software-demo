@@ -37,6 +37,7 @@ export default function InvoiceFilters({
     { value: 'overdue', label: 'Overdue', color: 'bg-red-100 text-red-800 hover:bg-red-200' },
     { value: 'partial', label: 'Partial', color: 'bg-blue-100 text-blue-800 hover:bg-blue-200' },
     { value: 'layaway', label: 'Layaway', color: 'bg-purple-100 text-purple-800 hover:bg-purple-200' },
+    { value: 'inactive', label: 'Inactive', color: 'bg-gray-200 text-gray-600 hover:bg-gray-300' },
   ];
 
   return (

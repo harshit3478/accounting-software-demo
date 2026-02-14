@@ -20,15 +20,39 @@ export interface Invoice {
   amount: number;
   paidAmount: number;
   dueDate: string;
-  status: "paid" | "pending" | "overdue" | "partial";
+  status: "paid" | "pending" | "overdue" | "partial" | "inactive";
   isLayaway: boolean;
   createdAt: string;
+  description?: string | null;
+  // Customer relation
+  customerId?: number | null;
+  customer?: { id: number; name: string; email?: string; phone?: string } | null;
+  // External import fields
+  externalInvoiceNumber?: string | null;
+  source?: string;
+  // Layaway plan relation
+  layawayPlan?: {
+    id: number;
+    months: number;
+    paymentFrequency: string;
+    downPayment: number;
+    isCancelled: boolean;
+    installments: {
+      id: number;
+      dueDate: string;
+      amount: number;
+      label: string;
+      isPaid: boolean;
+      paidDate?: string | null;
+      paidAmount?: number | null;
+    }[];
+  } | null;
   // Shipping fields (nullable)
   shipmentId?: string | null;
   trackingNumber?: string | null;
 }
 
-export type InvoiceStatusFilter = "all" | "pending" | "paid" | "overdue" | "partial";
+export type InvoiceStatusFilter = "all" | "pending" | "paid" | "overdue" | "partial" | "inactive";
 export type InvoiceTypeFilter = "all" | "cash" | "layaway";
 export type InvoiceFilter = InvoiceStatusFilter | "layaway";
 
@@ -49,8 +73,12 @@ interface UseInvoicesReturn {
   setLayawayOverdue: (overdue: boolean) => void;
   
   // Legacy filter support (to avoid breaking other components temporarily)
-  legacyFilter: string; 
+  legacyFilter: string;
   setLegacyFilter: (filter: any) => void;
+
+  // Client filter — see all invoices for a specific client
+  customerIdFilter: number | null;
+  setCustomerIdFilter: (id: number | null) => void;
 
   searchTerm: string;
   setSearchTerm: (term: string) => void;
@@ -146,8 +174,13 @@ export function useInvoices(
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState(searchTerm);
   
   // Legacy filter state (mapped to new filters for compatibility)
-  const legacyFilter = statusFilter as any; 
-  
+  const legacyFilter = statusFilter as any;
+
+  // Client filter
+  const [customerIdFilter, setCustomerIdFilterState] = useState<number | null>(
+    searchParams.get("customerId") ? parseInt(searchParams.get("customerId")!) : null
+  );
+
   const [sortBy, setSortBy] = useState("date-desc");
   const [dateRange, setDateRangeState] = useState<{
     start: string;
@@ -213,10 +246,19 @@ export function useInvoices(
     if (val === 'layaway') {
       setTypeFilter('layaway');
       setStatusFilter('all');
+    } else if (val === 'inactive') {
+      setTypeFilter('all');
+      setStatusFilter('inactive');
     } else {
       setTypeFilter('all');
       setStatusFilter(val);
     }
+  };
+
+  const setCustomerIdFilter = (id: number | null) => {
+    setCustomerIdFilterState(id);
+    setCurrentPage(1);
+    updateUrl({ customerId: id ? id.toString() : null, page: "1" });
   };
 
   const setSearchTerm = (term: string) => {
@@ -284,7 +326,7 @@ export function useInvoices(
   // Fetch invoices when params change
   useEffect(() => {
     fetchInvoices();
-  }, [statusFilter, typeFilter, layawayOverdue, debouncedSearchTerm, sortBy, dateRange, currentPage, itemsPerPage]);
+  }, [statusFilter, typeFilter, layawayOverdue, debouncedSearchTerm, sortBy, dateRange, currentPage, itemsPerPage, customerIdFilter]);
 
   const fetchInvoices = async () => {
     setIsLoading(true);
@@ -300,6 +342,7 @@ export function useInvoices(
         params.set("startDate", dateRange.start);
         params.set("endDate", dateRange.end);
       }
+      if (customerIdFilter) params.set("customerId", customerIdFilter.toString());
 
       const res = await fetch(`/api/invoices?${params.toString()}`);
       if (res.ok) {
@@ -359,7 +402,7 @@ export function useInvoices(
 
       if (res.ok) {
         showSuccess(
-          `Invoice ${deletingInvoice.invoiceNumber} deleted successfully`
+          `Invoice ${deletingInvoice.invoiceNumber} deactivated successfully`
         );
         await fetchInvoices();
         setShowDeleteConfirm(false);
@@ -517,6 +560,8 @@ export function useInvoices(
     totalItems,
     legacyFilter,
     setLegacyFilter,
+    customerIdFilter,
+    setCustomerIdFilter,
     statusFilter,
     setStatusFilter,
     typeFilter,
