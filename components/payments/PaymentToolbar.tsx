@@ -20,6 +20,7 @@ interface PaymentToolbarProps {
   onDateRangeChange: (range: DateRange | null) => void;
   onRecordClick: () => void;
   onExportClick: () => void;
+  onExportCSVClick: () => void;
   onImportClick: () => void;
   onSyncClick: () => void;
   isSyncing: boolean;
@@ -37,6 +38,7 @@ export default function PaymentToolbar({
   onDateRangeChange,
   onRecordClick,
   onExportClick,
+  onExportCSVClick,
   onImportClick,
   onSyncClick,
   isSyncing,
@@ -228,10 +230,33 @@ export default function PaymentToolbar({
           <Upload className="mr-2 h-4 w-4" />
           Import
         </Button>
-        <Button variant="outline" size="sm" className="h-9" onClick={onExportClick}>
-          <Download className="mr-2 h-4 w-4" />
-          Export
-        </Button>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="sm" className="h-9">
+              <Download className="mr-2 h-4 w-4" />
+              Export
+              <ChevronDown className="ml-1 h-3 w-3" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-[150px] p-0" align="end">
+            <div className="p-1">
+              <div
+                className="px-3 py-2 text-sm rounded-md cursor-pointer hover:bg-gray-100 flex items-center text-gray-700"
+                onClick={onExportClick}
+              >
+                <Download className="mr-2 h-4 w-4" />
+                Export PDF
+              </div>
+              <div
+                className="px-3 py-2 text-sm rounded-md cursor-pointer hover:bg-gray-100 flex items-center text-gray-700"
+                onClick={onExportCSVClick}
+              >
+                <Download className="mr-2 h-4 w-4" />
+                Export CSV
+              </div>
+            </div>
+          </PopoverContent>
+        </Popover>
         <Button size="sm" className="h-9 bg-blue-600 hover:bg-blue-700" onClick={onRecordClick}>
           <Plus className="mr-2 h-4 w-4" />
           Record Payment

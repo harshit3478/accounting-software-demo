@@ -380,16 +380,20 @@ async function main() {
   let layawayCount = 0;
   const invoiceNumberMap = new Map<string, number>(); // externalInvoiceNumber -> invoiceId
 
-  // Get the current max invoice number for the auto-generator
-  const lastInv = await prisma.invoice.findFirst({
+  // Get the current max invoice sequence number across all years
+  const allInvNums = await prisma.invoice.findMany({
     where: { invoiceNumber: { startsWith: 'INV-' } },
-    orderBy: { invoiceNumber: 'desc' },
+    select: { invoiceNumber: true },
   });
   let nextInvNum = 1;
-  if (lastInv) {
-    const parts = lastInv.invoiceNumber.split('-');
-    nextInvNum = parseInt(parts[2] || '0') + 1;
+  for (const inv of allInvNums) {
+    const parts = inv.invoiceNumber.split('-');
+    const num = parseInt(parts[2] || '0');
+    if (num >= nextInvNum) nextInvNum = num + 1;
   }
+
+  let skippedInvoices = 0;
+  let failedInvoices = 0;
 
   for (const inv of invoices) {
     // Skip if external number already imported
@@ -399,6 +403,7 @@ async function main() {
       });
       if (existing) {
         invoiceNumberMap.set(inv.externalInvoiceNumber, existing.id);
+        skippedInvoices++;
         continue;
       }
     }
@@ -409,69 +414,78 @@ async function main() {
 
     const subtotal = inv.items.reduce((sum, i) => sum + i.price * i.quantity, 0);
 
-    const created = await prisma.invoice.create({
-      data: {
-        userId,
-        invoiceNumber,
-        clientName: inv.customerName,
-        customerId: customerMap.get(inv.customerName) || null,
-        externalInvoiceNumber: inv.externalInvoiceNumber || null,
-        source: 'quickbooks_import',
-        items: inv.items,
-        subtotal,
-        tax: 0,
-        discount: 0,
-        amount: inv.amount,
-        paidAmount: 0,
-        dueDate: inv.dueDate,
-        createdAt: inv.createdAt,
-        status: 'pending',
-        isLayaway: inv.isLayaway,
-      },
-    });
+    try {
+      const created = await prisma.invoice.create({
+        data: {
+          userId,
+          invoiceNumber,
+          clientName: inv.customerName,
+          customerId: customerMap.get(inv.customerName) || null,
+          externalInvoiceNumber: inv.externalInvoiceNumber || null,
+          source: 'quickbooks_import',
+          items: inv.items,
+          subtotal,
+          tax: 0,
+          discount: 0,
+          amount: inv.amount,
+          paidAmount: 0,
+          dueDate: inv.dueDate,
+          createdAt: inv.createdAt,
+          status: 'pending',
+          isLayaway: inv.isLayaway,
+        },
+      });
 
-    if (inv.externalInvoiceNumber) {
-      invoiceNumberMap.set(inv.externalInvoiceNumber, created.id);
-    }
-    invoiceCount++;
+      if (inv.externalInvoiceNumber) {
+        invoiceNumberMap.set(inv.externalInvoiceNumber, created.id);
+      }
+      invoiceCount++;
 
-    // Create layaway plan if applicable
-    if (inv.isLayaway && inv.layawayMemo) {
-      const planData = parseLayawayMemo(inv.layawayMemo);
-      if (planData) {
-        await prisma.layawayPlan.create({
-          data: {
-            invoiceId: created.id,
-            months: planData.months,
-            paymentFrequency: planData.paymentFrequency,
-            downPayment: planData.downPayment,
-            isCancelled: planData.isCancelled,
-            installments: {
-              create: planData.installments.map(inst => ({
-                dueDate: inst.dueDate,
-                amount: inst.amount,
-                label: inst.label,
-                isPaid: inst.isPaid,
-                paidDate: inst.paidDate,
-                paidAmount: inst.paidAmount,
-              })),
+      // Create layaway plan if applicable
+      if (inv.isLayaway && inv.layawayMemo) {
+        const planData = parseLayawayMemo(inv.layawayMemo);
+        if (planData) {
+          await prisma.layawayPlan.create({
+            data: {
+              invoiceId: created.id,
+              months: planData.months,
+              paymentFrequency: planData.paymentFrequency,
+              downPayment: planData.downPayment,
+              isCancelled: planData.isCancelled,
+              installments: {
+                create: planData.installments.map(inst => ({
+                  dueDate: inst.dueDate,
+                  amount: inst.amount,
+                  label: inst.label,
+                  isPaid: inst.isPaid,
+                  paidDate: inst.paidDate,
+                  paidAmount: inst.paidAmount,
+                })),
+              },
             },
-          },
-        });
-        layawayCount++;
+          });
+          layawayCount++;
+        }
+      }
+    } catch (err: any) {
+      failedInvoices++;
+      if (failedInvoices <= 10) {
+        console.error(`  Failed invoice ${inv.externalInvoiceNumber || 'unknown'}: ${err.message}`);
       }
     }
 
-    if (invoiceCount % 500 === 0) {
-      console.log(`  ...${invoiceCount} invoices created`);
+    if ((invoiceCount + skippedInvoices) % 500 === 0) {
+      console.log(`  ...${invoiceCount} created, ${skippedInvoices} skipped`);
     }
   }
-  console.log(`  Created ${invoiceCount} invoices (${layawayCount} with layaway plans)`);
+  console.log(`  Created ${invoiceCount} invoices (${layawayCount} with layaway plans), ${skippedInvoices} skipped, ${failedInvoices} failed`);
 
   // Step 4: Create payments
   console.log('\n3. Creating payments...');
   let paymentCount = 0;
   let matchedCount = 0;
+
+  let failedPayments = 0;
 
   for (const pay of payments) {
     const methodId = methodMap.get(pay.methodName.toLowerCase()) || methodMap.get('cash')!;
@@ -483,26 +497,32 @@ async function main() {
       matchedCount++;
     }
 
-    await prisma.payment.create({
-      data: {
-        userId,
-        invoiceId,
-        amount: pay.amount,
-        paymentDate: pay.paymentDate,
-        methodId,
-        notes: pay.notes,
-        isMatched: !!invoiceId,
-        source: 'quickbooks_import',
-      },
-    });
-
-    paymentCount++;
+    try {
+      await prisma.payment.create({
+        data: {
+          userId,
+          invoiceId,
+          amount: pay.amount,
+          paymentDate: pay.paymentDate,
+          methodId,
+          notes: pay.notes,
+          isMatched: !!invoiceId,
+          source: 'quickbooks_import',
+        },
+      });
+      paymentCount++;
+    } catch (err: any) {
+      failedPayments++;
+      if (failedPayments <= 10) {
+        console.error(`  Failed payment for invoice ${pay.invoiceNumber || 'unknown'}: ${err.message}`);
+      }
+    }
 
     if (paymentCount % 1000 === 0) {
       console.log(`  ...${paymentCount} payments created`);
     }
   }
-  console.log(`  Created ${paymentCount} payments (${matchedCount} matched to invoices)`);
+  console.log(`  Created ${paymentCount} payments (${matchedCount} matched to invoices), ${failedPayments} failed`);
 
   // Step 5: Update invoice paid amounts
   console.log('\n4. Updating invoice paid amounts...');

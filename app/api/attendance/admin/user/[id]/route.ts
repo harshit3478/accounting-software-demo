@@ -5,7 +5,8 @@ import { requireAdmin } from "../../../../../../lib/auth";
 export async function GET(req: Request, { params }: any) {
   try {
     await requireAdmin();
-    const id = parseInt(params.id, 10);
+    const resolvedParams = await params;
+    const id = parseInt(resolvedParams.id, 10);
     if (isNaN(id))
       return NextResponse.json({ error: "Invalid id" }, { status: 400 });
 

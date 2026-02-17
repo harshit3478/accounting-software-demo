@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import ConfirmModal from '../ConfirmModal';
+import { Plus } from 'lucide-react';
 
 interface User {
   id: number;
@@ -26,20 +27,16 @@ interface UserManagementTabProps {
 
 export default function UserManagementTab({ showSuccess, showError }: UserManagementTabProps) {
   const [users, setUsers] = useState<User[]>([]);
+  const [showCreateModal, setShowCreateModal] = useState(false);
   const [newUser, setNewUser] = useState({
     email: '',
-    password: '',
     name: '',
     role: 'accountant',
     privileges: { documents: { upload: false, delete: false, rename: false } },
   });
   const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [editPassword, setEditPassword] = useState('');
-  const [changePassword, setChangePassword] = useState(false);
-  const [message, setMessage] = useState('');
-  const [showNewPassword, setShowNewPassword] = useState(false);
-  const [showEditPassword, setShowEditPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; name: string } | null>(null);
@@ -63,34 +60,35 @@ export default function UserManagementTab({ showSuccess, showError }: UserManage
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    setMessage('');
-    const res = await fetch('/api/users', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newUser),
-    });
-    if (res.ok) {
-      showSuccess('User created successfully');
-      setMessage('User created successfully');
-      setNewUser({
-        email: '',
-        password: '',
-        name: '',
-        role: 'accountant',
-        privileges: { documents: { upload: false, delete: false, rename: false } },
+    setSaving(true);
+    try {
+      const res = await fetch('/api/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newUser),
       });
-      fetchUsers();
-    } else {
-      const data = await res.json();
-      setMessage(data.error);
-      showError(data.error);
+      if (res.ok) {
+        showSuccess('User created successfully');
+        setShowCreateModal(false);
+        setNewUser({
+          email: '',
+          name: '',
+          role: 'accountant',
+          privileges: { documents: { upload: false, delete: false, rename: false } },
+        });
+        fetchUsers();
+      } else {
+        const data = await res.json();
+        showError(data.error);
+      }
+    } finally {
+      setSaving(false);
     }
   };
 
   const handleEditUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingUser) return;
-    setMessage('');
     setUpdating(true);
     try {
       const updateData: any = {
@@ -100,9 +98,6 @@ export default function UserManagementTab({ showSuccess, showError }: UserManage
         role: editingUser.role,
         privileges: editingUser.privileges,
       };
-      if (changePassword && editPassword.trim()) {
-        updateData.password = editPassword;
-      }
       const res = await fetch('/api/users', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -110,7 +105,7 @@ export default function UserManagementTab({ showSuccess, showError }: UserManage
       });
       if (res.ok) {
         showSuccess('User updated successfully');
-        closeEditModal();
+        setEditingUser(null);
         fetchUsers();
       } else {
         const data = await res.json();
@@ -119,13 +114,6 @@ export default function UserManagementTab({ showSuccess, showError }: UserManage
     } finally {
       setUpdating(false);
     }
-  };
-
-  const closeEditModal = () => {
-    setEditingUser(null);
-    setEditPassword('');
-    setChangePassword(false);
-    setShowEditPassword(false);
   };
 
   const confirmDelete = async () => {
@@ -150,104 +138,32 @@ export default function UserManagementTab({ showSuccess, showError }: UserManage
     }
   };
 
+  const renderPermissions = (perm: 'upload' | 'delete' | 'rename', checked: boolean, onChange: (val: boolean) => void) => (
+    <label key={perm} className="flex items-center space-x-2 cursor-pointer">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+      />
+      <span className="text-sm text-gray-700 capitalize">{perm}</span>
+    </label>
+  );
+
   return (
     <div>
-      <h2 className="text-xl font-semibold text-gray-900 mb-6">User Management</h2>
-
-      {/* Create User Form */}
-      <div className="bg-gray-50 rounded-lg border border-gray-200 p-6 mb-6">
-        <h3 className="text-lg font-semibold text-gray-800 mb-4">Create New User</h3>
-        <form onSubmit={handleCreateUser}>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-              <input
-                type="email"
-                placeholder="user@example.com"
-                value={newUser.email}
-                onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-                required
-                className="w-full border text-gray-900 border-gray-300 p-2.5 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-              <div className="relative">
-                <input
-                  type={showNewPassword ? 'text' : 'password'}
-                  placeholder="Enter password"
-                  value={newUser.password}
-                  onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
-                  required
-                  className="w-full border text-gray-900 border-gray-300 p-2.5 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent pr-10"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowNewPassword(!showNewPassword)}
-                  className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700 text-sm"
-                >
-                  {showNewPassword ? 'Hide' : 'Show'}
-                </button>
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
-              <input
-                type="text"
-                placeholder="Full Name"
-                value={newUser.name}
-                onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
-                required
-                className="w-full border text-gray-900 border-gray-300 p-2.5 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
-              <select
-                value={newUser.role}
-                onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}
-                className="w-full border text-gray-900 border-gray-300 p-2.5 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="accountant">Accountant</option>
-                <option value="staff">Staff</option>
-                <option value="admin">Admin</option>
-              </select>
-            </div>
-          </div>
-
-          {(newUser.role === 'accountant' || newUser.role === 'staff') && (
-            <div className="mb-4 p-4 bg-white rounded-lg border border-gray-200">
-              <h3 className="text-sm font-semibold text-gray-700 mb-3">Document Permissions</h3>
-              <div className="flex flex-wrap gap-4">
-                {(['upload', 'delete', 'rename'] as const).map((perm) => (
-                  <label key={perm} className="flex items-center space-x-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={newUser.privileges.documents[perm]}
-                      onChange={(e) =>
-                        setNewUser({
-                          ...newUser,
-                          privileges: {
-                            documents: { ...newUser.privileges.documents, [perm]: e.target.checked },
-                          },
-                        })
-                      }
-                      className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
-                    />
-                    <span className="text-sm text-gray-700 capitalize">{perm}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <button
-            type="submit"
-            className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-2.5 rounded-lg transition duration-200"
-          >
-            Create User
-          </button>
-        </form>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h2 className="text-xl font-semibold text-gray-900 mb-1">User Management</h2>
+          <p className="text-gray-600 text-sm">Manage user accounts and permissions</p>
+        </div>
+        <button
+          onClick={() => setShowCreateModal(true)}
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center text-sm"
+        >
+          <Plus size={16} className="mr-1.5" />
+          Add User
+        </button>
       </div>
 
       {/* Users Table */}
@@ -258,88 +174,183 @@ export default function UserManagementTab({ showSuccess, showError }: UserManage
             <span className="ml-3 text-gray-600">Loading users...</span>
           </div>
         ) : (
-          <table className="w-full">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">ID</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Email</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Name</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Role</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Privileges</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Created</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {users.map((user, index) => (
-                <tr key={user.id} className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-blue-50 transition duration-150`}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{user.id}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{user.email}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{user.name}</td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                      user.role === 'admin' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'
-                    }`}>
-                      {user.role}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    {(user.role === 'accountant' || user.role === 'staff') && user.privileges ? (
-                      <div className="flex gap-1">
-                        {(['upload', 'delete', 'rename'] as const).map((perm) => (
-                          <span key={perm} className={`px-2 py-0.5 text-xs rounded ${
-                            user.privileges!.documents[perm] ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
-                          }`}>
-                            {user.privileges!.documents[perm] ? '✓' : '✗'} {perm.charAt(0).toUpperCase() + perm.slice(1)}
-                          </span>
-                        ))}
-                      </div>
-                    ) : (
-                      <span className="text-gray-500 text-xs">All Access</span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {new Date(user.createdAt).toLocaleDateString()}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                    <button
-                      onClick={() => setEditingUser(user)}
-                      className="inline-flex items-center px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded hover:bg-blue-700 transition duration-200"
-                    >
-                      Edit
-                    </button>
-                    <Link
-                      href={`/attendance/admin?userId=${user.id}`}
-                      className="inline-flex items-center px-3 py-1.5 bg-indigo-600 text-white text-xs font-medium rounded hover:bg-indigo-700 transition duration-200"
-                    >
-                      Attendance
-                    </Link>
-                    <button
-                      onClick={() => setDeleteConfirm({ id: user.id, name: user.name })}
-                      disabled={deletingId !== null}
-                      className="inline-flex items-center px-3 py-1.5 bg-red-600 text-white text-xs font-medium rounded hover:bg-red-700 transition duration-200 disabled:opacity-50"
-                    >
-                      Delete
-                    </button>
-                  </td>
+          <div>
+            <table className="w-full table-fixed">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-[25%]">Name</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-[15%]">Role</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-[18%]">Privileges</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-[12%]">Created</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-[30%]">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {users.map((user, index) => (
+                  <tr key={user.id} className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-blue-50 transition duration-150`}>
+                    <td className="px-4 py-3">
+                      <div className="text-sm font-medium text-gray-900 break-words">{user.name}</div>
+                      <div className="text-xs text-gray-500 break-words">{user.email}</div>
+                    </td>
+                    <td className="px-3 py-3">
+                      <span className={`px-2 py-1 text-xs font-semibold rounded-full inline-block ${
+                        user.role === 'admin' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'
+                      }`}>
+                        {user.role}
+                      </span>
+                    </td>
+                    <td className="px-3 py-3 text-sm">
+                      {(user.role === 'accountant' || user.role === 'staff') && user.privileges ? (
+                        <div className="flex flex-wrap gap-1">
+                          {(['upload', 'delete', 'rename'] as const).map((perm) => (
+                            <span key={perm} className={`px-1.5 py-0.5 text-xs rounded ${
+                              user.privileges!.documents[perm] ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                            }`}>
+                              {perm.charAt(0).toUpperCase()}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-gray-500 text-xs">All Access</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-3 text-sm text-gray-500">
+                      {new Date(user.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}
+                    </td>
+                    <td className="px-3 py-3 text-sm font-medium">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <button
+                          onClick={() => setEditingUser(user)}
+                          className="px-2.5 py-1 bg-blue-600 text-white text-xs font-medium rounded hover:bg-blue-700 transition duration-200"
+                        >
+                          Edit
+                        </button>
+                        <Link
+                          href={`/attendance/admin?userId=${user.id}`}
+                          className="px-2.5 py-1 bg-indigo-600 text-white text-xs font-medium rounded hover:bg-indigo-700 transition duration-200"
+                        >
+                          Attendance
+                        </Link>
+                        <button
+                          onClick={() => setDeleteConfirm({ id: user.id, name: user.name })}
+                          disabled={deletingId !== null}
+                          className="px-2.5 py-1 bg-red-600 text-white text-xs font-medium rounded hover:bg-red-700 transition duration-200 disabled:opacity-50"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
+
+      {/* Create User Modal */}
+      {showCreateModal && (
+        <div className="fixed inset-0 flex items-center justify-center z-50 backdrop-blur-sm">
+          <div className="absolute inset-0 bg-black/50" onClick={() => !saving && setShowCreateModal(false)} />
+          <div className="relative bg-white rounded-lg shadow-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-gray-800">Create New User</h2>
+              <button onClick={() => setShowCreateModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+            </div>
+            <div className="p-6">
+              <form onSubmit={handleCreateUser}>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                    <input
+                      type="email"
+                      placeholder="user@example.com"
+                      value={newUser.email}
+                      onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+                      required
+                      className="w-full border text-gray-900 border-gray-300 p-2.5 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                    <input
+                      type="text"
+                      placeholder="Full Name"
+                      value={newUser.name}
+                      onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
+                      required
+                      className="w-full border text-gray-900 border-gray-300 p-2.5 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+                    <select
+                      value={newUser.role}
+                      onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}
+                      className="w-full border text-gray-900 border-gray-300 p-2.5 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                      <option value="accountant">Accountant</option>
+                      <option value="staff">Staff</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                  </div>
+
+                  {(newUser.role === 'accountant' || newUser.role === 'staff') && (
+                    <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                      <h3 className="text-sm font-semibold text-gray-700 mb-3">Document Permissions</h3>
+                      <div className="flex flex-wrap gap-4">
+                        {(['upload', 'delete', 'rename'] as const).map((perm) =>
+                          renderPermissions(perm, newUser.privileges.documents[perm], (val) =>
+                            setNewUser({
+                              ...newUser,
+                              privileges: {
+                                documents: { ...newUser.privileges.documents, [perm]: val },
+                              },
+                            })
+                          )
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <p className="text-xs text-gray-500 mt-4">Users will log in via email OTP. No password is required.</p>
+
+                <div className="flex items-center gap-3 mt-5">
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-2.5 rounded-lg transition duration-200 disabled:opacity-50"
+                  >
+                    {saving ? 'Creating...' : 'Create User'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateModal(false)}
+                    disabled={saving}
+                    className="bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium px-6 py-2.5 rounded-lg transition duration-200 disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Edit User Modal */}
       {editingUser && (
         <div className="fixed inset-0 flex items-center justify-center z-50 backdrop-blur-sm">
-          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="absolute inset-0 bg-black/50" onClick={() => !updating && setEditingUser(null)} />
+          <div className="relative bg-white rounded-lg shadow-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-              <h2 className="text-xl font-semibold text-gray-800">Edit User</h2>
-              <button onClick={closeEditModal} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+              <h2 className="text-lg font-semibold text-gray-800">Edit User</h2>
+              <button onClick={() => setEditingUser(null)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
             </div>
             <div className="p-6">
               <form onSubmit={handleEditUser}>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
                     <input
@@ -372,49 +383,16 @@ export default function UserManagementTab({ showSuccess, showError }: UserManage
                       <option value="admin">Admin</option>
                     </select>
                   </div>
-                </div>
 
-                {/* Change Password */}
-                <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                  <label className="flex items-center space-x-2 cursor-pointer mb-3">
-                    <input
-                      type="checkbox"
-                      checked={changePassword}
-                      onChange={(e) => { setChangePassword(e.target.checked); if (!e.target.checked) setEditPassword(''); }}
-                      className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
-                    />
-                    <span className="text-sm font-semibold text-gray-700">Change Password?</span>
-                  </label>
-                  {changePassword && (
-                    <div className="relative">
-                      <input
-                        type={showEditPassword ? 'text' : 'password'}
-                        placeholder="Enter new password"
-                        value={editPassword}
-                        onChange={(e) => setEditPassword(e.target.value)}
-                        className="w-full border text-gray-900 border-gray-300 p-2.5 pr-16 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowEditPassword(!showEditPassword)}
-                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700 text-sm"
-                      >
-                        {showEditPassword ? 'Hide' : 'Show'}
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                {(editingUser.role === 'accountant' || editingUser.role === 'staff') && (
-                  <div className="mb-4 p-4 bg-gray-50 rounded-lg">
-                    <h3 className="text-sm font-semibold text-gray-700 mb-3">Document Permissions</h3>
-                    <div className="flex flex-wrap gap-4">
-                      {(['upload', 'delete', 'rename'] as const).map((perm) => (
-                        <label key={perm} className="flex items-center space-x-2 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={editingUser.privileges?.documents?.[perm] || false}
-                            onChange={(e) =>
+                  {(editingUser.role === 'accountant' || editingUser.role === 'staff') && (
+                    <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                      <h3 className="text-sm font-semibold text-gray-700 mb-3">Document Permissions</h3>
+                      <div className="flex flex-wrap gap-4">
+                        {(['upload', 'delete', 'rename'] as const).map((perm) =>
+                          renderPermissions(
+                            perm,
+                            editingUser.privileges?.documents?.[perm] || false,
+                            (val) =>
                               setEditingUser({
                                 ...editingUser,
                                 privileges: {
@@ -422,21 +400,18 @@ export default function UserManagementTab({ showSuccess, showError }: UserManage
                                     upload: editingUser.privileges?.documents?.upload || false,
                                     delete: editingUser.privileges?.documents?.delete || false,
                                     rename: editingUser.privileges?.documents?.rename || false,
-                                    [perm]: e.target.checked,
+                                    [perm]: val,
                                   },
                                 },
                               })
-                            }
-                            className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
-                          />
-                          <span className="text-sm text-gray-700 capitalize">{perm}</span>
-                        </label>
-                      ))}
+                          )
+                        )}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
 
-                <div className="flex items-center gap-4 mt-6">
+                <div className="flex items-center gap-3 mt-6">
                   <button
                     type="submit"
                     disabled={updating}
@@ -446,7 +421,7 @@ export default function UserManagementTab({ showSuccess, showError }: UserManage
                   </button>
                   <button
                     type="button"
-                    onClick={closeEditModal}
+                    onClick={() => setEditingUser(null)}
                     disabled={updating}
                     className="bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium px-6 py-2.5 rounded-lg transition duration-200 disabled:opacity-50"
                   >

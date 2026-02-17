@@ -34,7 +34,7 @@ export default function PaymentSourceCards({
 
       <div
         className="grid gap-3"
-        style={{ gridTemplateColumns: `repeat(${Math.min(paymentMethods.length || 2, 4)}, minmax(0, 1fr))` }}
+        style={{ gridTemplateColumns: `repeat(${paymentMethods.length}, minmax(0, 1fr))` }}
       >
         {paymentMethods.map((method) => {
           const methodId = String(method.id);

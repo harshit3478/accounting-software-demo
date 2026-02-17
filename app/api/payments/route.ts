@@ -81,7 +81,7 @@ export async function GET(request: NextRequest) {
         }
       },
       orderBy: {
-        createdAt: 'desc'
+        paymentDate: 'desc'
       },
       skip,
       take: limit,

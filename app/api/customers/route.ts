@@ -33,16 +33,104 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(customers);
     }
 
-    const [customers, total] = await Promise.all([
+    const sortBy = searchParams.get("sortBy") || "revenue";
+    const top = searchParams.get("top"); // e.g. "10" for top 10
+
+    // Fetch customers with their invoices for stats calculation
+    const [customersRaw, total] = await Promise.all([
       prisma.customer.findMany({
         where,
-        skip,
-        take: limit,
-        orderBy: { name: "asc" },
-        include: { _count: { select: { invoices: true } } },
+        skip: top ? undefined : skip,
+        take: top ? parseInt(top) : limit,
+        include: {
+          _count: { select: { invoices: true } },
+          invoices: {
+            select: {
+              amount: true,
+              paidAmount: true,
+              status: true,
+              dueDate: true,
+              createdAt: true,
+            },
+          },
+        },
       }),
       prisma.customer.count({ where }),
     ]);
+
+    const now = new Date();
+
+    // Compute stats per customer
+    const customers = customersRaw.map((c) => {
+      let totalRevenue = 0;
+      let totalPaid = 0;
+      let lastActivityDate: Date | null = null;
+      let overdueCount = 0;
+      let aging60Plus = 0;
+
+      for (const inv of c.invoices) {
+        const amount = Number(inv.amount);
+        const paid = Number(inv.paidAmount);
+        totalRevenue += amount;
+        totalPaid += paid;
+
+        if (!lastActivityDate || new Date(inv.createdAt) > lastActivityDate) {
+          lastActivityDate = new Date(inv.createdAt);
+        }
+
+        const outstanding = amount - paid;
+        if (outstanding > 0 && inv.status !== "paid") {
+          const daysOverdue = Math.floor(
+            (now.getTime() - new Date(inv.dueDate).getTime()) / (1000 * 60 * 60 * 24)
+          );
+          if (daysOverdue > 0) overdueCount++;
+          if (daysOverdue > 60) aging60Plus += outstanding;
+        }
+      }
+
+      const totalOutstanding = totalRevenue - totalPaid;
+      const outstandingRatio = totalRevenue > 0 ? totalOutstanding / totalRevenue : 0;
+
+      let healthScore: "green" | "yellow" | "red" = "green";
+      if (aging60Plus > 0 || outstandingRatio > 0.5) {
+        healthScore = "red";
+      } else if (overdueCount > 0 || outstandingRatio > 0.3) {
+        healthScore = "yellow";
+      }
+
+      // Remove raw invoices from response (keep only stats)
+      const { invoices: _, ...customerData } = c;
+      return {
+        ...customerData,
+        stats: {
+          totalRevenue,
+          totalPaid,
+          totalOutstanding,
+          lastActivityDate,
+          healthScore,
+        },
+      };
+    });
+
+    // Sort
+    customers.sort((a, b) => {
+      switch (sortBy) {
+        case "name":
+          return a.name.localeCompare(b.name);
+        case "outstanding":
+          return b.stats.totalOutstanding - a.stats.totalOutstanding;
+        case "invoiceCount":
+          return b._count.invoices - a._count.invoices;
+        case "lastActivity":
+          return (
+            (b.stats.lastActivityDate?.getTime() || 0) -
+            (a.stats.lastActivityDate?.getTime() || 0)
+          );
+        case "revenue":
+        default:
+          return b.stats.totalRevenue - a.stats.totalRevenue;
+      }
+    });
 
     return NextResponse.json({
       customers,

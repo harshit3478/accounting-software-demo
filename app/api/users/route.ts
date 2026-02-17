@@ -39,7 +39,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Only superadmin can create admins' }, { status: 403 });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    // Generate random placeholder password if none provided (login is OTP-based)
+    const passwordToHash = password || require('crypto').randomBytes(32).toString('hex');
+    const hashedPassword = await bcrypt.hash(passwordToHash, 10);
     const defaultPrivileges = role === 'admin' ? {
       documents: { upload: true, delete: true, rename: true }
     } : {

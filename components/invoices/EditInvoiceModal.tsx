@@ -1,15 +1,23 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Modal from './Modal';
 import InvoiceItemsEditor from './InvoiceItemsEditor';
 import InvoiceSummary from './InvoiceSummary';
 import { InvoiceItem } from './types';
 
+interface CustomerOption {
+  id: number;
+  name: string;
+  email: string | null;
+  phone: string | null;
+}
+
 interface Invoice {
   id: number;
   invoiceNumber: string;
   clientName: string;
+  customerId?: number | null;
   items: InvoiceItem[] | null;
   subtotal: number;
   tax: number;
@@ -31,6 +39,10 @@ interface EditInvoiceModalProps {
 
 export default function EditInvoiceModal({ isOpen, onClose, onSuccess, invoice }: EditInvoiceModalProps) {
   const [clientName, setClientName] = useState('');
+  const [customerId, setCustomerId] = useState<number | null>(null);
+  const [customers, setCustomers] = useState<CustomerOption[]>([]);
+  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+  const customerRef = useRef<HTMLDivElement>(null);
   const [dueDate, setDueDate] = useState('');
   const [items, setItems] = useState<InvoiceItem[]>([{ name: '', quantity: 1, price: 0 }]);
   const [tax, setTax] = useState(0);
@@ -41,9 +53,35 @@ export default function EditInvoiceModal({ isOpen, onClose, onSuccess, invoice }
   const [isUpdating, setIsUpdating] = useState(false);
   const [dateError, setDateError] = useState('');
 
+  // Fetch customers for autocomplete
+  useEffect(() => {
+    if (isOpen) {
+      fetch('/api/customers?all=true')
+        .then(res => res.ok ? res.json() : [])
+        .then(data => setCustomers(data))
+        .catch(() => {});
+    }
+  }, [isOpen]);
+
+  // Close dropdown on click outside
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (customerRef.current && !customerRef.current.contains(e.target as Node)) {
+        setShowCustomerDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const filteredCustomers = customers.filter(c =>
+    c.name.toLowerCase().includes(clientName.toLowerCase())
+  ).slice(0, 8);
+
   useEffect(() => {
     if (invoice && isOpen) {
       setClientName(invoice.clientName);
+      setCustomerId(invoice.customerId || null);
       setDueDate(invoice.dueDate);
       setItems(invoice.items || [{ name: '', quantity: 1, price: 0 }]);
       setTax(invoice.tax);
@@ -119,6 +157,7 @@ export default function EditInvoiceModal({ isOpen, onClose, onSuccess, invoice }
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           clientName,
+          customerId: customerId || null,
           items,
           subtotal,
           tax: calculateTaxAmount(),
@@ -187,17 +226,44 @@ export default function EditInvoiceModal({ isOpen, onClose, onSuccess, invoice }
       <div className="space-y-6">
         {/* Client Info */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
+          <div ref={customerRef} className="relative">
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Client Name <span className="text-red-500">*</span>
             </label>
             <input
               type="text"
               value={clientName}
-              onChange={(e) => setClientName(e.target.value)}
+              onChange={(e) => {
+                setClientName(e.target.value);
+                setCustomerId(null);
+                setShowCustomerDropdown(true);
+              }}
+              onFocus={() => setShowCustomerDropdown(true)}
               className="w-full px-4 py-2 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              placeholder="Enter client name"
+              placeholder="Search or enter client name"
             />
+            {showCustomerDropdown && clientName && filteredCustomers.length > 0 && (
+              <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                {filteredCustomers.map(c => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => {
+                      setClientName(c.name);
+                      setCustomerId(c.id);
+                      setShowCustomerDropdown(false);
+                    }}
+                    className="w-full text-left px-4 py-2 hover:bg-blue-50 text-sm text-gray-900 border-b border-gray-50 last:border-0"
+                  >
+                    <span className="font-medium">{c.name}</span>
+                    {c.phone && <span className="text-gray-400 ml-2">{c.phone}</span>}
+                  </button>
+                ))}
+              </div>
+            )}
+            {customerId && (
+              <p className="text-xs text-green-600 mt-1">Linked to existing customer</p>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">

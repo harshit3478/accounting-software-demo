@@ -105,6 +105,7 @@ interface UsePaymentsReturn {
   handlePageChange: (page: number) => void;
   handleItemsPerPageChange: (items: number) => void;
   handleExportPDF: () => Promise<void>;
+  handleExportCSV: () => Promise<void>;
   
   // Statistics
   stats: PaymentStats;
@@ -151,6 +152,25 @@ export function usePayments(): UsePaymentsReturn {
 
   const [sortBy, setSortBy] = useState<PaymentSortField>('date');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  
+  // Apply sorting to payments
+  const sortedPayments = [...payments].sort((a, b) => {
+    let compareResult = 0;
+    
+    if (sortBy === 'date') {
+      const dateA = new Date(a.paymentDate).getTime();
+      const dateB = new Date(b.paymentDate).getTime();
+      compareResult = dateA - dateB;
+    } else if (sortBy === 'amount') {
+      compareResult = a.amount - b.amount;
+    } else if (sortBy === 'client') {
+      const clientA = a.invoice?.clientName || a.paymentMatches?.[0]?.invoice.clientName || '';
+      const clientB = b.invoice?.clientName || b.paymentMatches?.[0]?.invoice.clientName || '';
+      compareResult = clientA.localeCompare(clientB);
+    }
+    
+    return sortDirection === 'asc' ? compareResult : -compareResult;
+  });
   
   // Pagination
   const [currentPage, setCurrentPage] = useState(
@@ -318,31 +338,6 @@ export function usePayments(): UsePaymentsReturn {
 
   const [lastUpdateTimestamp, setLastUpdateTimestamp] = useState<string | null>(null);
 
-  // Polling for updates
-  useEffect(() => {
-    const checkUpdates = async () => {
-      try {
-        const res = await fetch('/api/payments/last-updated');
-        if (!res.ok) return;
-        
-        const data = await res.json();
-        if (data.lastUpdated) {
-          if (lastUpdateTimestamp && data.lastUpdated !== lastUpdateTimestamp) {
-            showInfo('New payments detected. Refreshing...');
-            await fetchPayments();
-          }
-          setLastUpdateTimestamp(data.lastUpdated);
-        }
-      } catch (error) {
-        console.error('Error checking for updates:', error);
-      }
-    };
-
-    const intervalId = setInterval(checkUpdates, 10000); // Check every 10 seconds
-    checkUpdates(); // Initial check
-
-    return () => clearInterval(intervalId);
-  }, [lastUpdateTimestamp, fetchPayments, showInfo]);
 
   // Initial fetch
   useEffect(() => {
@@ -482,10 +477,45 @@ export function usePayments(): UsePaymentsReturn {
     }
   };
 
+  const handleExportCSV = async () => {
+    try {
+      // Build query string with current filters
+      const params = new URLSearchParams();
+      if (filterMethod !== "all") params.set("method", filterMethod);
+      if (debouncedSearchQuery) params.set("search", debouncedSearchQuery);
+      if (dateRange) {
+        params.set("startDate", dateRange.startDate);
+        params.set("endDate", dateRange.endDate);
+      }
+
+      const response = await fetch(`/api/payments/export?${params.toString()}`);
+      
+      if (!response.ok) {
+        throw new Error('Export failed');
+      }
+
+      // Download the CSV file
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `payments-export-${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      showSuccess('CSV exported successfully!');
+    } catch (error) {
+      console.error('Error exporting CSV:', error);
+      showError('Failed to export CSV');
+    }
+  };
+
   return {
     payments,
-    filteredPayments: payments, // Alias for compatibility
-    paginatedPayments: payments, // Alias for compatibility
+    filteredPayments: sortedPayments,
+    paginatedPayments: sortedPayments,
     isLoading,
     unmatchedCount,
     filterMethod,

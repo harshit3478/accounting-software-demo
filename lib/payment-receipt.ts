@@ -123,7 +123,7 @@ export function generatePaymentReceiptPDF(payment: PaymentReceipt) {
   doc.setFontSize(7);
   doc.setFont("helvetica", "normal");
   doc.setTextColor(150);
-  doc.text("Barley Lux - 18K Saudi Gold Jewelry", centerX, y, { align: "center" });
+  doc.text("Thank you for your business!", centerX, y, { align: "center" });
   y += 4;
   doc.text(`Generated: ${new Date().toLocaleString()}`, centerX, y, { align: "center" });
 

@@ -12,6 +12,8 @@ interface PaymentTableProps {
   sortDirection: SortDirection;
   onSort: (field: PaymentSortField) => void;
   onLink?: (payment: Payment) => void;
+  onView?: (payment: Payment) => void;
+  onEditNotes?: (payment: Payment) => void;
   totalItems?: number;
   children?: React.ReactNode;
 }
@@ -24,6 +26,8 @@ export default function PaymentTable({
   sortDirection,
   onSort,
   onLink,
+  onView,
+  onEditNotes,
   totalItems,
   children
 }: PaymentTableProps) {
@@ -36,7 +40,7 @@ export default function PaymentTable({
 
   const SortableHeader = ({ field, children, className = "" }: { field: PaymentSortField; children: React.ReactNode; className?: string }) => (
     <th
-      className={`px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors bg-gray-50 ${className}`}
+      className={`px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors bg-gray-50 ${className}`}
       onClick={() => onSort(field)}
     >
       <div className="flex items-center space-x-1">
@@ -96,29 +100,35 @@ export default function PaymentTable({
       </div>
 
       <div className="flex-1 overflow-auto min-h-0">
-        <table className="min-w-full divide-y divide-gray-200 relative">
+        <table className="min-w-full divide-y divide-gray-200 relative table-fixed">
           <thead className="bg-gray-50 sticky top-0 z-10 shadow-sm">
             <tr>
-              <SortableHeader field="date" className="w-[120px]">Date</SortableHeader>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 w-[140px]">
+              <SortableHeader field="date" className="w-[10%]">Date</SortableHeader>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 w-[12%]">
                 Invoice
               </th>
-              <SortableHeader field="client" className="min-w-[200px]">Client</SortableHeader>
-              <SortableHeader field="amount" className="w-[120px]">Amount</SortableHeader>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 w-[120px]">
+              <SortableHeader field="client" className="w-[20%]">Client</SortableHeader>
+              <SortableHeader field="amount" className="w-[10%]">Amount</SortableHeader>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 w-[12%]">
                 Method
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 w-[200px]">
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 w-[28%]">
                 Notes
               </th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 w-[80px]">
+              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 w-[8%]">
                 Actions
               </th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
             {paginatedPayments.map((payment) => (
-              <PaymentTableRow key={payment.id} payment={payment} onLink={onLink} />
+              <PaymentTableRow 
+                key={payment.id} 
+                payment={payment} 
+                onLink={onLink} 
+                onView={onView}
+                onEditNotes={onEditNotes}
+              />
             ))}
           </tbody>
         </table>

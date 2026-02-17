@@ -227,7 +227,7 @@ export default function QuickBooksTab({ showSuccess, showError }: QuickBooksTabP
       </div>
 
       {/* Webhook Configuration */}
-      <div className="border-t border-gray-200 pt-6">
+      {/* <div className="border-t border-gray-200 pt-6">
         <h2 className="text-xl font-semibold text-gray-900 mb-4">Webhook Configuration</h2>
         <p className="text-gray-600 mb-4">
           Configure this webhook URL in your QuickBooks Developer Dashboard to receive automatic payment notifications:
@@ -248,7 +248,7 @@ export default function QuickBooksTab({ showSuccess, showError }: QuickBooksTabP
             <strong>Development:</strong> Use <a href="https://ngrok.com/" target="_blank" rel="noopener noreferrer" className="underline">ngrok</a> or similar to expose localhost. QuickBooks requires a public HTTPS URL for webhooks.
           </p>
         </div>
-      </div>
+      </div> */}
 
       <ConfirmModal
         isOpen={showDisconnectConfirm}

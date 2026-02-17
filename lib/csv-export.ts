@@ -113,3 +113,73 @@ export function exportInvoicesToCSV(
     downloadCSV(csv, filename);
   }
 }
+
+/**
+ * Payment CSV Data Interface
+ */
+export interface PaymentCSVData {
+  amount: number;
+  paymentDate: string;
+  methodName: string;
+  notes: string | null;
+  invoiceNumber: string | null;
+  clientName: string | null;
+  recordedBy: string;
+  source: string;
+  createdAt: string;
+}
+
+/**
+ * Convert array of payments to CSV string
+ */
+export function paymentsToCSV(payments: PaymentCSVData[]): string {
+  if (payments.length === 0) {
+    return '';
+  }
+
+  // CSV Header
+  const headers = [
+    'Amount',
+    'Payment Date',
+    'Method',
+    'Notes',
+    'Invoice Number',
+    'Client Name',
+    'Recorded By',
+    'Source',
+    'Created Date',
+  ];
+
+  const headerRow = headers.map(escapeCSV).join(',');
+
+  // CSV Data Rows
+  const dataRows = payments.map(payment => {
+    return [
+      escapeCSV(payment.amount.toFixed(2)),
+      escapeCSV(payment.paymentDate),
+      escapeCSV(payment.methodName),
+      escapeCSV(payment.notes || ''),
+      escapeCSV(payment.invoiceNumber || ''),
+      escapeCSV(payment.clientName || ''),
+      escapeCSV(payment.recordedBy),
+      escapeCSV(payment.source),
+      escapeCSV(payment.createdAt),
+    ].join(',');
+  });
+
+  return [headerRow, ...dataRows].join('\n');
+}
+
+/**
+ * Export payments to CSV file
+ */
+export function exportPaymentsToCSV(
+  payments: PaymentCSVData[],
+  filename: string = `payments-${new Date().toISOString().split('T')[0]}.csv`
+): void {
+  const csv = paymentsToCSV(payments);
+  if (csv) {
+    downloadCSV(csv, filename);
+  }
+}
+

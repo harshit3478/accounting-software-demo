@@ -11,7 +11,8 @@ export async function GET(
 ) {
   try {
     // No permission check - everyone can view (shared storage)
-    const folderId = parseInt(params.id);
+    const resolvedParams = await params;
+    const folderId = parseInt(resolvedParams.id);
     
     if (isNaN(folderId)) {
       return NextResponse.json(
@@ -92,7 +93,8 @@ export async function PATCH(
 ) {
   try {
     const user = await requirePermission('documents.rename');
-    const folderId = parseInt(params.id);
+    const resolvedParams = await params;
+    const folderId = parseInt(resolvedParams.id);
     const { name } = await request.json();
     
     if (isNaN(folderId)) {
@@ -204,7 +206,8 @@ export async function DELETE(
 ) {
   try {
     const user = await requirePermission('documents.delete');
-    const folderId = parseInt(params.id);
+    const resolvedParams = await params;
+    const folderId = parseInt(resolvedParams.id);
     
     if (isNaN(folderId)) {
       return NextResponse.json(

@@ -31,6 +31,9 @@ export default function CreateInvoiceModal({
   const [customerId, setCustomerId] = useState<number | null>(null);
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+  const [showNewCustomerForm, setShowNewCustomerForm] = useState(false);
+  const [newCustomerData, setNewCustomerData] = useState({ name: '', email: '', phone: '' });
+  const [creatingCustomer, setCreatingCustomer] = useState(false);
   const [dueDate, setDueDate] = useState("");
   const customerRef = useRef<HTMLDivElement>(null);
 
@@ -119,6 +122,33 @@ export default function CreateInvoiceModal({
     validateDate(newDate);
   };
 
+  const handleCreateNewCustomer = async () => {
+    if (!newCustomerData.name.trim()) return;
+    setCreatingCustomer(true);
+    try {
+      const res = await fetch('/api/customers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newCustomerData),
+      });
+      if (res.ok) {
+        const created = await res.json();
+        setCustomers(prev => [...prev, { id: created.id, name: created.name, email: created.email, phone: created.phone }]);
+        setClientName(created.name);
+        setCustomerId(created.id);
+        setShowNewCustomerForm(false);
+        setNewCustomerData({ name: '', email: '', phone: '' });
+      } else {
+        const err = await res.json();
+        onError?.(err.error || 'Failed to create customer');
+      }
+    } catch {
+      onError?.('Failed to create customer');
+    } finally {
+      setCreatingCustomer(false);
+    }
+  };
+
   const resetForm = () => {
     setClientName("");
     setCustomerId(null);
@@ -130,6 +160,8 @@ export default function CreateInvoiceModal({
     setDiscountType("fixed");
     setIsLayaway(false);
     setDateError("");
+    setShowNewCustomerForm(false);
+    setNewCustomerData({ name: '', email: '', phone: '' });
   };
 
   const handleCreateInvoice = async () => {
@@ -304,6 +336,63 @@ export default function CreateInvoiceModal({
               )}
               {customerId && (
                 <p className="text-xs text-green-600 mt-1">Linked to existing customer</p>
+              )}
+              {!customerId && !showNewCustomerForm && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowNewCustomerForm(true);
+                    setNewCustomerData({ name: clientName, email: '', phone: '' });
+                  }}
+                  className="text-xs text-blue-600 hover:text-blue-700 mt-1 font-medium"
+                >
+                  + Create as new client
+                </button>
+              )}
+              {showNewCustomerForm && (
+                <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-xs font-semibold text-blue-700 mb-2">New Client Details</p>
+                  <div className="space-y-2">
+                    <input
+                      type="text"
+                      value={newCustomerData.name}
+                      onChange={(e) => setNewCustomerData({ ...newCustomerData, name: e.target.value })}
+                      placeholder="Client name"
+                      className="w-full px-3 py-1.5 border border-gray-300 rounded text-sm text-gray-900"
+                    />
+                    <input
+                      type="email"
+                      value={newCustomerData.email}
+                      onChange={(e) => setNewCustomerData({ ...newCustomerData, email: e.target.value })}
+                      placeholder="Email (optional)"
+                      className="w-full px-3 py-1.5 border border-gray-300 rounded text-sm text-gray-900"
+                    />
+                    <input
+                      type="text"
+                      value={newCustomerData.phone}
+                      onChange={(e) => setNewCustomerData({ ...newCustomerData, phone: e.target.value })}
+                      placeholder="Phone (optional)"
+                      className="w-full px-3 py-1.5 border border-gray-300 rounded text-sm text-gray-900"
+                    />
+                  </div>
+                  <div className="flex gap-2 mt-2">
+                    <button
+                      type="button"
+                      onClick={handleCreateNewCustomer}
+                      disabled={creatingCustomer || !newCustomerData.name.trim()}
+                      className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      {creatingCustomer ? 'Creating...' : 'Save Client'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowNewCustomerForm(false)}
+                      className="px-3 py-1 border border-gray-300 text-gray-600 text-xs rounded hover:bg-gray-50"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
             <div>
