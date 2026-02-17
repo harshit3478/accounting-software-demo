@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { FiCheck, FiX, FiPlus, FiEdit2, FiTrash2 } from 'react-icons/fi';
 import LucideIcon from '../LucideIcon';
+import IconPicker from './IconPicker';
 
 interface PaymentMethodType {
   id: number;
@@ -175,19 +176,11 @@ export default function PaymentMethodsTab({ showSuccess, showError }: PaymentMet
               />
             </div>
             <div>
-              <label className="block text-sm text-gray-600 mb-1">Icon (Lucide name)</label>
-              <input
-                type="text"
+              <label className="block text-sm text-gray-600 mb-1">Icon</label>
+              <IconPicker
                 value={pmForm.icon}
-                onChange={(e) => setPmForm({ ...pmForm, icon: e.target.value })}
-                placeholder="e.g. building-2, banknote"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
+                onChange={(icon) => setPmForm({ ...pmForm, icon })}
               />
-              {pmForm.icon && (
-                <div className="mt-1 flex items-center gap-2 text-xs text-gray-500">
-                  Preview: <LucideIcon name={pmForm.icon} fallback={pmForm.name} size={16} />
-                </div>
-              )}
             </div>
             <div>
               <label className="block text-sm text-gray-600 mb-1">Color</label>

@@ -70,6 +70,8 @@ export async function POST(request: NextRequest) {
     // Create all payments in a transaction
     const createdPayments = await prisma.$transaction(async (tx) => {
       const payments = [];
+      let matchedCount = 0;
+      let unmatchedCount = 0;
 
       for (const row of rows) {
         const amount = parseFloat(row.amount);
@@ -80,31 +82,87 @@ export async function POST(request: NextRequest) {
           throw new Error(`Unknown payment method: ${row.method}`);
         }
 
+        // Attempt to find invoice for matching
+        let invoiceId = null;
+        let isMatched = false;
+
+        if (row.invoiceNumber && row.clientName) {
+          const invoice = await tx.invoice.findFirst({
+            where: {
+              invoiceNumber: row.invoiceNumber.trim(),
+              clientName: {
+                contains: row.clientName.trim(),
+                mode: 'insensitive'
+              }
+            }
+          });
+
+          if (invoice) {
+            invoiceId = invoice.id;
+            isMatched = true;
+          }
+        }
+
+        // Create payment
         const payment = await tx.payment.create({
           data: {
             amount,
             paymentDate,
             methodId,
-            notes: null,
+            notes: row.notes?.trim() || null,
             userId: user.id,
-            invoiceId: null,
-            isMatched: false,
+            invoiceId,
+            isMatched,
             source: "csv_upload",
           }
         });
 
+        // Create PaymentInvoiceMatch if invoice was found
+        if (invoiceId) {
+          await tx.paymentInvoiceMatch.create({
+            data: {
+              paymentId: payment.id,
+              invoiceId,
+              amount: payment.amount
+            }
+          });
+          
+          // Update invoice paid amount
+          await tx.invoice.update({
+            where: { id: invoiceId },
+            data: {
+              paidAmount: {
+                increment: payment.amount
+              }
+            }
+          });
+          
+          matchedCount++;
+        } else {
+          unmatchedCount++;
+        }
+
         payments.push(payment);
       }
 
-      return payments;
+      return { payments, matchedCount, unmatchedCount };
     });
+
+    const totalCount = createdPayments.payments.length;
+    const message = createdPayments.matchedCount > 0
+      ? `Successfully created ${totalCount} payment(s): ${createdPayments.matchedCount} matched, ${createdPayments.unmatchedCount} unmatched`
+      : `Successfully created ${totalCount} unmatched payment(s)`;
 
     return NextResponse.json({
       success: true,
-      message: `Successfully created ${createdPayments.length} unmatched payment(s)`,
-      count: createdPayments.length,
-      paymentIds: createdPayments.map(p => p.id),
-      notice: 'All payments are unmatched. Use Payment Matching to link them to invoices.'
+      message,
+      count: totalCount,
+      matchedCount: createdPayments.matchedCount,
+      unmatchedCount: createdPayments.unmatchedCount,
+      paymentIds: createdPayments.payments.map(p => p.id),
+      notice: createdPayments.unmatchedCount > 0 
+        ? 'Use Payment Matching to link unmatched payments to invoices.' 
+        : null
     });
 
   } catch (error: any) {

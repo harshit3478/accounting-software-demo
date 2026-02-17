@@ -27,6 +27,9 @@ export interface PaymentRow {
   amount: string;
   paymentDate: string;
   method: string;
+  notes?: string;
+  invoiceNumber?: string;
+  clientName?: string;
 }
 
 /**
@@ -215,7 +218,26 @@ export function validatePaymentRow(row: PaymentRow, rowIndex: number): Validatio
     errors.push({
       row: rowIndex,
       field: 'method',
-      error: 'Method must be one of: cash, zelle, quickbooks, layaway'
+      error: 'Payment method is required'
+    });
+  }
+  
+  // Optional Notes validation (just check length if provided)
+  if (row.notes && row.notes.length > 1000) {
+    errors.push({
+      row: rowIndex,
+      field: 'notes',
+      error: 'Notes must be less than 1000 characters'
+    });
+  }
+  
+  // Invoice matching validation
+  // If invoiceNumber is provided, clientName should also be provided for better matching
+  if (row.invoiceNumber && !row.clientName) {
+    errors.push({
+      row: rowIndex,
+      field: 'clientName',
+      error: 'Client name is required when invoice number is provided'
     });
   }
   

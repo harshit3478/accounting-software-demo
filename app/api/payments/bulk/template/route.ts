@@ -5,10 +5,11 @@ export async function GET() {
   try {
     await requireAuth();
 
-    // Create CSV template content
-    const headers = 'amount,paymentDate,method';
-    const exampleRow = '1250.00,2025-01-15,zelle';
-    const csvContent = `${headers}\n${exampleRow}`;
+    // Create CSV template content with extended fields
+    const headers = 'amount,paymentDate,method,notes,invoiceNumber,clientName';
+    const exampleRow1 = '1250.00,2025-01-15,zelle,January payment,INV-2025-001,Acme Corp';
+    const exampleRow2 = '850.00,2025-01-16,check,,,';
+    const csvContent = `${headers}\n${exampleRow1}\n${exampleRow2}`;
 
     // Return as downloadable file
     return new NextResponse(csvContent, {

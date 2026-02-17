@@ -48,6 +48,7 @@ function PaymentsPageContent() {
     handlePageChange,
     handleItemsPerPageChange,
     handleExportPDF,
+    handleExportCSV,
     stats,
     filteredStats,
     paymentMethods,
@@ -60,6 +61,33 @@ function PaymentsPageContent() {
   const handleOpenLinkModal = (payment: any) => {
     setLinkingPayment(payment);
     setShowLinkModal(true);
+  };
+
+  const handleViewPayment = (payment: any) => {
+    setViewingPayment(payment);
+    setShowViewModal(true);
+  };
+
+  const handleEditNotes = async (payment: any) => {
+    const newNotes = prompt('Edit payment notes:', payment.notes || '');
+    if (newNotes !== null) {
+      try {
+        const response = await fetch(`/api/payments/${payment.id}/notes`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ notes: newNotes.trim() || null })
+        });
+        
+        if (response.ok) {
+          showSuccess('Notes updated successfully!');
+          fetchPayments();
+        } else {
+          showError('Failed to update notes');
+        }
+      } catch (error) {
+        showError('Failed to update notes');
+      }
+    }
   };
 
   const handleSync = async () => {
@@ -113,6 +141,7 @@ function PaymentsPageContent() {
           onDateRangeChange={setDateRange}
           onRecordClick={() => setShowRecordModal(true)}
           onExportClick={handleExportPDF}
+          onExportCSVClick={handleExportCSV}
           onImportClick={() => setShowCSVUploadModal(true)}
           onSyncClick={handleSync}
           isSyncing={isSyncing}
@@ -140,6 +169,8 @@ function PaymentsPageContent() {
             sortDirection={sortDirection}
             onSort={handleSort}
             onLink={handleOpenLinkModal}
+            onView={handleViewPayment}
+            onEditNotes={handleEditNotes}
             totalItems={totalItems}
           >
             <Pagination

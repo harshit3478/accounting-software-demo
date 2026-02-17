@@ -6,13 +6,17 @@ import Navigation from '../../components/Navigation';
 import { ToastProvider, useToastContext } from '../../components/ToastContext';
 import PaymentMethodsTab from '../../components/settings/PaymentMethodsTab';
 import UserManagementTab from '../../components/settings/UserManagementTab';
+import RegularizationsTab from '../../components/settings/RegularizationsTab';
+import CustomersTab from '../../components/settings/CustomersTab';
 import TermsConditionsTab from '../../components/settings/TermsConditionsTab';
 import QuickBooksTab from '../../components/settings/QuickBooksTab';
-import { CreditCard, Users, FileText, Link2 } from 'lucide-react';
+import { CreditCard, Users, CalendarCheck2, UsersRound, FileText, Link2 } from 'lucide-react';
 
 const TABS = [
   { id: 'payment-methods', label: 'Payment Methods', icon: CreditCard },
   { id: 'users', label: 'User Management', icon: Users },
+  { id: 'regularizations', label: 'Regularizations', icon: CalendarCheck2 },
+  { id: 'customers', label: 'Clients', icon: UsersRound },
   { id: 'terms', label: 'Terms & Conditions', icon: FileText },
   { id: 'quickbooks', label: 'QuickBooks', icon: Link2 },
 ] as const;
@@ -36,6 +40,10 @@ function SettingsContent() {
         return <PaymentMethodsTab showSuccess={showSuccess} showError={showError} />;
       case 'users':
         return <UserManagementTab showSuccess={showSuccess} showError={showError} />;
+      case 'regularizations':
+        return <RegularizationsTab showSuccess={showSuccess} showError={showError} />;
+      case 'customers':
+        return <CustomersTab showSuccess={showSuccess} showError={showError} />;
       case 'terms':
         return <TermsConditionsTab showSuccess={showSuccess} showError={showError} />;
       case 'quickbooks':
@@ -105,6 +113,8 @@ export default function SettingsPage() {
                 <div className="flex gap-6">
                   <div className="w-56">
                     <div className="space-y-2">
+                      <div className="h-10 bg-gray-200 rounded"></div>
+                      <div className="h-10 bg-gray-200 rounded"></div>
                       <div className="h-10 bg-gray-200 rounded"></div>
                       <div className="h-10 bg-gray-200 rounded"></div>
                       <div className="h-10 bg-gray-200 rounded"></div>
