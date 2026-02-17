@@ -21,6 +21,7 @@ export interface InvoiceRow {
   discount: string;
   dueDate: string;
   isLayaway: string;
+  externalInvoiceNumber?: string;
 }
 
 export interface PaymentRow {

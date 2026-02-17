@@ -25,7 +25,7 @@ interface Invoice {
   amount: number;
   paidAmount: number;
   dueDate: string;
-  status: 'paid' | 'pending' | 'overdue' | 'partial';
+  status: 'paid' | 'pending' | 'overdue' | 'partial' | 'inactive';
   isLayaway: boolean;
   createdAt: string;
 }

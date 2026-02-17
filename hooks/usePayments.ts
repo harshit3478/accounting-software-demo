@@ -152,25 +152,9 @@ export function usePayments(): UsePaymentsReturn {
 
   const [sortBy, setSortBy] = useState<PaymentSortField>('date');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
-  
-  // Apply sorting to payments
-  const sortedPayments = [...payments].sort((a, b) => {
-    let compareResult = 0;
-    
-    if (sortBy === 'date') {
-      const dateA = new Date(a.paymentDate).getTime();
-      const dateB = new Date(b.paymentDate).getTime();
-      compareResult = dateA - dateB;
-    } else if (sortBy === 'amount') {
-      compareResult = a.amount - b.amount;
-    } else if (sortBy === 'client') {
-      const clientA = a.invoice?.clientName || a.paymentMatches?.[0]?.invoice.clientName || '';
-      const clientB = b.invoice?.clientName || b.paymentMatches?.[0]?.invoice.clientName || '';
-      compareResult = clientA.localeCompare(clientB);
-    }
-    
-    return sortDirection === 'asc' ? compareResult : -compareResult;
-  });
+
+  // Server handles sorting - just pass through
+  const sortedPayments = payments;
   
   // Pagination
   const [currentPage, setCurrentPage] = useState(
@@ -293,6 +277,8 @@ export function usePayments(): UsePaymentsReturn {
         params.set("startDate", dateRange.startDate);
         params.set("endDate", dateRange.endDate);
       }
+      params.set("sortBy", sortBy);
+      params.set("sortDirection", sortDirection);
 
       const res = await fetch(`/api/payments?${params.toString()}`);
       if (res.ok) {
@@ -334,7 +320,7 @@ export function usePayments(): UsePaymentsReturn {
     } finally {
       setIsLoading(false);
     }
-  }, [currentPage, itemsPerPage, filterMethod, debouncedSearchQuery, dateRange, showError]);
+  }, [currentPage, itemsPerPage, filterMethod, debouncedSearchQuery, dateRange, sortBy, sortDirection, showError]);
 
   const [lastUpdateTimestamp, setLastUpdateTimestamp] = useState<string | null>(null);
 
@@ -344,7 +330,7 @@ export function usePayments(): UsePaymentsReturn {
     fetchPayments();
     fetchUnmatchedCount();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterMethod, debouncedSearchQuery, dateRange, currentPage, itemsPerPage]);
+  }, [filterMethod, debouncedSearchQuery, dateRange, currentPage, itemsPerPage, sortBy, sortDirection]);
 
   const handleViewPayment = (payment: Payment) => {
     setViewingPayment(payment);
@@ -491,7 +477,9 @@ export function usePayments(): UsePaymentsReturn {
       const response = await fetch(`/api/payments/export?${params.toString()}`);
       
       if (!response.ok) {
-        throw new Error('Export failed');
+        const errorText = await response.text();
+        console.error('Export response error:', response.status, errorText);
+        throw new Error(`Export failed: ${response.status}`);
       }
 
       // Download the CSV file
@@ -547,6 +535,7 @@ export function usePayments(): UsePaymentsReturn {
     handlePageChange,
     handleItemsPerPageChange,
     handleExportPDF,
+    handleExportCSV,
     stats,
     filteredStats: stats,
     paymentMethods,

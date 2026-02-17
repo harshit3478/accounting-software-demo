@@ -10,7 +10,8 @@ import RegularizationsTab from '../../components/settings/RegularizationsTab';
 import CustomersTab from '../../components/settings/CustomersTab';
 import TermsConditionsTab from '../../components/settings/TermsConditionsTab';
 import QuickBooksTab from '../../components/settings/QuickBooksTab';
-import { CreditCard, Users, CalendarCheck2, UsersRound, FileText, Link2 } from 'lucide-react';
+import LayawaySettingsTab from '../../components/settings/LayawaySettingsTab';
+import { CreditCard, Users, CalendarCheck2, UsersRound, FileText, Link2, Layers } from 'lucide-react';
 
 const TABS = [
   { id: 'payment-methods', label: 'Payment Methods', icon: CreditCard },
@@ -18,6 +19,7 @@ const TABS = [
   { id: 'regularizations', label: 'Regularizations', icon: CalendarCheck2 },
   { id: 'customers', label: 'Clients', icon: UsersRound },
   { id: 'terms', label: 'Terms & Conditions', icon: FileText },
+  { id: 'layaway', label: 'Layaway', icon: Layers },
   { id: 'quickbooks', label: 'QuickBooks', icon: Link2 },
 ] as const;
 
@@ -46,6 +48,8 @@ function SettingsContent() {
         return <CustomersTab showSuccess={showSuccess} showError={showError} />;
       case 'terms':
         return <TermsConditionsTab showSuccess={showSuccess} showError={showError} />;
+      case 'layaway':
+        return <LayawaySettingsTab showSuccess={showSuccess} showError={showError} />;
       case 'quickbooks':
         return <QuickBooksTab showSuccess={showSuccess} showError={showError} />;
       default:

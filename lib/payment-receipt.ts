@@ -1,4 +1,7 @@
 import { jsPDF } from "jspdf";
+import { BUSINESS_CONFIG } from "./business-config";
+
+const { colors } = BUSINESS_CONFIG;
 
 interface PaymentReceipt {
   id: number;
@@ -19,23 +22,47 @@ function getMethodName(method: PaymentReceipt["method"]): string {
 }
 
 export function generatePaymentReceiptPDF(payment: PaymentReceipt) {
-  const doc = new jsPDF({ unit: "mm", format: [80, 140] }); // Receipt-sized
+  const doc = new jsPDF({ unit: "mm", format: [80, 160] });
 
   const pageW = 80;
   const centerX = pageW / 2;
 
-  // Header
+  // Gold accent line at top
+  doc.setDrawColor(...colors.goldRGB);
+  doc.setLineWidth(1);
+  doc.line(5, 5, pageW - 5, 5);
+
+  // Business name
   doc.setFontSize(14);
   doc.setFont("helvetica", "bold");
-  doc.text("PAYMENT RECEIPT", centerX, 12, { align: "center" });
+  doc.setTextColor(...colors.charcoalRGB);
+  doc.text(BUSINESS_CONFIG.name, centerX, 13, { align: "center" });
+
+  // Tagline
+  doc.setFontSize(7);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(120);
+  doc.text(BUSINESS_CONFIG.tagline, centerX, 17, { align: "center" });
+
+  // Gold line
+  doc.setDrawColor(...colors.goldRGB);
+  doc.setLineWidth(0.5);
+  doc.line(5, 20, pageW - 5, 20);
+
+  // Receipt title
+  doc.setFontSize(11);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(...colors.charcoalRGB);
+  doc.text("PAYMENT RECEIPT", centerX, 27, { align: "center" });
 
   doc.setDrawColor(200);
-  doc.line(5, 16, pageW - 5, 16);
+  doc.line(5, 30, pageW - 5, 30);
 
   // Receipt details
-  let y = 22;
+  let y = 36;
   doc.setFontSize(9);
   doc.setFont("helvetica", "normal");
+  doc.setTextColor(...colors.charcoalRGB);
 
   doc.text("Receipt #:", 5, y);
   doc.setFont("helvetica", "bold");
@@ -58,7 +85,8 @@ export function generatePaymentReceiptPDF(payment: PaymentReceipt) {
 
   // Invoice info
   if (payment.invoice) {
-    doc.setDrawColor(220);
+    doc.setDrawColor(...colors.goldRGB);
+    doc.setLineWidth(0.3);
     doc.line(5, y, pageW - 5, y);
     y += 5;
 
@@ -89,21 +117,27 @@ export function generatePaymentReceiptPDF(payment: PaymentReceipt) {
     y += 6;
   }
 
-  // Amount paid (large)
-  doc.setDrawColor(200);
+  // Amount paid section with gold accent
+  doc.setDrawColor(...colors.goldRGB);
+  doc.setLineWidth(0.5);
   doc.line(5, y, pageW - 5, y);
   y += 3;
 
-  doc.setFillColor(240, 253, 244); // light green bg
-  doc.roundedRect(5, y, pageW - 10, 16, 2, 2, "F");
+  // Gold-tinted background for amount
+  doc.setFillColor(255, 251, 235); // warm cream
+  doc.setDrawColor(...colors.goldRGB);
+  doc.setLineWidth(0.5);
+  doc.roundedRect(5, y, pageW - 10, 16, 2, 2, "FD");
 
   y += 6;
   doc.setFontSize(9);
   doc.setFont("helvetica", "normal");
+  doc.setTextColor(...colors.goldRGB);
   doc.text("AMOUNT PAID", centerX, y, { align: "center" });
   y += 7;
   doc.setFontSize(16);
   doc.setFont("helvetica", "bold");
+  doc.setTextColor(...colors.charcoalRGB);
   doc.text(`$${payment.amount.toFixed(2)}`, centerX, y, { align: "center" });
   y += 8;
 
@@ -119,13 +153,27 @@ export function generatePaymentReceiptPDF(payment: PaymentReceipt) {
   }
 
   // Footer
-  y += 4;
-  doc.setFontSize(7);
+  y += 6;
+  doc.setDrawColor(...colors.goldRGB);
+  doc.setLineWidth(0.3);
+  doc.line(5, y, pageW - 5, y);
+  y += 5;
+
+  doc.setFontSize(8);
   doc.setFont("helvetica", "normal");
-  doc.setTextColor(150);
-  doc.text("Thank you for your business!", centerX, y, { align: "center" });
+  doc.setTextColor(...colors.goldRGB);
+  doc.text("Thank you for choosing Barley Lux!", centerX, y, { align: "center" });
   y += 4;
+
+  doc.setFontSize(7);
+  doc.setTextColor(150);
+  if (BUSINESS_CONFIG.website) {
+    doc.text(BUSINESS_CONFIG.website, centerX, y, { align: "center" });
+    y += 4;
+  }
   doc.text(`Generated: ${new Date().toLocaleString()}`, centerX, y, { align: "center" });
 
-  doc.save(`receipt-PAY-${String(payment.id).padStart(5, "0")}.pdf`);
+  // Open as print preview
+  const blobUrl = doc.output("bloburl");
+  window.open(blobUrl as unknown as string, "_blank");
 }

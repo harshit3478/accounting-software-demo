@@ -28,8 +28,8 @@ interface LayawayInstallment {
   amount: number;
   label: string;
   isPaid: boolean;
-  paidDate: string | null;
-  paidAmount: number | null;
+  paidDate?: string | null;
+  paidAmount?: number | null;
 }
 
 interface LayawayPlan {
@@ -38,7 +38,7 @@ interface LayawayPlan {
   paymentFrequency: string;
   downPayment: number;
   isCancelled: boolean;
-  notes: string | null;
+  notes?: string | null;
   installments: LayawayInstallment[];
 }
 
@@ -53,14 +53,14 @@ interface Invoice {
   amount: number;
   paidAmount: number;
   dueDate: string;
-  status: 'paid' | 'pending' | 'overdue' | 'partial';
+  status: 'paid' | 'pending' | 'overdue' | 'partial' | 'inactive';
   isLayaway: boolean;
   createdAt: string;
-  description?: string;
+  description?: string | null;
   shipmentId?: string | null;
   trackingNumber?: string | null;
   externalInvoiceNumber?: string | null;
-  customer?: { id: number; name: string; email: string | null; phone: string | null } | null;
+  customer?: { id: number; name: string; email?: string | null; phone?: string | null } | null;
   layawayPlan?: LayawayPlan | null;
 }
 
@@ -73,29 +73,78 @@ interface ViewInvoiceModalProps {
 export default function ViewInvoiceModal({ isOpen, onClose, invoice }: ViewInvoiceModalProps) {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [isLoadingPayments, setIsLoadingPayments] = useState(false);
+  const [updatingInstallment, setUpdatingInstallment] = useState<number | null>(null);
+  const [localInstallments, setLocalInstallments] = useState<LayawayInstallment[]>([]);
   const invoiceRef = useRef<HTMLDivElement>(null);
 
-  const handleDownloadPDF = async () => {
+  const handlePrintPDF = async () => {
     if (!invoice) return;
     const { generateSingleInvoicePDF } = await import('../../lib/pdf-export');
-    generateSingleInvoicePDF(invoice as any);
+    generateSingleInvoicePDF({
+      ...invoice,
+      payments: payments.map(p => ({
+        amount: p.amount,
+        paymentDate: p.date || p.createdAt,
+        method: typeof p.method === 'object' ? p.method : { name: String(p.method) },
+      })),
+    } as any, "print");
   };
 
-  const handleShareImage = async () => {
+  const handleDownloadJPG = async () => {
     if (!invoiceRef.current) return;
-    const { shareElementAsImage } = await import('../../lib/image-export');
-    await shareElementAsImage(
+    const { exportElementAsJPEG } = await import('../../lib/image-export');
+    await exportElementAsJPEG(
       invoiceRef.current,
-      `invoice-${invoice?.invoiceNumber}.png`,
-      `Invoice ${invoice?.invoiceNumber}`
+      `invoice-${invoice?.invoiceNumber}.jpg`
     );
   };
 
   useEffect(() => {
     if (isOpen && invoice) {
       fetchPayments();
+      if (invoice.layawayPlan?.installments) {
+        setLocalInstallments(invoice.layawayPlan.installments);
+      }
     }
   }, [isOpen, invoice]);
+
+  const toggleInstallmentPaid = async (installment: LayawayInstallment) => {
+    if (!invoice) return;
+    setUpdatingInstallment(installment.id);
+    try {
+      const newIsPaid = !installment.isPaid;
+      const res = await fetch(`/api/invoices/${invoice.id}/layaway-plan`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          installments: [{
+            id: installment.id,
+            isPaid: newIsPaid,
+            paidDate: newIsPaid ? new Date().toISOString() : null,
+            paidAmount: newIsPaid ? installment.amount : null,
+          }],
+        }),
+      });
+      if (res.ok) {
+        setLocalInstallments(prev =>
+          prev.map(inst =>
+            inst.id === installment.id
+              ? {
+                  ...inst,
+                  isPaid: newIsPaid,
+                  paidDate: newIsPaid ? new Date().toISOString() : null,
+                  paidAmount: newIsPaid ? installment.amount : null,
+                }
+              : inst
+          )
+        );
+      }
+    } catch (error) {
+      console.error('Failed to update installment:', error);
+    } finally {
+      setUpdatingInstallment(null);
+    }
+  };
 
   const fetchPayments = async () => {
     if (!invoice) return;
@@ -174,22 +223,22 @@ export default function ViewInvoiceModal({ isOpen, onClose, invoice }: ViewInvoi
         {/* Export buttons */}
         <div className="flex items-center gap-2">
           <button
-            onClick={handleDownloadPDF}
+            onClick={handlePrintPDF}
             className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center gap-2"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
             </svg>
-            Download PDF
+            Print PDF
           </button>
           <button
-            onClick={handleShareImage}
+            onClick={handleDownloadJPG}
             className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors flex items-center gap-2"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
             </svg>
-            Share Image
+            Download JPG
           </button>
         </div>
 
@@ -361,10 +410,11 @@ export default function ViewInvoiceModal({ isOpen, onClose, invoice }: ViewInvoi
                       <th className="px-4 py-2 text-right text-xs font-semibold text-purple-800 uppercase">Due Date</th>
                       <th className="px-4 py-2 text-right text-xs font-semibold text-purple-800 uppercase">Amount</th>
                       <th className="px-4 py-2 text-center text-xs font-semibold text-purple-800 uppercase">Status</th>
+                      <th className="px-4 py-2 text-center text-xs font-semibold text-purple-800 uppercase w-[80px]">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-purple-100">
-                    {invoice.layawayPlan.installments.map((inst) => (
+                    {localInstallments.map((inst) => (
                       <tr key={inst.id} className={inst.isPaid ? 'bg-green-50/50' : ''}>
                         <td className="px-4 py-2 text-sm text-gray-900">{inst.label}</td>
                         <td className="px-4 py-2 text-sm text-gray-900 text-right">{formatDate(inst.dueDate)}</td>
@@ -381,6 +431,25 @@ export default function ViewInvoiceModal({ isOpen, onClose, invoice }: ViewInvoi
                               {new Date(inst.dueDate) < new Date() ? 'Overdue' : 'Pending'}
                             </span>
                           )}
+                        </td>
+                        <td className="px-4 py-2 text-center">
+                          <button
+                            onClick={() => toggleInstallmentPaid(inst)}
+                            disabled={updatingInstallment === inst.id || invoice.layawayPlan!.isCancelled}
+                            className={`text-xs px-2.5 py-1 rounded font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                              inst.isPaid
+                                ? 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                : 'bg-green-600 text-white hover:bg-green-700'
+                            }`}
+                            title={inst.isPaid ? 'Mark as unpaid' : 'Mark as paid'}
+                          >
+                            {updatingInstallment === inst.id ? (
+                              <svg className="animate-spin h-3.5 w-3.5 mx-auto" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                              </svg>
+                            ) : inst.isPaid ? 'Undo' : 'Mark Paid'}
+                          </button>
                         </td>
                       </tr>
                     ))}

@@ -59,6 +59,25 @@ export async function GET(request: NextRequest) {
       };
     }
 
+    // Sort params
+    const sortBy = searchParams.get("sortBy") || "date";
+    const sortDirection = (searchParams.get("sortDirection") || "desc") as "asc" | "desc";
+
+    // Build orderBy
+    let orderBy: any;
+    switch (sortBy) {
+      case "amount":
+        orderBy = { amount: sortDirection };
+        break;
+      case "client":
+        orderBy = { invoice: { clientName: sortDirection } };
+        break;
+      case "date":
+      default:
+        orderBy = { paymentDate: sortDirection };
+        break;
+    }
+
     // Get total count
     const total = await prisma.payment.count({ where });
 
@@ -80,9 +99,7 @@ export async function GET(request: NextRequest) {
           }
         }
       },
-      orderBy: {
-        paymentDate: 'desc'
-      },
+      orderBy,
       skip,
       take: limit,
     });

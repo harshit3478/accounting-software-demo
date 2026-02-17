@@ -37,6 +37,20 @@ export default function CreateInvoiceModal({
   const [dueDate, setDueDate] = useState("");
   const customerRef = useRef<HTMLDivElement>(null);
 
+  // Load layaway defaults from localStorage
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('layaway-defaults');
+      if (stored) {
+        const defaults = JSON.parse(stored);
+        if (defaults.defaultMonths) setLayawayMonths(defaults.defaultMonths);
+        if (defaults.defaultFrequency) setLayawayFrequency(defaults.defaultFrequency);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
   // Fetch customers for autocomplete
   useEffect(() => {
     fetch('/api/customers?all=true')
@@ -69,6 +83,10 @@ export default function CreateInvoiceModal({
     "fixed"
   );
   const [isLayaway, setIsLayaway] = useState(false);
+  const [layawayMonths, setLayawayMonths] = useState(3);
+  const [layawayFrequency, setLayawayFrequency] = useState<"monthly" | "bi-weekly" | "weekly">("monthly");
+  const [layawayDownPayment, setLayawayDownPayment] = useState(0);
+  const [layawayNotes, setLayawayNotes] = useState("");
   const [useDefaultTerms, setUseDefaultTerms] = useState(true);
   const [defaultTerms, setDefaultTerms] = useState<string[] | null>(null);
   const [customTerms, setCustomTerms] = useState<string[]>([""]);
@@ -159,6 +177,10 @@ export default function CreateInvoiceModal({
     setDiscount(0);
     setDiscountType("fixed");
     setIsLayaway(false);
+    setLayawayMonths(3);
+    setLayawayFrequency("monthly");
+    setLayawayDownPayment(0);
+    setLayawayNotes("");
     setDateError("");
     setShowNewCustomerForm(false);
     setNewCustomerData({ name: '', email: '', phone: '' });
@@ -200,6 +222,14 @@ export default function CreateInvoiceModal({
         tax: calculateTaxAmount(),
         discount: calculateDiscountAmount(),
         isLayaway,
+        ...(isLayaway && {
+          layawayPlan: {
+            months: layawayMonths,
+            paymentFrequency: layawayFrequency,
+            downPayment: layawayDownPayment,
+            notes: layawayNotes || undefined,
+          },
+        }),
       };
 
       if (useDefaultTerms) {
@@ -534,6 +564,108 @@ export default function CreateInvoiceModal({
                     Mark as Layaway (Installment Payment Plan)
                   </label>
                 </div>
+
+                {/* Layaway Plan Configuration */}
+                {isLayaway && (
+                  <div className="p-4 bg-purple-50 border border-purple-200 rounded-lg space-y-4">
+                    <h4 className="text-sm font-semibold text-purple-900 flex items-center gap-2">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                      Layaway Plan Configuration
+                    </h4>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">Duration (months)</label>
+                        <input
+                          type="number"
+                          min="1"
+                          max="24"
+                          value={layawayMonths}
+                          onChange={(e) => setLayawayMonths(Math.min(24, Math.max(1, parseInt(e.target.value) || 1)))}
+                          className="w-full px-3 py-2 border border-gray-300 text-gray-900 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">Payment Frequency</label>
+                        <select
+                          value={layawayFrequency}
+                          onChange={(e) => setLayawayFrequency(e.target.value as "monthly" | "bi-weekly" | "weekly")}
+                          className="w-full px-3 py-2 border border-gray-300 text-gray-900 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                        >
+                          <option value="monthly">Monthly</option>
+                          <option value="bi-weekly">Bi-Weekly</option>
+                          <option value="weekly">Weekly</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Down Payment ($)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={layawayDownPayment || ""}
+                        onChange={(e) => setLayawayDownPayment(parseFloat(e.target.value) || 0)}
+                        className="w-full px-3 py-2 border border-gray-300 text-gray-900 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                        placeholder="0.00"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Notes (optional)</label>
+                      <input
+                        type="text"
+                        value={layawayNotes}
+                        onChange={(e) => setLayawayNotes(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 text-gray-900 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                        placeholder="e.g. Customer agreed to flexible schedule"
+                      />
+                    </div>
+
+                    {/* Installment Preview */}
+                    {calculateTotal() > 0 && (
+                      <div className="mt-3 pt-3 border-t border-purple-200">
+                        <h5 className="text-xs font-semibold text-purple-800 mb-2">Installment Preview</h5>
+                        <div className="space-y-1 max-h-40 overflow-y-auto">
+                          {(() => {
+                            const total = calculateTotal();
+                            const dp = Math.min(layawayDownPayment, total);
+                            const remaining = total - dp;
+
+                            let numInstallments: number;
+                            if (layawayFrequency === "monthly") numInstallments = layawayMonths;
+                            else if (layawayFrequency === "bi-weekly") numInstallments = layawayMonths * 2;
+                            else numInstallments = layawayMonths * 4;
+
+                            const installmentAmount = numInstallments > 0 ? remaining / numInstallments : 0;
+                            const preview: { label: string; amount: number }[] = [];
+
+                            if (dp > 0) preview.push({ label: "Down Payment", amount: dp });
+                            for (let i = 1; i <= Math.min(numInstallments, 12); i++) {
+                              const suffix = i === 1 ? "st" : i === 2 ? "nd" : i === 3 ? "rd" : "th";
+                              preview.push({ label: `${i}${suffix} Payment`, amount: installmentAmount });
+                            }
+                            if (numInstallments > 12) {
+                              preview.push({ label: `... and ${numInstallments - 12} more`, amount: installmentAmount });
+                            }
+
+                            return preview.map((item, idx) => (
+                              <div key={idx} className="flex justify-between text-xs text-gray-700">
+                                <span>{item.label}</span>
+                                <span className="font-medium">${item.amount.toFixed(2)}</span>
+                              </div>
+                            ));
+                          })()}
+                        </div>
+                        <div className="flex justify-between text-xs font-semibold text-purple-900 mt-2 pt-2 border-t border-purple-200">
+                          <span>Total</span>
+                          <span>${calculateTotal().toFixed(2)}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div className="border-b border-gray-200 pb-4 mb-4">
                   <h4 className="text-sm font-semibold text-gray-900 mb-3">

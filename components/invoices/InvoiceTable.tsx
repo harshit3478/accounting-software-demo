@@ -14,12 +14,14 @@ interface InvoiceTableProps {
   onLink?: (invoice: Invoice) => void;
   onDelete: (invoice: Invoice) => void;
   onShip: (invoice: Invoice) => void;
-  onFilterByClient?: (customerId: number) => void;
+  onFilterByClient?: (customerId: number, clientName: string) => void;
+  onPrintPDF?: (invoice: Invoice) => void;
   onCreateFirst: () => void;
   searchTerm: string;
   statusFilter: string;
   typeFilter: string;
   sortBy: string;
+  sortDirection: "asc" | "desc";
   onSortChange: (sort: string) => void;
   children?: React.ReactNode;
 }
@@ -35,30 +37,19 @@ export default function InvoiceTable({
   onDelete,
   onShip,
   onFilterByClient,
+  onPrintPDF,
   onCreateFirst,
   searchTerm,
   statusFilter,
   typeFilter,
   sortBy,
+  sortDirection,
   onSortChange,
   children
 }: InvoiceTableProps) {
   const getSortIcon = (column: string) => {
-    if (!sortBy.startsWith(column)) return null;
-    return sortBy.endsWith("desc") ? "↓" : "↑";
-  };
-
-  const handleSort = (column: string) => {
-    const currentColumn = sortBy.split("-")[0];
-    if (currentColumn === column) {
-      // Toggle direction
-      onSortChange(
-        sortBy.endsWith("desc") ? `${column}-asc` : `${column}-desc`
-      );
-    } else {
-      // New column, default to desc
-      onSortChange(`${column}-desc`);
-    }
+    if (sortBy !== column) return "↕";
+    return sortDirection === "desc" ? "↓" : "↑";
   };
   if (isLoading) {
     return (
@@ -129,45 +120,51 @@ export default function InvoiceTable({
         <table className="min-w-full divide-y divide-gray-200 relative">
           <thead className="bg-gray-50 sticky top-0 z-10 shadow-sm">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 w-[140px]">
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 w-[130px]">
                 Invoice #
               </th>
               <th
-                onClick={() => handleSort("client")}
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors bg-gray-50 min-w-[200px]"
+                onClick={() => onSortChange("client")}
+                className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors bg-gray-50 min-w-[140px]"
               >
                 <div className="flex items-center gap-1">
                   Client {getSortIcon("client")}
                 </div>
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">
-                Type of Invoice
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 hidden xl:table-cell">
+                Items
               </th>
               <th
-                onClick={() => handleSort("amount")}
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors bg-gray-50"
+                onClick={() => onSortChange("amount")}
+                className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors bg-gray-50"
               >
                 <div className="flex items-center gap-1">
                   Amount {getSortIcon("amount")}
                 </div>
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">
                 Paid
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">
-                Invoice Date
+              <th
+                onClick={() => onSortChange("date")}
+                className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors bg-gray-50 hidden lg:table-cell"
+              >
+                <div className="flex items-center gap-1">
+                  Date {getSortIcon("date")}
+                </div>
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">
-                Due Date
+              <th
+                onClick={() => onSortChange("dueDate")}
+                className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors bg-gray-50"
+              >
+                <div className="flex items-center gap-1">
+                  Due {getSortIcon("dueDate")}
+                </div>
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">
                 Status
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">
-                Shipment ID
-              </th>
-              {/* Tracking ID column removed */}
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">
+              <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 w-[60px]">
                 Actions
               </th>
             </tr>
@@ -185,6 +182,7 @@ export default function InvoiceTable({
                 onDelete={onDelete}
                 onShip={onShip}
                 onFilterByClient={onFilterByClient}
+                onPrintPDF={onPrintPDF}
               />
             ))}
           </tbody>

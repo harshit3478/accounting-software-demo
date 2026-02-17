@@ -37,6 +37,7 @@ function InvoicesPageContent() {
     searchTerm,
     setSearchTerm,
     sortBy,
+    sortDirection,
     setSortBy,
     dateRange,
     setDateRange,
@@ -83,6 +84,7 @@ function InvoicesPageContent() {
     layawayOverdue,
     setLayawayOverdue,
     customerIdFilter,
+    customerNameFilter,
     setCustomerIdFilter,
   } = useInvoices(showSuccess, showError, showInfo);
 
@@ -106,6 +108,11 @@ function InvoicesPageContent() {
     } else {
       handleOpenShipModal(invoice);
     }
+  };
+
+  const handlePrintPDF = async (invoice: any) => {
+    const { generateSingleInvoicePDF } = await import("../../lib/pdf-export");
+    generateSingleInvoicePDF(invoice, "print");
   };
 
   // Keyboard shortcuts
@@ -157,7 +164,7 @@ function InvoicesPageContent() {
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
             </svg>
-            <span>Showing invoices for a specific client</span>
+            <span>Showing invoices for <strong>{customerNameFilter || "a specific client"}</strong></span>
             <button
               onClick={() => setCustomerIdFilter(null)}
               className="ml-auto text-blue-600 hover:text-blue-800 font-medium"
@@ -181,11 +188,13 @@ function InvoicesPageContent() {
             onDelete={handleDeleteClick}
             onShip={handleShipAction}
             onFilterByClient={setCustomerIdFilter}
+            onPrintPDF={handlePrintPDF}
             onCreateFirst={() => setShowCreateModal(true)}
             searchTerm={searchTerm}
             statusFilter={statusFilter}
             typeFilter={typeFilter}
             sortBy={sortBy}
+            sortDirection={sortDirection}
             onSortChange={setSortBy}
           >
             {/* Pagination */}

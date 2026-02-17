@@ -78,11 +78,13 @@ interface UseInvoicesReturn {
 
   // Client filter — see all invoices for a specific client
   customerIdFilter: number | null;
-  setCustomerIdFilter: (id: number | null) => void;
+  customerNameFilter: string | null;
+  setCustomerIdFilter: (id: number | null, name?: string) => void;
 
   searchTerm: string;
   setSearchTerm: (term: string) => void;
   sortBy: string;
+  sortDirection: "asc" | "desc";
   setSortBy: (sort: string) => void;
   dateRange: { start: string; end: string } | null;
   setDateRange: (range: { start: string; end: string } | null) => void;
@@ -180,8 +182,12 @@ export function useInvoices(
   const [customerIdFilter, setCustomerIdFilterState] = useState<number | null>(
     searchParams.get("customerId") ? parseInt(searchParams.get("customerId")!) : null
   );
+  const [customerNameFilter, setCustomerNameFilter] = useState<string | null>(null);
 
-  const [sortBy, setSortBy] = useState("date-desc");
+  const [sortBy, setSortByState] = useState(searchParams.get("sortBy") || "date");
+  const [sortDirection, setSortDirectionState] = useState<"asc" | "desc">(
+    (searchParams.get("sortDirection") as "asc" | "desc") || "desc"
+  );
   const [dateRange, setDateRangeState] = useState<{
     start: string;
     end: string;
@@ -255,8 +261,9 @@ export function useInvoices(
     }
   };
 
-  const setCustomerIdFilter = (id: number | null) => {
+  const setCustomerIdFilter = (id: number | null, name?: string) => {
     setCustomerIdFilterState(id);
+    setCustomerNameFilter(name || null);
     setCurrentPage(1);
     updateUrl({ customerId: id ? id.toString() : null, page: "1" });
   };
@@ -290,7 +297,19 @@ export function useInvoices(
 
   const handleItemsPerPageChange = setItemsPerPage;
 
-
+  const setSortBy = (field: string) => {
+    // Toggle direction if same field, otherwise set to desc
+    if (field === sortBy) {
+      const newDir = sortDirection === "asc" ? "desc" : "asc";
+      setSortDirectionState(newDir);
+      updateUrl({ sortBy: field, sortDirection: newDir, page: "1" });
+    } else {
+      setSortByState(field);
+      setSortDirectionState("desc");
+      updateUrl({ sortBy: field, sortDirection: "desc", page: "1" });
+    }
+    setCurrentPage(1);
+  };
 
   // Modal states
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -326,7 +345,7 @@ export function useInvoices(
   // Fetch invoices when params change
   useEffect(() => {
     fetchInvoices();
-  }, [statusFilter, typeFilter, layawayOverdue, debouncedSearchTerm, sortBy, dateRange, currentPage, itemsPerPage, customerIdFilter]);
+  }, [statusFilter, typeFilter, layawayOverdue, debouncedSearchTerm, sortBy, sortDirection, dateRange, currentPage, itemsPerPage, customerIdFilter]);
 
   const fetchInvoices = async () => {
     setIsLoading(true);
@@ -343,6 +362,8 @@ export function useInvoices(
         params.set("endDate", dateRange.end);
       }
       if (customerIdFilter) params.set("customerId", customerIdFilter.toString());
+      params.set("sortBy", sortBy);
+      params.set("sortDirection", sortDirection);
 
       const res = await fetch(`/api/invoices?${params.toString()}`);
       if (res.ok) {
@@ -480,31 +501,10 @@ export function useInvoices(
 
 
 
-  // Filter and sort logic (Client-side sorting only now, filtering is server-side)
-  const filteredInvoices = invoices.sort((a, b) => {
-      switch (sortBy) {
-        case "date-desc":
-          return (
-            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-          );
-        case "date-asc":
-          return (
-            new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-          );
-        case "amount-desc":
-          return b.amount - a.amount;
-        case "amount-asc":
-          return a.amount - b.amount;
-        case "client-asc":
-          return a.clientName.localeCompare(b.clientName);
-        default:
-          return 0;
-      }
-    });
-
-  // Pagination (Server-side now, so just pass through)
+  // Server handles sorting and pagination - just pass through
+  const filteredInvoices = invoices;
   const totalPages = Math.ceil(totalItems / itemsPerPage);
-  const paginatedInvoices = filteredInvoices; // Already paginated from server
+  const paginatedInvoices = filteredInvoices;
 
   // Statistics - overall (Note: This logic needs to be updated to fetch stats from server if we want accurate totals across all pages)
   // For now, we'll just use the current page's data or fetch a separate stats endpoint. 
@@ -561,6 +561,7 @@ export function useInvoices(
     legacyFilter,
     setLegacyFilter,
     customerIdFilter,
+    customerNameFilter,
     setCustomerIdFilter,
     statusFilter,
     setStatusFilter,
@@ -569,6 +570,7 @@ export function useInvoices(
     searchTerm,
     setSearchTerm,
     sortBy,
+    sortDirection,
     setSortBy,
     dateRange,
     setDateRange,

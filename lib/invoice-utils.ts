@@ -147,4 +147,61 @@ export async function updateInvoiceAfterPayment(invoiceId: number) {
       status: newStatus
     }
   });
+
+  // Auto-mark layaway installments as paid based on total paid amount
+  if (invoice.isLayaway) {
+    await syncLayawayInstallments(invoiceId, totalPaid);
+  }
+}
+
+/**
+ * Sync layaway installment paid status based on total amount paid on the invoice.
+ * 
+ * Walks through installments in due-date order, marking them as paid (with today's date)
+ * until the cumulative installment total exceeds the total paid amount.
+ * If a previously-paid installment should now be unpaid (e.g. payment was deleted),
+ * it will be reverted.
+ */
+async function syncLayawayInstallments(invoiceId: number, totalPaid: number) {
+  const plan = await prisma.layawayPlan.findUnique({
+    where: { invoiceId },
+    include: { installments: { orderBy: { dueDate: 'asc' } } },
+  });
+
+  if (!plan || plan.isCancelled) return;
+
+  let runningTotal = 0;
+  const EPSILON = 0.01;
+  const today = new Date();
+
+  for (const inst of plan.installments) {
+    const instAmount = Number(inst.amount);
+    runningTotal += instAmount;
+
+    if (runningTotal <= totalPaid + EPSILON) {
+      // This installment should be marked as paid
+      if (!inst.isPaid) {
+        await prisma.layawayInstallment.update({
+          where: { id: inst.id },
+          data: {
+            isPaid: true,
+            paidDate: today,
+            paidAmount: instAmount,
+          },
+        });
+      }
+    } else {
+      // This installment should NOT be marked as paid
+      if (inst.isPaid) {
+        await prisma.layawayInstallment.update({
+          where: { id: inst.id },
+          data: {
+            isPaid: false,
+            paidDate: null,
+            paidAmount: null,
+          },
+        });
+      }
+    }
+  }
 }

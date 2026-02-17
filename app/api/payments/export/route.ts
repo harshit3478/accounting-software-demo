@@ -144,7 +144,10 @@ export async function GET(request: NextRequest) {
     });
   } catch (error: any) {
     console.error('Export payments error:', error);
-    return NextResponse.json({ error: error.message }, { status: 403 });
+    if (error.message === 'Unauthorized') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    return NextResponse.json({ error: error.message || 'Export failed' }, { status: 500 });
   }
 }
 

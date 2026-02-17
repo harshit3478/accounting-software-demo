@@ -1,5 +1,9 @@
 "use client";
 
+import { useState } from "react";
+import { MoreVertical, Eye, Printer, Edit3, DollarSign, Link2, Package, XCircle, RotateCcw } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
+import { Button } from "../ui/button";
 import type { Invoice } from "../../hooks/useInvoices";
 
 interface InvoiceTableRowProps {
@@ -11,7 +15,8 @@ interface InvoiceTableRowProps {
   onLink?: (invoice: Invoice) => void;
   onDelete: (invoice: Invoice) => void;
   onShip?: (invoice: Invoice) => void;
-  onFilterByClient?: (customerId: number) => void;
+  onFilterByClient?: (customerId: number, clientName: string) => void;
+  onPrintPDF?: (invoice: Invoice) => void;
 }
 
 export default function InvoiceTableRow({
@@ -24,7 +29,10 @@ export default function InvoiceTableRow({
   onDelete,
   onShip,
   onFilterByClient,
+  onPrintPDF,
 }: InvoiceTableRowProps) {
+  const [showActionsMenu, setShowActionsMenu] = useState(false);
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString("en-US", {
       year: "numeric",
@@ -44,14 +52,17 @@ export default function InvoiceTableRow({
     return `status-badge ${classes[status as keyof typeof classes]}`;
   };
 
+  const canPay = invoice.status !== "paid" && invoice.status !== "inactive";
+
   return (
     <tr
       className={`hover:bg-gray-50 transition-colors animate-fade-in-left stagger-fast-${Math.min(
         index + 1,
         8
       )}`}
+      onDoubleClick={() => onView(invoice)}
     >
-      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+      <td className="px-4 py-3 whitespace-nowrap text-sm font-medium">
         <button
           onClick={() => onView(invoice)}
           className="text-blue-600 hover:text-blue-800 hover:underline transition-colors"
@@ -59,15 +70,15 @@ export default function InvoiceTableRow({
           {invoice.invoiceNumber}
         </button>
         {invoice.isLayaway && (
-          <span className="ml-2 text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded">
+          <span className="ml-1.5 text-xs bg-purple-100 text-purple-800 px-1.5 py-0.5 rounded">
             Layaway
           </span>
         )}
       </td>
-      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 max-w-[200px] truncate" title={invoice.clientName}>
+      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 max-w-[160px] truncate" title={invoice.clientName}>
         {invoice.customerId && onFilterByClient ? (
           <button
-            onClick={() => onFilterByClient(invoice.customerId!)}
+            onClick={() => onFilterByClient(invoice.customerId!, invoice.clientName)}
             className="text-gray-900 hover:text-blue-600 hover:underline transition-colors"
             title="View all invoices for this client"
           >
@@ -77,87 +88,135 @@ export default function InvoiceTableRow({
           invoice.clientName
         )}
       </td>
-      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 max-w-[150px] truncate" title={invoice.items?.map(i => i.name).join(", ")}>
-        {invoice.items && invoice.items.length > 0 
+      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 max-w-[120px] truncate hidden xl:table-cell" title={invoice.items?.map(i => i.name).join(", ")}>
+        {invoice.items && invoice.items.length > 0
           ? invoice.items.map(i => i.name).join(", ")
           : <span className="text-gray-400">-</span>}
       </td>
-      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+      <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
         ${invoice.amount.toLocaleString()}
       </td>
-      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
         ${invoice.paidAmount.toLocaleString()}
         {invoice.status === "partial" && (
-          <div className="text-xs text-gray-500 mt-1">
-            {Math.round((invoice.paidAmount / invoice.amount) * 100)}% paid
+          <div className="text-xs text-gray-500 mt-0.5">
+            {Math.round((invoice.paidAmount / invoice.amount) * 100)}%
           </div>
         )}
       </td>
-      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 hidden lg:table-cell">
         {formatDate(invoice.createdAt)}
       </td>
-      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
         {formatDate(invoice.dueDate)}
       </td>
-      <td className="px-6 py-4 whitespace-nowrap">
+      <td className="px-4 py-3 whitespace-nowrap">
         <span className={getStatusBadge(invoice.status)}>
           {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}
         </span>
       </td>
-      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-        {invoice.shipmentId ? invoice.shipmentId : "-"}
+      <td className="px-3 py-3 text-right text-sm font-medium">
+        <Popover open={showActionsMenu} onOpenChange={setShowActionsMenu}>
+          <PopoverTrigger asChild>
+            <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+              <MoreVertical className="h-4 w-4" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-48 p-1" align="end">
+            <div className="flex flex-col">
+              <button
+                onClick={() => {
+                  setShowActionsMenu(false);
+                  onView(invoice);
+                }}
+                className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md text-left"
+              >
+                <Eye className="h-4 w-4" />
+                View Details
+              </button>
+              {onPrintPDF && (
+                <button
+                  onClick={() => {
+                    setShowActionsMenu(false);
+                    onPrintPDF(invoice);
+                  }}
+                  className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md text-left"
+                >
+                  <Printer className="h-4 w-4" />
+                  Print PDF
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  setShowActionsMenu(false);
+                  onEdit(invoice);
+                }}
+                className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md text-left"
+              >
+                <Edit3 className="h-4 w-4" />
+                Edit Invoice
+              </button>
+              {canPay && (
+                <button
+                  onClick={() => {
+                    setShowActionsMenu(false);
+                    onPay(invoice);
+                  }}
+                  className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md text-left"
+                >
+                  <DollarSign className="h-4 w-4" />
+                  Record Payment
+                </button>
+              )}
+              {canPay && onLink && (
+                <button
+                  onClick={() => {
+                    setShowActionsMenu(false);
+                    onLink(invoice);
+                  }}
+                  className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md text-left"
+                >
+                  <Link2 className="h-4 w-4" />
+                  Link Payment
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  setShowActionsMenu(false);
+                  onShip?.(invoice);
+                }}
+                className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md text-left"
+              >
+                <Package className="h-4 w-4" />
+                {invoice.shipmentId ? "Manage Shipment" : "Create Shipment"}
+              </button>
+              {invoice.status !== "inactive" ? (
+                <button
+                  onClick={() => {
+                    setShowActionsMenu(false);
+                    onDelete(invoice);
+                  }}
+                  className="flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-md text-left"
+                >
+                  <XCircle className="h-4 w-4" />
+                  Deactivate
+                </button>
+              ) : (
+                <button
+                  onClick={() => {
+                    setShowActionsMenu(false);
+                    onDelete(invoice);
+                  }}
+                  className="flex items-center gap-2 px-3 py-2 text-sm text-green-600 hover:bg-green-50 rounded-md text-left"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                  Reactivate
+                </button>
+              )}
+            </div>
+          </PopoverContent>
+        </Popover>
       </td>
-      {/* Tracking ID column removed */}
-      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-        <div className="flex items-center space-x-3">
-          <button
-            onClick={() => onEdit(invoice)}
-            className="text-indigo-600 hover:text-indigo-900"
-            title="Edit invoice"
-          >
-            Edit
-          </button>
-          <button
-            onClick={() => onPay(invoice)}
-            disabled={invoice.status === "paid" || invoice.status === "inactive"}
-            className="text-green-600 hover:text-green-900 disabled:text-green-400 disabled:cursor-not-allowed"
-            title={
-              invoice.status === "inactive" ? "Invoice is inactive" :
-              invoice.status === "paid" ? "Already paid" : "Record payment"
-            }
-          >
-            {invoice.status === "paid" ? "Paid" : "Pay"}
-          </button>
-          {invoice.status !== "paid" && invoice.status !== "inactive" && onLink && (
-            <button
-              onClick={() => onLink(invoice)}
-              className="text-teal-600 hover:text-teal-900"
-              title="Link existing payment"
-            >
-              Link
-            </button>
-          )}
-          <button
-            onClick={() => onShip?.(invoice)}
-            className={invoice.shipmentId ? "text-amber-600 hover:text-amber-900" : "text-sky-600 hover:text-sky-900"}
-            title={invoice.shipmentId ? "Manage shipment" : "Create shipment"}
-          >
-            {invoice.shipmentId ? "Manage" : "Ship"}
-          </button>
-          {invoice.status !== "inactive" ? (
-            <button
-              onClick={() => onDelete(invoice)}
-              className="text-red-600 hover:text-red-900"
-              title="Deactivate invoice"
-            >
-              Deactivate
-            </button>
-          ) : (
-            <span className="text-gray-400 text-xs">Inactive</span>
-          )}
-        </div>
-      </td>
-     
     </tr>
   );
 }

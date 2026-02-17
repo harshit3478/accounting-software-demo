@@ -27,6 +27,10 @@ export async function GET(request: NextRequest) {
     const showInactive = searchParams.get("showInactive") === "true";
     const customerId = searchParams.get("customerId");
 
+    // Sort params
+    const sortBy = searchParams.get("sortBy") || "date";
+    const sortDirection = (searchParams.get("sortDirection") || "desc") as "asc" | "desc";
+
     // Build where clause
     const where: any = {};
 
@@ -109,10 +113,28 @@ export async function GET(request: NextRequest) {
       },
     };
 
+    // Build orderBy based on sort params
+    let orderBy: any;
+    switch (sortBy) {
+      case "amount":
+        orderBy = { amount: sortDirection };
+        break;
+      case "client":
+        orderBy = { clientName: sortDirection };
+        break;
+      case "dueDate":
+        orderBy = { dueDate: sortDirection };
+        break;
+      case "date":
+      default:
+        orderBy = { createdAt: sortDirection };
+        break;
+    }
+
     const invoices = await (prisma as any).invoice.findMany({
       where,
       include: includeAny,
-      orderBy: { createdAt: "desc" },
+      orderBy,
       skip,
       take: limit,
     });
@@ -171,6 +193,7 @@ export async function POST(request: NextRequest) {
       dueDate,
       description,
       isLayaway,
+      layawayPlan,
       useDefaultTerms,
       termsId,
       newTerms,
@@ -238,6 +261,69 @@ export async function POST(request: NextRequest) {
         termsSnapshot: termsSnapshot || null,
       },
     });
+
+    // Create layaway plan if applicable
+    if (isLayaway && layawayPlan) {
+      const planMonths = layawayPlan.months || 3;
+      const planFrequency = layawayPlan.paymentFrequency || "monthly";
+      const planDownPayment = parseFloat(layawayPlan.downPayment) || 0;
+      const planNotes = layawayPlan.notes || null;
+
+      const remaining = totalAmount - planDownPayment;
+      let numInstallments: number;
+      if (planFrequency === "monthly") numInstallments = planMonths;
+      else if (planFrequency === "bi-weekly") numInstallments = planMonths * 2;
+      else numInstallments = planMonths * 4; // weekly
+
+      const installmentAmount = numInstallments > 0 ? remaining / numInstallments : 0;
+      const invoiceDate = new Date(dueDate);
+
+      const installments: { dueDate: Date; amount: number; label: string }[] = [];
+
+      if (planDownPayment > 0) {
+        installments.push({
+          dueDate: invoiceDate,
+          amount: planDownPayment,
+          label: "Down Payment",
+        });
+      }
+
+      for (let i = 1; i <= numInstallments; i++) {
+        const instDate = new Date(invoiceDate);
+        if (planFrequency === "monthly") {
+          instDate.setMonth(instDate.getMonth() + i);
+        } else if (planFrequency === "bi-weekly") {
+          instDate.setDate(instDate.getDate() + i * 14);
+        } else {
+          instDate.setDate(instDate.getDate() + i * 7);
+        }
+
+        const suffix = i === 1 ? "st" : i === 2 ? "nd" : i === 3 ? "rd" : "th";
+        installments.push({
+          dueDate: instDate,
+          amount: installmentAmount,
+          label: `${i}${suffix} Payment`,
+        });
+      }
+
+      await (prisma as any).layawayPlan.create({
+        data: {
+          invoiceId: invoice.id,
+          months: planMonths,
+          paymentFrequency: planFrequency,
+          downPayment: planDownPayment,
+          notes: planNotes,
+          installments: {
+            create: installments.map((inst) => ({
+              dueDate: inst.dueDate,
+              amount: inst.amount,
+              label: inst.label,
+              isPaid: false,
+            })),
+          },
+        },
+      });
+    }
 
     // Convert Decimal to number for response
     const invAny: any = invoice;

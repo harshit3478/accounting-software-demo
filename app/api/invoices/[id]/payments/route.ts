@@ -15,6 +15,7 @@ export async function GET(
     const directPayments = await prisma.payment.findMany({
       where: { invoiceId },
       include: {
+        method: true,
         user: {
           select: {
             id: true,
@@ -31,6 +32,7 @@ export async function GET(
       include: {
         payment: {
           include: {
+            method: true,
             user: {
               select: {
                 id: true,

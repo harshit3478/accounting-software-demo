@@ -10,7 +10,7 @@ export interface Invoice {
   clientName: string;
   amount: number;
   paidAmount: number;
-  status: 'paid' | 'pending' | 'overdue' | 'partial';
+  status: 'paid' | 'pending' | 'overdue' | 'partial' | 'inactive';
   dueDate: string;
   isLayaway: boolean;
   items: InvoiceItem[];

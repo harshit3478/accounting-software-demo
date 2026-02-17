@@ -95,6 +95,7 @@ export async function POST(request: NextRequest) {
         const amount = subtotal + tax - discount;
         const dueDate = new Date(row.dueDate);
         const isLayaway = row.isLayaway.toLowerCase() === 'true';
+        const externalInvoiceNumber = row.externalInvoiceNumber?.trim() || null;
 
         // Generate sequential invoice number
         const invoiceNumber = `INV-${year}-${nextNumber.toString().padStart(4, '0')}`;
@@ -130,7 +131,9 @@ export async function POST(request: NextRequest) {
             status,
             isLayaway,
             description: null,
-            userId: user.id
+            userId: user.id,
+            externalInvoiceNumber,
+            source: 'csv'
           }
         });
 
