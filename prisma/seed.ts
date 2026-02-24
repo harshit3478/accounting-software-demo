@@ -79,7 +79,6 @@ async function main() {
     { name: "Cash", icon: "banknote", color: "#D97706", isSystem: true, sortOrder: 1 },
     { name: "Zelle", icon: "smartphone", color: "#16A34A", isSystem: false, sortOrder: 2 },
     { name: "Bank of America", icon: "building-2", color: "#1D4ED8", isSystem: false, sortOrder: 3 },
-    { name: "Layaway", icon: "clock", color: "#9333EA", isSystem: true, sortOrder: 4 },
   ];
 
   for (const pm of paymentMethods) {

@@ -108,7 +108,7 @@ export default function PaymentTableRow({ payment, onLink, onView, onEditNotes }
         </span>
       </td>
       <td className="px-4 py-3 text-sm text-gray-600">
-        <span className="break-words line-clamp-2" title={payment.notes || undefined}>
+        <span className="break-words line-clamp-3" title={payment.notes || undefined}>
           {payment.notes || <span className="text-gray-400">-</span>}
         </span>
       </td>

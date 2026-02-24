@@ -19,7 +19,7 @@ const TABS = [
   { id: 'regularizations', label: 'Regularizations', icon: CalendarCheck2 },
   { id: 'customers', label: 'Clients', icon: UsersRound },
   { id: 'terms', label: 'Terms & Conditions', icon: FileText },
-  { id: 'layaway', label: 'Layaway', icon: Layers },
+  // { id: 'layaway', label: 'Layaway', icon: Layers },
   { id: 'quickbooks', label: 'QuickBooks', icon: Link2 },
 ] as const;
 
@@ -48,8 +48,8 @@ function SettingsContent() {
         return <CustomersTab showSuccess={showSuccess} showError={showError} />;
       case 'terms':
         return <TermsConditionsTab showSuccess={showSuccess} showError={showError} />;
-      case 'layaway':
-        return <LayawaySettingsTab showSuccess={showSuccess} showError={showError} />;
+      // case 'layaway':
+      //   return <LayawaySettingsTab showSuccess={showSuccess} showError={showError} />;
       case 'quickbooks':
         return <QuickBooksTab showSuccess={showSuccess} showError={showError} />;
       default:
