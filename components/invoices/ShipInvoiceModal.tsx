@@ -1,7 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Invoice } from "../../hooks/useInvoices";
+
+interface MapboxFeature {
+  place_name: string;
+  text: string;
+  context?: { id: string; text: string; short_code?: string }[];
+}
 
 interface ShipInvoiceModalProps {
   isOpen: boolean;
@@ -35,6 +41,13 @@ export default function ShipInvoiceModal({
   const [loadingAction, setLoadingAction] = useState<"create" | "update" | "cancel" | null>(null);
   const [isFetching, setIsFetching] = useState(false);
 
+  // Mapbox address autocomplete
+  const [addressQuery, setAddressQuery] = useState("");
+  const [suggestions, setSuggestions] = useState<MapboxFeature[]>([]);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autocompleteRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     if (!isOpen) return;
 
@@ -46,6 +59,9 @@ export default function ShipInvoiceModal({
     setPostalCode("");
     setCountry("US");
     setPhone("");
+    setAddressQuery("");
+    setSuggestions([]);
+    setShowDropdown(false);
     setWeight("1");
     setLength("10");
     setWidth("10");
@@ -79,6 +95,7 @@ export default function ShipInvoiceModal({
         if (order && order.destination) {
           setName(order.destination.name || "");
           setStreet(order.destination.address1 || "");
+          setAddressQuery(order.destination.address1 || "");
           setCity(order.destination.city || "");
           setState(order.destination.state || "");
           setPostalCode(order.destination.zip || "");
@@ -97,6 +114,64 @@ export default function ShipInvoiceModal({
     } finally {
       setIsFetching(false);
     }
+  };
+
+  // Close autocomplete dropdown on outside click
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (autocompleteRef.current && !autocompleteRef.current.contains(e.target as Node)) {
+        setShowDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, []);
+
+  const handleAddressInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const query = e.target.value;
+    setAddressQuery(query);
+    setStreet(query);
+
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (query.length < 3) {
+      setSuggestions([]);
+      setShowDropdown(false);
+      return;
+    }
+
+    debounceRef.current = setTimeout(async () => {
+      const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+      if (!token) return;
+      try {
+        const res = await fetch(
+          `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?types=address&limit=5&access_token=${token}`
+        );
+        if (!res.ok) return;
+        const data: { features: MapboxFeature[] } = await res.json();
+        setSuggestions(data.features || []);
+        setShowDropdown(true);
+      } catch {
+        // silently ignore network errors
+      }
+    }, 350);
+  };
+
+  const selectSuggestion = (feature: MapboxFeature) => {
+    const streetPart = feature.place_name.split(",")[0];
+    const postcode = feature.context?.find((c) => c.id.startsWith("postcode"))?.text ?? "";
+    const city = feature.context?.find((c) => c.id.startsWith("place"))?.text ?? "";
+    const region = feature.context?.find((c) => c.id.startsWith("region"))?.text ?? "";
+    const countryShort =
+      feature.context?.find((c) => c.id.startsWith("country"))?.short_code?.toUpperCase() ?? "US";
+
+    setAddressQuery(streetPart);
+    setStreet(streetPart);
+    setCity(city);
+    setState(region);
+    setPostalCode(postcode);
+    setCountry(countryShort);
+    setSuggestions([]);
+    setShowDropdown(false);
   };
 
   if (!isOpen) return null;
@@ -270,14 +345,57 @@ export default function ShipInvoiceModal({
                 className="block text-sm font-medium text-gray-700 mb-1"
               >
                 Street address
+                <span className="ml-1 text-xs text-sky-600 font-normal">(type to search verified addresses)</span>
               </label>
-              <input
-                id="street-address"
-                className="input h-10 px-3 text-sm w-full border border-gray-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500"
-                placeholder="Street address"
-                value={street}
-                onChange={(e) => setStreet(e.target.value)}
-              />
+              <div ref={autocompleteRef} style={{ position: "relative" }}>
+                <input
+                  id="street-address"
+                  className="input h-10 px-3 text-sm w-full border border-gray-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500"
+                  placeholder="Start typing a street address…"
+                  value={addressQuery}
+                  onChange={handleAddressInput}
+                  autoComplete="off"
+                />
+                {showDropdown && suggestions.length > 0 && (
+                  <ul
+                    style={{
+                      position: "absolute",
+                      top: "100%",
+                      left: 0,
+                      right: 0,
+                      zIndex: 50,
+                      backgroundColor: "#fff",
+                      border: "1px solid #d1d5db",
+                      borderRadius: "6px",
+                      boxShadow: "0 4px 12px rgba(0,0,0,0.12)",
+                      marginTop: "2px",
+                      maxHeight: "200px",
+                      overflowY: "auto",
+                      listStyle: "none",
+                      padding: 0,
+                      margin: "2px 0 0",
+                    }}
+                  >
+                    {suggestions.map((s, i) => (
+                      <li
+                        key={i}
+                        onMouseDown={() => selectSuggestion(s)}
+                        style={{
+                          padding: "9px 12px",
+                          fontSize: "13px",
+                          color: "#374151",
+                          cursor: "pointer",
+                          borderBottom: i < suggestions.length - 1 ? "1px solid #f3f4f6" : "none",
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#f0f9ff")}
+                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                      >
+                        {s.place_name}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             </div>
 
             <div>

@@ -11,6 +11,7 @@ interface Invoice {
   dueDate: string;
   status: string;
   createdAt: string;
+  description?: string | null;
   items?: Array<{
     name: string;
     quantity: number;
@@ -231,317 +232,359 @@ export function generateInvoicesPDF(
   doc.save(fileName);
 }
 
-export function generateSingleInvoicePDF(invoice: Invoice, mode: "download" | "print" = "print") {
+export async function generateSingleInvoicePDF(
+  invoice: Invoice,
+  mode: "download" | "print" = "print",
+  printWindow?: Window | null
+): Promise<void> {
   const doc = new jsPDF();
-  const pageW = doc.internal.pageSize.getWidth();
+  const pageW = doc.internal.pageSize.getWidth(); // 210mm
+  const L = 14; // left margin
+  const R = pageW - 14; // right edge
 
-  let y = drawBrandedHeader(doc);
+  // ── 1. Load logo (preserve aspect ratio) ─────────────────────────────────
+  let logoBase64: string | null = null;
+  let logoW = 62; // mm — default width
+  let logoH = 46; // mm — will be recalculated from natural dimensions
+  try {
+    const res = await fetch("/goldLogo.jpg.jpeg");
+    const blob = await res.blob();
+    logoBase64 = await new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.readAsDataURL(blob);
+    });
+    // Get natural image dimensions to preserve aspect ratio
+    const dims = await new Promise<{ w: number; h: number }>((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+      img.onerror = () => resolve({ w: 1, h: 1 });
+      img.src = logoBase64!;
+    });
+    if (dims.w > 0) logoH = logoW * (dims.h / dims.w);
+  } catch {}
 
-  // INVOICE title
-  doc.setFontSize(18);
+  // ── 2. Fetch default terms from DB ────────────────────────────────────────
+  let defaultTermLines: string[] = [];
+  try {
+    const res = await fetch("/api/terms");
+    const data = await res.json();
+    if (Array.isArray(data)) {
+      const def = data.find((t: any) => t.isDefault);
+      if (def?.lines && Array.isArray(def.lines)) defaultTermLines = def.lines as string[];
+    }
+  } catch {}
+
+  // ── 3. HEADER: Logo (left) + INVOICE + Business info (right) ─────────────
+  let y = 10;
+
+  if (logoBase64) {
+    doc.addImage(logoBase64, "JPEG", L, y, logoW, logoH);
+  }
+
+  // "INVOICE" large text
+  doc.setFontSize(28);
   doc.setFont("helvetica", "bold");
-  doc.setTextColor(...colors.charcoalRGB);
-  doc.text("INVOICE", pageW - 20, y, { align: "right" });
-  y += 10;
+  doc.setTextColor(26, 26, 26);
+  doc.text("INVOICE", R, y + 9, { align: "right" });
 
-  // Invoice details (left side)
+  // Business name (bold)
+  const biz = BUSINESS_CONFIG;
   doc.setFontSize(10);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(26, 26, 26);
+  doc.text(biz.name, R, y + 20, { align: "right" });
+
+  // Business address + contact
   doc.setFont("helvetica", "normal");
-  doc.setTextColor(60);
-  doc.text(`Invoice #: ${invoice.invoiceNumber}`, 20, y);
-  doc.text(`Date: ${new Date(invoice.createdAt).toLocaleDateString()}`, 20, y + 6);
-  doc.text(`Due Date: ${new Date(invoice.dueDate).toLocaleDateString()}`, 20, y + 12);
-
-  // Status badge (right side)
-  const status = invoice.status.toUpperCase();
-  if (status === "PAID") doc.setFillColor(34, 139, 34);
-  else if (status === "OVERDUE") doc.setFillColor(220, 53, 69);
-  else if (status === "PENDING") doc.setFillColor(255, 140, 0);
-  else if (status === "PARTIAL") doc.setFillColor(59, 130, 246);
-  else doc.setFillColor(100, 100, 100);
-
-  doc.roundedRect(pageW - 60, y - 4, 40, 10, 2, 2, "F");
-  doc.setTextColor(255);
   doc.setFontSize(9);
-  doc.setFont("helvetica", "bold");
-  doc.text(status, pageW - 40, y + 3, { align: "center" });
-
-  y += 22;
-
-  // Bill To section
-  doc.setFillColor(...colors.creamRGB);
-  doc.roundedRect(20, y, pageW - 40, 28, 2, 2, "F");
-
-  y += 7;
-  doc.setFontSize(10);
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(...colors.charcoalRGB);
-  doc.text("Bill To:", 25, y);
-  y += 6;
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(10);
-  doc.text(invoice.clientName, 25, y);
-  y += 5;
-
-  // Customer details if available
-  doc.setFontSize(8);
-  doc.setTextColor(100);
-  if (invoice.customer?.phone) {
-    doc.text(invoice.customer.phone, 25, y);
-    y += 4;
+  doc.setTextColor(60, 60, 60);
+  let bizY = y + 27;
+  if (biz.address) {
+    const parts = biz.address.split(",").map((s) => s.trim()).filter(Boolean);
+    parts.forEach((part) => {
+      doc.text(part, R, bizY, { align: "right" });
+      bizY += 5;
+    });
+    bizY += 2;
   }
-  if (invoice.customer?.email) {
-    doc.text(invoice.customer.email, 25, y);
-    y += 4;
-  }
-  if (invoice.customer?.address) {
-    doc.text(invoice.customer.address, 25, y);
-    y += 4;
-  }
+  if (biz.phone) { doc.text(biz.phone, R, bizY, { align: "right" }); bizY += 5; }
+  if (biz.email) { doc.text(biz.email, R, bizY, { align: "right" }); bizY += 5; }
 
-  y = Math.max(y + 4, y + 2);
+  y = Math.max(y + logoH + 4, bizY + 4);
+
+  // ── 4. SEPARATOR LINE ─────────────────────────────────────────────────────
+  doc.setDrawColor(200, 200, 200);
+  doc.setLineWidth(0.3);
+  doc.line(L, y, R, y);
   y += 8;
 
-  // Items table
+  // ── 5. BILL TO (left) + INVOICE METADATA (right) ─────────────────────────
+  const metaStartY = y;
+  const rightColX = 105; // right column starts here
+
+  // BILL TO label
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(150, 150, 150);
+  doc.text("BILL TO", L, y);
+  y += 6;
+
+  // Client name
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(26, 26, 26);
+  doc.text(invoice.clientName, L, y);
+  y += 6;
+
+  // Customer contact details
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(60, 60, 60);
+  if (invoice.customer?.address) {
+    const addrLines = doc.splitTextToSize(invoice.customer.address, 80);
+    doc.text(addrLines, L, y);
+    y += addrLines.length * 5;
+  }
+  if (invoice.customer?.phone) { doc.text(invoice.customer.phone, L, y); y += 5; }
+  if (invoice.customer?.email) { doc.text(invoice.customer.email, L, y); y += 5; }
+
+  // Right column: invoice metadata
+  const metaLabelX = rightColX + 55; // right-aligned labels end here
+  let metaY = metaStartY + 6; // skip past the BILL TO label row
+  const metaRows = [
+    { label: "Invoice Number:", value: invoice.invoiceNumber },
+    {
+      label: "Invoice Date:",
+      value: new Date(invoice.createdAt).toLocaleDateString("en-US", {
+        month: "long", day: "numeric", year: "numeric",
+      }),
+    },
+    {
+      label: "Payment Due:",
+      value: new Date(invoice.dueDate).toLocaleDateString("en-US", {
+        month: "long", day: "numeric", year: "numeric",
+      }),
+    },
+  ];
+
+  metaRows.forEach((row) => {
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(26, 26, 26);
+    doc.text(row.label, metaLabelX, metaY, { align: "right" });
+    doc.setFont("helvetica", "normal");
+    doc.text(row.value, R, metaY, { align: "right" });
+    metaY += 6;
+  });
+
+  // Amount Due row with grey highlight
+  const amtDue = Number(invoice.amount) - Number(invoice.paidAmount);
+  doc.setFillColor(240, 240, 240);
+  doc.rect(rightColX, metaY - 4, R - rightColX, 9, "F");
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(26, 26, 26);
+  doc.text("Amount Due (USD):", metaLabelX, metaY + 1, { align: "right" });
+  doc.text(`$${amtDue.toFixed(2)}`, R, metaY + 1, { align: "right" });
+  metaY += 12;
+
+  y = Math.max(y + 4, metaY + 4);
+
+  // ── 6. ITEMS TABLE ────────────────────────────────────────────────────────
   if (invoice.items && invoice.items.length > 0) {
-    const itemsData = invoice.items.map((item) => [
-      item.name,
-      item.quantity.toString(),
-      `$${item.price.toFixed(2)}`,
-      `$${(item.quantity * item.price).toFixed(2)}`,
-    ]);
+    // Build body — split item.name on '\n' to get name + subtitle
+    const bodyData = invoice.items.map((item) => {
+      const parts = item.name.split("\n");
+      return {
+        raw: item.name,
+        displayName: parts[0],
+        subtitle: parts.slice(1).join(" "),
+        qty: item.quantity,
+        price: Number(item.price),
+        amount: Number(item.quantity) * Number(item.price),
+      };
+    });
 
     autoTable(doc, {
       startY: y,
-      head: [["Item", "Quantity", "Price", "Amount"]],
-      body: itemsData,
-      theme: "striped",
+      head: [["Items", "Quantity", "Price", "Amount"]],
+      body: bodyData.map((r) => [r.displayName, r.qty.toString(), `$${r.price.toFixed(2)}`, `$${r.amount.toFixed(2)}`]),
+      theme: "plain",
       headStyles: {
-        fillColor: colors.goldRGB,
-        textColor: 255,
+        fillColor: [245, 200, 66],
+        textColor: [26, 26, 26],
         fontStyle: "bold",
         fontSize: 9,
       },
-      bodyStyles: { fontSize: 9 },
-      alternateRowStyles: { fillColor: colors.creamRGB },
+      bodyStyles: {
+        fontSize: 9,
+        fontStyle: "bold",
+        textColor: [26, 26, 26],
+        minCellHeight: bodyData.some((r) => r.subtitle) ? 12 : 8,
+      },
+      alternateRowStyles: { fillColor: [255, 255, 255] },
       columnStyles: {
+        0: { cellWidth: "auto" },
         1: { halign: "center", cellWidth: 25 },
         2: { halign: "right", cellWidth: 30 },
         3: { halign: "right", cellWidth: 30 },
       },
-      margin: { left: 20, right: 20 },
+      margin: { left: L, right: 14 },
+      tableLineColor: [220, 220, 220],
+      tableLineWidth: 0.2,
+      // Draw subtitle below first line in items column
+      didDrawCell: (data) => {
+        if (data.section === "body" && data.column.index === 0) {
+          const row = bodyData[data.row.index];
+          if (row?.subtitle) {
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(8);
+            doc.setTextColor(120, 120, 120);
+            doc.text(row.subtitle, data.cell.x + 2, data.cell.y + data.cell.padding("top") + 6);
+          }
+        }
+      },
     });
 
     y = (doc as any).lastAutoTable.finalY + 10;
   }
 
-  // Financial summary
-  const summaryX = 120;
-  doc.setFontSize(10);
-  doc.setTextColor(...colors.charcoalRGB);
+  // ── 7. TOTALS ─────────────────────────────────────────────────────────────
+  const totalsLabelX = 130;
 
-  if (invoice.subtotal !== undefined && invoice.subtotal !== invoice.amount) {
-    doc.setFont("helvetica", "normal");
-    doc.text("Subtotal:", summaryX, y);
-    doc.text(`$${(invoice.subtotal ?? invoice.amount).toFixed(2)}`, pageW - 20, y, { align: "right" });
-    y += 6;
-
-    if (invoice.tax && invoice.tax > 0) {
-      doc.text("Tax:", summaryX, y);
-      doc.text(`$${invoice.tax.toFixed(2)}`, pageW - 20, y, { align: "right" });
-      y += 6;
-    }
-    if (invoice.discount && invoice.discount > 0) {
-      doc.text("Discount:", summaryX, y);
-      doc.text(`-$${invoice.discount.toFixed(2)}`, pageW - 20, y, { align: "right" });
-      y += 6;
-    }
-  }
-
-  doc.setFont("helvetica", "bold");
-  doc.text("Total:", summaryX, y);
-  doc.text(`$${invoice.amount.toFixed(2)}`, pageW - 20, y, { align: "right" });
-  y += 7;
-
+  doc.setFontSize(9);
   doc.setFont("helvetica", "normal");
-  doc.text("Paid:", summaryX, y);
-  doc.text(`$${invoice.paidAmount.toFixed(2)}`, pageW - 20, y, { align: "right" });
-  y += 3;
+  doc.setTextColor(26, 26, 26);
 
-  doc.setDrawColor(...colors.goldRGB);
-  doc.setLineWidth(0.5);
-  doc.line(summaryX, y, pageW - 20, y);
+  // Total
+  doc.text("Total:", totalsLabelX, y, { align: "right" });
+  doc.text(`$${Number(invoice.amount).toFixed(2)}`, R, y, { align: "right" });
   y += 6;
 
-  doc.setFontSize(12);
-  doc.setFont("helvetica", "bold");
-  const balance = invoice.amount - invoice.paidAmount;
-  doc.text("Balance Due:", summaryX, y);
-  doc.text(`$${balance.toFixed(2)}`, pageW - 20, y, { align: "right" });
-  y += 12;
-
-  // Layaway schedule (if applicable)
-  if (invoice.isLayaway && invoice.layawayPlan) {
-    const plan = invoice.layawayPlan;
-
-    // Check if we need a new page
-    if (y > 200) {
-      doc.addPage();
-      y = 20;
-    }
-
-    doc.setDrawColor(...colors.goldRGB);
-    doc.setLineWidth(0.5);
-    doc.line(20, y, pageW - 20, y);
-    y += 8;
-
-    doc.setFontSize(12);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(...colors.charcoalRGB);
-    doc.text("Layaway Schedule", 20, y);
-    y += 7;
-
-    doc.setFontSize(9);
-    doc.setFont("helvetica", "normal");
-    doc.text(`Duration: ${plan.months} months | Frequency: ${plan.paymentFrequency} | Down Payment: $${plan.downPayment.toFixed(2)}`, 20, y);
-    y += 8;
-
-    if (plan.installments && plan.installments.length > 0) {
-      const installmentData = plan.installments.map((inst) => [
-        inst.label,
-        new Date(inst.dueDate).toLocaleDateString(),
-        `$${inst.amount.toFixed(2)}`,
-        inst.isPaid ? "Paid" : "Pending",
-        inst.isPaid && inst.paidDate ? new Date(inst.paidDate).toLocaleDateString() : "-",
-      ]);
-
-      autoTable(doc, {
-        startY: y,
-        head: [["Installment", "Due Date", "Amount", "Status", "Paid Date"]],
-        body: installmentData,
-        theme: "striped",
-        headStyles: {
-          fillColor: colors.goldRGB,
-          textColor: 255,
-          fontStyle: "bold",
-          fontSize: 8,
-        },
-        bodyStyles: { fontSize: 8 },
-        alternateRowStyles: { fillColor: colors.creamRGB },
-        margin: { left: 20, right: 20 },
-        didParseCell: function (data) {
-          if (data.column.index === 3 && data.section === "body") {
-            const val = data.cell.raw as string;
-            if (val === "Paid") {
-              data.cell.styles.textColor = [34, 139, 34];
-              data.cell.styles.fontStyle = "bold";
-            } else {
-              data.cell.styles.textColor = [255, 140, 0];
-            }
-          }
-        },
-      });
-
-      y = (doc as any).lastAutoTable.finalY + 8;
-    }
-  }
-
-  // Payment history
+  // Each recorded payment
   if (invoice.payments && invoice.payments.length > 0) {
-    if (y > 220) {
-      doc.addPage();
-      y = 20;
-    }
-
-    doc.setDrawColor(...colors.goldRGB);
-    doc.setLineWidth(0.5);
-    doc.line(20, y, pageW - 20, y);
-    y += 8;
-
-    doc.setFontSize(11);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(...colors.charcoalRGB);
-    doc.text("Payment History", 20, y);
-    y += 6;
-
-    const paymentData = invoice.payments.map((p) => [
-      new Date(p.paymentDate).toLocaleDateString(),
-      p.method?.name || "Unknown",
-      `$${p.amount.toFixed(2)}`,
-    ]);
-
-    autoTable(doc, {
-      startY: y,
-      head: [["Date", "Method", "Amount"]],
-      body: paymentData,
-      theme: "striped",
-      headStyles: {
-        fillColor: colors.goldRGB,
-        textColor: 255,
-        fontStyle: "bold",
-        fontSize: 8,
-      },
-      bodyStyles: { fontSize: 8 },
-      alternateRowStyles: { fillColor: colors.creamRGB },
-      margin: { left: 20, right: 20 },
-      columnStyles: {
-        2: { halign: "right" },
-      },
-    });
-
-    y = (doc as any).lastAutoTable.finalY + 8;
-  }
-
-  // Terms & Conditions
-  const terms = invoice.termsSnapshot;
-  if (terms && terms.length > 0) {
-    if (y > 230) {
-      doc.addPage();
-      y = 20;
-    }
-
-    doc.setDrawColor(...colors.goldRGB);
-    doc.setLineWidth(0.5);
-    doc.line(20, y, pageW - 20, y);
-    y += 8;
-
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(...colors.charcoalRGB);
-    doc.text("Terms & Conditions", 20, y);
-    y += 6;
-
-    doc.setFontSize(8);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(80);
-    terms.forEach((line, idx) => {
-      const text = `${idx + 1}. ${line}`;
-      const splitted = doc.splitTextToSize(text, 170);
-      doc.text(splitted, 20, y);
-      y += splitted.length * 4 + 2;
+    invoice.payments.forEach((p) => {
+      const dateStr = new Date(p.paymentDate).toLocaleDateString("en-US", {
+        month: "long", day: "numeric", year: "numeric",
+      });
+      const methodName = p.method?.name || "payment";
+      const label = `Payment on ${dateStr} using ${methodName.toLowerCase()}:`;
+      // Wrap long labels
+      const labelLines = doc.splitTextToSize(label, totalsLabelX - L - 5);
+      doc.text(labelLines, totalsLabelX, y, { align: "right" });
+      doc.text(`$${Number(p.amount).toFixed(2)}`, R, y, { align: "right" });
+      y += labelLines.length > 1 ? labelLines.length * 5 + 1 : 6;
     });
   }
 
-  // Footer on all pages
+  // Separator
+  doc.setDrawColor(180, 180, 180);
+  doc.setLineWidth(0.3);
+  doc.line(totalsLabelX - 20, y, R, y);
+  y += 6;
+
+  // Amount Due (bold)
+  doc.setFont("helvetica", "bold");
+  doc.text("Amount Due (USD):", totalsLabelX, y, { align: "right" });
+  doc.text(`$${amtDue.toFixed(2)}`, R, y, { align: "right" });
+  y += 14;
+
+  // ── 8. NOTES / TERMS ──────────────────────────────────────────────────────
+  const hasDescription = !!invoice.description;
+  const hasLayaway = !!(invoice.isLayaway && invoice.layawayPlan);
+  const hasTerms = defaultTermLines.length > 0;
+
+  if (hasDescription || hasLayaway || hasTerms) {
+    if (y > 230) { doc.addPage(); y = 20; }
+
+    // "Notes / Terms" heading
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(26, 26, 26);
+    doc.text("Notes / Terms", L, y);
+    y += 6;
+
+    // Invoice description / notes
+    if (invoice.description) {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(60, 60, 60);
+      const descLines = doc.splitTextToSize(invoice.description, R - L);
+      doc.text(descLines, L, y);
+      y += descLines.length * 5 + 3;
+    }
+
+    // Layaway schedule
+    if (hasLayaway) {
+      const plan = invoice.layawayPlan!;
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(60, 60, 60);
+      doc.text("TERMS: LAY-AWAY", L, y); y += 5;
+      doc.text(`Month(s): ${plan.months}`, L, y); y += 5;
+      doc.text(`Payment Type: ${plan.paymentFrequency}`, L, y); y += 5;
+
+      plan.installments.forEach((inst) => {
+        if (y > 272) { doc.addPage(); y = 20; }
+        const d = new Date(inst.dueDate).toLocaleDateString("en-US", {
+          month: "2-digit", day: "2-digit", year: "2-digit",
+        });
+        const line = `${d} - ${inst.label} - $${Number(inst.amount).toFixed(2)}`;
+        doc.text(line, L, y);
+        y += 5;
+      });
+      y += 3;
+    }
+
+    // Standard terms from DB (each line is a separate block)
+    if (hasTerms) {
+      if (y > 240) { doc.addPage(); y = 20; }
+      defaultTermLines.forEach((termLine) => {
+        doc.setFontSize(8);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(60, 60, 60);
+        const wrapped = doc.splitTextToSize(String(termLine), R - L);
+        if (y + wrapped.length * 4 > 275) { doc.addPage(); y = 20; }
+        doc.text(wrapped, L, y);
+        y += wrapped.length * 4 + 3;
+      });
+    }
+  }
+
+  // ── 9. FOOTER (all pages) ─────────────────────────────────────────────────
   const pageCount = doc.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
-    doc.setDrawColor(...colors.goldRGB);
-    doc.setLineWidth(0.5);
-    doc.line(15, 278, pageW - 15, 278);
-    doc.setFontSize(9);
+    doc.setFontSize(8);
     doc.setFont("helvetica", "normal");
-    doc.setTextColor(...colors.goldRGB);
-    doc.text("Thank you for choosing Barley Lux!", 105, 283, { align: "center" });
-    doc.setFontSize(7);
-    doc.setTextColor(150);
-    doc.text(`Generated on ${new Date().toLocaleString()} - Page ${i} of ${pageCount}`, 105, 288, { align: "center" });
+    doc.setTextColor(150, 150, 150);
+    doc.text(
+      `Page ${i} of ${pageCount} for Invoice #${invoice.invoiceNumber}`,
+      pageW / 2,
+      291,
+      { align: "center" }
+    );
   }
 
+  // ── 10. OUTPUT ────────────────────────────────────────────────────────────
+
   if (mode === "print") {
-    const blobUrl = doc.output("bloburl");
-    window.open(blobUrl as unknown as string, "_blank");
+    const blobUrl = String(doc.output("bloburl"));
+    if (printWindow) {
+      printWindow.location.href = blobUrl;
+    } else {
+      window.open(blobUrl, "_blank");
+    }
   } else {
-    doc.save(`invoice-${invoice.invoiceNumber}.pdf`);
+    const blob = doc.output("blob");
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `invoice-${invoice.invoiceNumber}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   }
 }

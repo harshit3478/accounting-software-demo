@@ -162,6 +162,19 @@ export async function GET(request: NextRequest) {
           ? payment.amount.toNumber()
           : payment.amount,
       })),
+      layawayPlan: invoice.layawayPlan ? {
+        ...invoice.layawayPlan,
+        downPayment: invoice.layawayPlan.downPayment?.toNumber
+          ? invoice.layawayPlan.downPayment.toNumber()
+          : Number(invoice.layawayPlan.downPayment),
+        installments: (invoice.layawayPlan.installments || []).map((inst: any) => ({
+          ...inst,
+          amount: inst.amount?.toNumber ? inst.amount.toNumber() : Number(inst.amount),
+          paidAmount: inst.paidAmount != null
+            ? (inst.paidAmount?.toNumber ? inst.paidAmount.toNumber() : Number(inst.paidAmount))
+            : null,
+        })),
+      } : null,
     }));
 
     return NextResponse.json({

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, Suspense } from "react";
 import Navigation from "../../components/Navigation";
+import { generateSingleInvoicePDF } from "../../lib/pdf-export";
 import {
   CreateInvoiceModal,
   EditInvoiceModal,
@@ -111,8 +112,9 @@ function InvoicesPageContent() {
   };
 
   const handlePrintPDF = async (invoice: any) => {
-    const { generateSingleInvoicePDF } = await import("../../lib/pdf-export");
-    generateSingleInvoicePDF(invoice, "print");
+    // Open window synchronously (inside user gesture) before any await
+    const w = window.open('about:blank', '_blank');
+    await generateSingleInvoicePDF(invoice, 'print', w);
   };
 
   // Keyboard shortcuts

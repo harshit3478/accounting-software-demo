@@ -4,6 +4,9 @@ import { useState, useEffect, useRef } from 'react';
 import LucideIcon from '../LucideIcon';
 import Modal from './Modal';
 import { InvoiceItem } from './types';
+import { generateSingleInvoicePDF } from '../../lib/pdf-export';
+import { exportElementAsJPEG } from '../../lib/image-export';
+import InvoiceImageTemplate from './InvoiceImageTemplate';
 
 interface Payment {
   id: number;
@@ -75,26 +78,46 @@ export default function ViewInvoiceModal({ isOpen, onClose, invoice }: ViewInvoi
   const [isLoadingPayments, setIsLoadingPayments] = useState(false);
   const [updatingInstallment, setUpdatingInstallment] = useState<number | null>(null);
   const [localInstallments, setLocalInstallments] = useState<LayawayInstallment[]>([]);
+  const [defaultTerms, setDefaultTerms] = useState<string[] | null>(null);
   const invoiceRef = useRef<HTMLDivElement>(null);
+  const imageTemplateRef = useRef<HTMLDivElement>(null);
+
+  // Fetch default terms once on mount
+  useEffect(() => {
+    fetch('/api/terms')
+      .then(r => r.json())
+      .then((data: { id: number; lines: string[]; isDefault: boolean }[]) => {
+        const def = data.find(t => t.isDefault);
+        if (def) setDefaultTerms(def.lines);
+      })
+      .catch(() => {});
+  }, []);
+
+  const buildPDFInvoice = () => ({
+    ...invoice!,
+    payments: payments.map(p => ({
+      amount: p.amount,
+      paymentDate: p.date || p.createdAt,
+      method: typeof p.method === 'object' ? p.method : { name: String(p.method) },
+    })),
+  });
 
   const handlePrintPDF = async () => {
     if (!invoice) return;
-    const { generateSingleInvoicePDF } = await import('../../lib/pdf-export');
-    generateSingleInvoicePDF({
-      ...invoice,
-      payments: payments.map(p => ({
-        amount: p.amount,
-        paymentDate: p.date || p.createdAt,
-        method: typeof p.method === 'object' ? p.method : { name: String(p.method) },
-      })),
-    } as any, "print");
+    // Open window synchronously (inside user gesture) before any await
+    const w = window.open('about:blank', '_blank');
+    await generateSingleInvoicePDF(buildPDFInvoice() as any, 'print', w);
+  };
+
+  const handleDownloadPDF = async () => {
+    if (!invoice) return;
+    await generateSingleInvoicePDF(buildPDFInvoice() as any, 'download');
   };
 
   const handleDownloadJPG = async () => {
-    if (!invoiceRef.current) return;
-    const { exportElementAsJPEG } = await import('../../lib/image-export');
+    if (!imageTemplateRef.current) return;
     await exportElementAsJPEG(
-      invoiceRef.current,
+      imageTemplateRef.current,
       `invoice-${invoice?.invoiceNumber}.jpg`
     );
   };
@@ -221,7 +244,7 @@ export default function ViewInvoiceModal({ isOpen, onClose, invoice }: ViewInvoi
     >
       <div className="space-y-6">
         {/* Export buttons */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={handlePrintPDF}
             className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center gap-2"
@@ -230,6 +253,15 @@ export default function ViewInvoiceModal({ isOpen, onClose, invoice }: ViewInvoi
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
             </svg>
             Print PDF
+          </button>
+          <button
+            onClick={handleDownloadPDF}
+            className="px-4 py-2 text-sm bg-blue-800 text-white rounded-lg font-medium hover:bg-blue-900 transition-colors flex items-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3M3 17V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+            </svg>
+            Download PDF
           </button>
           <button
             onClick={handleDownloadJPG}
@@ -312,7 +344,7 @@ export default function ViewInvoiceModal({ isOpen, onClose, invoice }: ViewInvoi
         {/* Invoice Items */}
         {invoice.items && invoice.items.length > 0 && (
           <div>
-            <h4 className="text-lg font-semibold text-gray-900 mb-4">Invoice Items</h4>
+            <h4 className="text-lg font-semibold text-gray-900 my-4">Invoice Items</h4>
             <div className="border border-gray-200 rounded-xl overflow-hidden">
               <table className="w-full">
                 <thead>
@@ -341,7 +373,7 @@ export default function ViewInvoiceModal({ isOpen, onClose, invoice }: ViewInvoi
         )}
 
         {/* Financial Summary */}
-        <div className="bg-blue-50 p-6 rounded-xl border border-blue-200">
+        <div className="bg-blue-50 p-6 my-4 rounded-xl border border-blue-200">
           <h4 className="text-lg font-semibold text-gray-900 mb-4">Financial Summary</h4>
           <div className="space-y-3">
             <div className="flex justify-between text-sm">
@@ -462,7 +494,7 @@ export default function ViewInvoiceModal({ isOpen, onClose, invoice }: ViewInvoi
 
         {/* Payment History */}
         <div>
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between my-4">
             <h4 className="text-lg font-semibold text-gray-900">Payment History</h4>
             {isLoadingPayments && (
               <div className="flex items-center text-sm text-gray-500">
@@ -530,6 +562,16 @@ export default function ViewInvoiceModal({ isOpen, onClose, invoice }: ViewInvoi
           )}
         </div>
         </div>{/* end invoiceRef */}
+      </div>
+
+      {/* Hidden invoice image template — rendered off-screen for JPG export */}
+      <div
+        style={{ position: 'fixed', left: '-9999px', top: 0, width: '800px', pointerEvents: 'none', zIndex: -1 }}
+        aria-hidden="true"
+      >
+        <div ref={imageTemplateRef}>
+          <InvoiceImageTemplate invoice={invoice} payments={payments} terms={defaultTerms} />
+        </div>
       </div>
     </Modal>
   );
