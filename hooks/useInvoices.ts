@@ -20,13 +20,19 @@ export interface Invoice {
   amount: number;
   paidAmount: number;
   dueDate: string;
-  status: "paid" | "pending" | "overdue" | "partial" | "inactive";
+  status: "paid" | "pending" | "overdue" | "partial" | "abandoned" | "inactive";
   isLayaway: boolean;
   createdAt: string;
   description?: string | null;
   // Customer relation
   customerId?: number | null;
-  customer?: { id: number; name: string; email?: string; phone?: string } | null;
+  customer?: {
+    id: number;
+    name: string;
+    email?: string;
+    phone?: string;
+    storeCredit?: number;
+  } | null;
   // External import fields
   externalInvoiceNumber?: string | null;
   source?: string;
@@ -50,9 +56,27 @@ export interface Invoice {
   // Shipping fields (nullable)
   shipmentId?: string | null;
   trackingNumber?: string | null;
+  editHistory?: Array<{
+    id: number;
+    reason: string;
+    changes?: Record<string, { from: any; to: any }> | null;
+    createdAt: string;
+    editedBy?: {
+      id: number;
+      name: string;
+      email?: string;
+    };
+  }>;
 }
 
-export type InvoiceStatusFilter = "all" | "pending" | "paid" | "overdue" | "partial" | "inactive";
+export type InvoiceStatusFilter =
+  | "all"
+  | "pending"
+  | "paid"
+  | "overdue"
+  | "partial"
+  | "abandoned"
+  | "inactive";
 export type InvoiceTypeFilter = "all" | "cash" | "layaway";
 export type InvoiceFilter = InvoiceStatusFilter | "layaway";
 
@@ -71,7 +95,7 @@ interface UseInvoicesReturn {
   setTypeFilter: (filter: InvoiceTypeFilter) => void;
   layawayOverdue: boolean;
   setLayawayOverdue: (overdue: boolean) => void;
-  
+
   // Legacy filter support (to avoid breaking other components temporarily)
   legacyFilter: string;
   setLegacyFilter: (filter: any) => void;
@@ -132,7 +156,12 @@ interface UseInvoicesReturn {
   handleEditInvoice: (invoice: Invoice) => void;
   handleOpenPaymentModal: (invoice: Invoice) => void;
   handleDeleteClick: (invoice: Invoice) => void;
-  handleDeleteConfirm: () => Promise<void>;
+  handleDeleteConfirm: (options?: {
+    editReason?: string;
+    targetStatus?: "abandoned" | "inactive" | "reactivate";
+    paymentAction?: "credit" | "transfer" | "none";
+    targetInvoiceId?: number | null;
+  }) => Promise<void>;
   handleExportCSV: () => void;
   handleExportPDF: () => void;
   handlePageChange: (page: number) => void;
@@ -152,7 +181,7 @@ interface UseInvoicesReturn {
 export function useInvoices(
   showSuccess: (message: string) => void,
   showError: (message: string) => void,
-  showInfo: (message: string) => void
+  showInfo: (message: string) => void,
 ): UseInvoicesReturn {
   const router = useRouter();
   const pathname = usePathname();
@@ -160,33 +189,41 @@ export function useInvoices(
 
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [totalItems, setTotalItems] = useState(0);
-  
+
   // Initialize state from URL params
   const [statusFilter, setStatusFilterState] = useState<InvoiceStatusFilter>(
-    (searchParams.get("status") as InvoiceStatusFilter) || "all"
+    (searchParams.get("status") as InvoiceStatusFilter) || "all",
   );
   const [typeFilter, setTypeFilterState] = useState<InvoiceTypeFilter>(
-    (searchParams.get("type") as InvoiceTypeFilter) || "all"
+    (searchParams.get("type") as InvoiceTypeFilter) || "all",
   );
   const [layawayOverdue, setLayawayOverdueState] = useState(
-     searchParams.get("overdueDates") === "2"
+    searchParams.get("overdueDates") === "2",
   );
 
-  const [searchTerm, setSearchTermState] = useState(searchParams.get("search") || "");
+  const [searchTerm, setSearchTermState] = useState(
+    searchParams.get("search") || "",
+  );
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState(searchTerm);
-  
+
   // Legacy filter state (mapped to new filters for compatibility)
   const legacyFilter = statusFilter as any;
 
   // Client filter
   const [customerIdFilter, setCustomerIdFilterState] = useState<number | null>(
-    searchParams.get("customerId") ? parseInt(searchParams.get("customerId")!) : null
+    searchParams.get("customerId")
+      ? parseInt(searchParams.get("customerId")!)
+      : null,
   );
-  const [customerNameFilter, setCustomerNameFilter] = useState<string | null>(null);
+  const [customerNameFilter, setCustomerNameFilter] = useState<string | null>(
+    null,
+  );
 
-  const [sortBy, setSortByState] = useState(searchParams.get("sortBy") || "date");
+  const [sortBy, setSortByState] = useState(
+    searchParams.get("sortBy") || "date",
+  );
   const [sortDirection, setSortDirectionState] = useState<"asc" | "desc">(
-    (searchParams.get("sortDirection") as "asc" | "desc") || "desc"
+    (searchParams.get("sortDirection") as "asc" | "desc") || "desc",
   );
   const [dateRange, setDateRangeState] = useState<{
     start: string;
@@ -197,12 +234,12 @@ export function useInvoices(
           start: searchParams.get("startDate")!,
           end: searchParams.get("endDate")!,
         }
-      : null
+      : null,
   );
 
   // Pagination states
   const [currentPage, setCurrentPage] = useState(
-    parseInt(searchParams.get("page") || "1")
+    parseInt(searchParams.get("page") || "1"),
   );
   const [itemsPerPage, setItemsPerPageState] = useState(10); // Default to 10 as requested
 
@@ -215,19 +252,22 @@ export function useInvoices(
   }, []);
 
   // Update URL when filters change
-  const updateUrl = useCallback((params: Record<string, string | null>) => {
-    const newSearchParams = new URLSearchParams(searchParams.toString());
-    
-    Object.entries(params).forEach(([key, value]) => {
-      if (value === null || value === "" || value === "all") {
-        newSearchParams.delete(key);
-      } else {
-        newSearchParams.set(key, value);
-      }
-    });
+  const updateUrl = useCallback(
+    (params: Record<string, string | null>) => {
+      const newSearchParams = new URLSearchParams(searchParams.toString());
 
-    router.push(`${pathname}?${newSearchParams.toString()}`);
-  }, [pathname, router, searchParams]);
+      Object.entries(params).forEach(([key, value]) => {
+        if (value === null || value === "" || value === "all") {
+          newSearchParams.delete(key);
+        } else {
+          newSearchParams.set(key, value);
+        }
+      });
+
+      router.push(`${pathname}?${newSearchParams.toString()}`);
+    },
+    [pathname, router, searchParams],
+  );
 
   // Wrappers to update state and URL
   const setStatusFilter = (status: InvoiceStatusFilter) => {
@@ -249,14 +289,17 @@ export function useInvoices(
   };
 
   const setLegacyFilter = (val: any) => {
-    if (val === 'layaway') {
-      setTypeFilter('layaway');
-      setStatusFilter('all');
-    } else if (val === 'inactive') {
-      setTypeFilter('all');
-      setStatusFilter('inactive');
+    if (val === "layaway") {
+      setTypeFilter("layaway");
+      setStatusFilter("all");
+    } else if (val === "inactive") {
+      setTypeFilter("all");
+      setStatusFilter("inactive");
+    } else if (val === "abandoned") {
+      setTypeFilter("all");
+      setStatusFilter("abandoned");
     } else {
-      setTypeFilter('all');
+      setTypeFilter("all");
       setStatusFilter(val);
     }
   };
@@ -278,7 +321,7 @@ export function useInvoices(
     updateUrl({
       startDate: range?.start || null,
       endDate: range?.end || null,
-      page: "1"
+      page: "1",
     });
   };
 
@@ -345,7 +388,18 @@ export function useInvoices(
   // Fetch invoices when params change
   useEffect(() => {
     fetchInvoices();
-  }, [statusFilter, typeFilter, layawayOverdue, debouncedSearchTerm, sortBy, sortDirection, dateRange, currentPage, itemsPerPage, customerIdFilter]);
+  }, [
+    statusFilter,
+    typeFilter,
+    layawayOverdue,
+    debouncedSearchTerm,
+    sortBy,
+    sortDirection,
+    dateRange,
+    currentPage,
+    itemsPerPage,
+    customerIdFilter,
+  ]);
 
   const fetchInvoices = async () => {
     setIsLoading(true);
@@ -361,7 +415,8 @@ export function useInvoices(
         params.set("startDate", dateRange.start);
         params.set("endDate", dateRange.end);
       }
-      if (customerIdFilter) params.set("customerId", customerIdFilter.toString());
+      if (customerIdFilter)
+        params.set("customerId", customerIdFilter.toString());
       params.set("sortBy", sortBy);
       params.set("sortDirection", sortDirection);
 
@@ -373,7 +428,7 @@ export function useInvoices(
             ...inv,
             dueDate: new Date(inv.dueDate).toISOString().split("T")[0],
             createdAt: new Date(inv.createdAt).toISOString().split("T")[0],
-          }))
+          })),
         );
         setTotalItems(data.pagination.total);
       } else {
@@ -412,18 +467,46 @@ export function useInvoices(
     setShowDeleteConfirm(true);
   };
 
-  const handleDeleteConfirm = async () => {
+  const handleDeleteConfirm = async (options?: {
+    editReason?: string;
+    targetStatus?: "abandoned" | "inactive" | "reactivate";
+    paymentAction?: "credit" | "transfer" | "none";
+    targetInvoiceId?: number | null;
+  }) => {
     if (!deletingInvoice) return;
+
+    const isReactivating =
+      deletingInvoice.status === "inactive" ||
+      deletingInvoice.status === "abandoned";
+    const reasonPrompt = isReactivating
+      ? "Please enter reason for reactivating this invoice:"
+      : "Please enter reason for marking this invoice as abandoned:";
+    const editReason = options?.editReason ?? window.prompt(reasonPrompt, "");
+    if (!editReason || !editReason.trim()) {
+      showError("Reason is required");
+      return;
+    }
 
     setIsDeleting(true);
     try {
       const res = await fetch(`/api/invoices/${deletingInvoice.id}`, {
         method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          targetStatus:
+            options?.targetStatus ??
+            (isReactivating ? "reactivate" : "abandoned"),
+          editReason: editReason.trim(),
+          paymentAction: options?.paymentAction,
+          targetInvoiceId: options?.targetInvoiceId ?? null,
+        }),
       });
 
       if (res.ok) {
+        const payload = await res.json();
         showSuccess(
-          `Invoice ${deletingInvoice.invoiceNumber} deactivated successfully`
+          payload.message ||
+            `Invoice ${deletingInvoice.invoiceNumber} updated successfully`,
         );
         await fetchInvoices();
         setShowDeleteConfirm(false);
@@ -499,26 +582,24 @@ export function useInvoices(
     }
   };
 
-
-
   // Server handles sorting and pagination - just pass through
   const filteredInvoices = invoices;
   const totalPages = Math.ceil(totalItems / itemsPerPage);
   const paginatedInvoices = filteredInvoices;
 
   // Statistics - overall (Note: This logic needs to be updated to fetch stats from server if we want accurate totals across all pages)
-  // For now, we'll just use the current page's data or fetch a separate stats endpoint. 
+  // For now, we'll just use the current page's data or fetch a separate stats endpoint.
   // Since the user didn't explicitly ask for server-side stats, and the current implementation relies on `invoices` which is now just one page,
   // the stats will be incorrect if we don't fix this.
   // However, to keep it simple and working for now, we will leave it as is but note that it only reflects the current page.
   // Ideally, we should have a separate /api/invoices/stats endpoint.
-  
+
   const totalOutstanding = invoices
     .filter(
       (inv) =>
         inv.status === "pending" ||
         inv.status === "overdue" ||
-        inv.status === "partial"
+        inv.status === "partial",
     )
     .reduce((sum, inv) => sum + (inv.amount - inv.paidAmount), 0);
 
@@ -527,7 +608,7 @@ export function useInvoices(
       (inv) =>
         inv.status === "pending" ||
         inv.status === "overdue" ||
-        inv.status === "partial"
+        inv.status === "partial",
     )
     .reduce((sum, inv) => sum + (inv.amount - inv.paidAmount), 0);
 
@@ -617,6 +698,6 @@ export function useInvoices(
     handleItemsPerPageChange,
     stats,
     layawayOverdue,
-    setLayawayOverdue
+    setLayawayOverdue,
   };
 }

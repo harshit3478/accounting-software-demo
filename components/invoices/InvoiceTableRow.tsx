@@ -1,7 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { MoreVertical, Eye, Printer, Edit3, DollarSign, Link2, Package, XCircle, RotateCcw } from "lucide-react";
+import {
+  MoreVertical,
+  Eye,
+  Printer,
+  Edit3,
+  DollarSign,
+  Link2,
+  Package,
+  XCircle,
+  RotateCcw,
+} from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Button } from "../ui/button";
 import type { Invoice } from "../../hooks/useInvoices";
@@ -47,18 +57,22 @@ export default function InvoiceTableRow({
       pending: "status-pending",
       overdue: "status-overdue",
       partial: "status-partial",
+      abandoned: "status-abandoned",
       inactive: "status-inactive",
     };
     return `status-badge ${classes[status as keyof typeof classes]}`;
   };
 
-  const canPay = invoice.status !== "paid" && invoice.status !== "inactive";
+  const canPay =
+    invoice.status !== "paid" &&
+    invoice.status !== "inactive" &&
+    invoice.status !== "abandoned";
 
   return (
     <tr
       className={`hover:bg-gray-50 transition-colors animate-fade-in-left stagger-fast-${Math.min(
         index + 1,
-        8
+        8,
       )}`}
       onDoubleClick={() => onView(invoice)}
     >
@@ -75,10 +89,15 @@ export default function InvoiceTableRow({
           </span>
         )}
       </td>
-      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 max-w-[160px] truncate" title={invoice.clientName}>
+      <td
+        className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 max-w-[160px] truncate"
+        title={invoice.clientName}
+      >
         {invoice.customerId && onFilterByClient ? (
           <button
-            onClick={() => onFilterByClient(invoice.customerId!, invoice.clientName)}
+            onClick={() =>
+              onFilterByClient(invoice.customerId!, invoice.clientName)
+            }
             className="text-gray-900 hover:text-blue-600 hover:underline transition-colors"
             title="View all invoices for this client"
           >
@@ -88,10 +107,15 @@ export default function InvoiceTableRow({
           invoice.clientName
         )}
       </td>
-      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 max-w-[120px] truncate hidden xl:table-cell" title={invoice.items?.map(i => i.name).join(", ")}>
-        {invoice.items && invoice.items.length > 0
-          ? invoice.items.map(i => i.name).join(", ")
-          : <span className="text-gray-400">-</span>}
+      <td
+        className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 max-w-[120px] truncate hidden xl:table-cell"
+        title={invoice.items?.map((i) => i.name).join(", ")}
+      >
+        {invoice.items && invoice.items.length > 0 ? (
+          invoice.items.map((i) => i.name).join(", ")
+        ) : (
+          <span className="text-gray-400">-</span>
+        )}
       </td>
       <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
         ${invoice.amount.toLocaleString()}
@@ -190,7 +214,8 @@ export default function InvoiceTableRow({
                 <Package className="h-4 w-4" />
                 {invoice.shipmentId ? "Manage Shipment" : "Create Shipment"}
               </button>
-              {invoice.status !== "inactive" ? (
+              {invoice.status !== "inactive" &&
+              invoice.status !== "abandoned" ? (
                 <button
                   onClick={() => {
                     setShowActionsMenu(false);
@@ -199,7 +224,7 @@ export default function InvoiceTableRow({
                   className="flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-md text-left"
                 >
                   <XCircle className="h-4 w-4" />
-                  Deactivate
+                  Mark Abandoned
                 </button>
               ) : (
                 <button

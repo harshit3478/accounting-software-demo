@@ -1,28 +1,28 @@
-import { NextRequest, NextResponse } from 'next/server';
-import prisma from '../../../lib/prisma';
-import { requireAuth } from '../../../lib/auth';
-import { updateInvoiceAfterPayment } from '../../../lib/invoice-utils';
-import { invalidateDashboard } from '../../../lib/cache-helpers';
+import { NextRequest, NextResponse } from "next/server";
+import prisma from "../../../lib/prisma";
+import { requireAuth } from "../../../lib/auth";
+import { updateInvoiceAfterPayment } from "../../../lib/invoice-utils";
+import { invalidateDashboard } from "../../../lib/cache-helpers";
 
 export async function GET(request: NextRequest) {
   try {
     const user = await requireAuth();
     const { searchParams } = new URL(request.url);
-    
+
     // Pagination params
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "10");
     const skip = (page - 1) * limit;
 
     // Filter params
-    const invoiceId = searchParams.get('invoiceId');
+    const invoiceId = searchParams.get("invoiceId");
     const search = searchParams.get("search") || "";
     const method = searchParams.get("method") || "all";
     const startDate = searchParams.get("startDate");
     const endDate = searchParams.get("endDate");
 
     let where: any = {};
-    
+
     // Filter by invoiceId if provided
     if (invoiceId) {
       where.invoiceId = parseInt(invoiceId);
@@ -32,14 +32,14 @@ export async function GET(request: NextRequest) {
     if (search) {
       where.OR = [
         { notes: { contains: search } },
-        { 
-          invoice: { 
+        {
+          invoice: {
             OR: [
               { invoiceNumber: { contains: search } },
-              { clientName: { contains: search } }
-            ]
-          } 
-        }
+              { clientName: { contains: search } },
+            ],
+          },
+        },
       ];
     }
 
@@ -61,7 +61,9 @@ export async function GET(request: NextRequest) {
 
     // Sort params
     const sortBy = searchParams.get("sortBy") || "date";
-    const sortDirection = (searchParams.get("sortDirection") || "desc") as "asc" | "desc";
+    const sortDirection = (searchParams.get("sortDirection") || "desc") as
+      | "asc"
+      | "desc";
 
     // Build orderBy
     let orderBy: any;
@@ -81,23 +83,35 @@ export async function GET(request: NextRequest) {
     // Get total count
     const total = await prisma.payment.count({ where });
 
-    const payments = await prisma.payment.findMany({
+    const payments = await (prisma as any).payment.findMany({
       where,
       include: {
         invoice: true,
         method: true,
+        editHistory: {
+          orderBy: { createdAt: "desc" },
+          include: {
+            editedBy: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
+          },
+        },
         user: {
           select: {
             id: true,
             name: true,
-            email: true
-          }
+            email: true,
+          },
         },
         paymentMatches: {
           include: {
-            invoice: true
-          }
-        }
+            invoice: true,
+          },
+        },
       },
       orderBy,
       skip,
@@ -105,17 +119,25 @@ export async function GET(request: NextRequest) {
     });
 
     // Convert Decimal to number for JSON serialization
-    const serializedPayments = payments.map(payment => ({
+    const serializedPayments = payments.map((payment) => ({
       ...payment,
       amount: payment.amount.toNumber(),
-      invoice: payment.invoice ? {
-        ...payment.invoice,
-        amount: payment.invoice.amount.toNumber(),
-        paidAmount: payment.invoice.paidAmount.toNumber(),
-        subtotal: payment.invoice.subtotal.toNumber(),
-        tax: payment.invoice.tax.toNumber(),
-        discount: payment.invoice.discount.toNumber(),
-      } : null
+      editHistory: (payment.editHistory || []).map((entry: any) => ({
+        ...entry,
+        createdAt: entry.createdAt?.toISOString
+          ? entry.createdAt.toISOString()
+          : entry.createdAt,
+      })),
+      invoice: payment.invoice
+        ? {
+            ...payment.invoice,
+            amount: payment.invoice.amount.toNumber(),
+            paidAmount: payment.invoice.paidAmount.toNumber(),
+            subtotal: payment.invoice.subtotal.toNumber(),
+            tax: payment.invoice.tax.toNumber(),
+            discount: payment.invoice.discount.toNumber(),
+          }
+        : null,
     }));
 
     return NextResponse.json({
@@ -135,37 +157,164 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const user = await requireAuth();
-    const { invoiceId, amount, paymentDate, methodId, notes, source } = await request.json();
+    const { invoiceId, amount, paymentDate, methodId, notes, source } =
+      await request.json();
 
     if (!methodId) {
-      return NextResponse.json({ error: "Payment method is required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Payment method is required" },
+        { status: 400 },
+      );
     }
 
-    const payment = await prisma.payment.create({
-      data: {
-        invoiceId: invoiceId ? parseInt(invoiceId) : null,
-        amount: parseFloat(amount),
-        paymentDate: paymentDate ? new Date(paymentDate) : new Date(),
-        methodId: parseInt(methodId),
-        notes,
-        userId: user.id,
-        isMatched: !!invoiceId,
-        source: source || "manual",
-      },
-      include: { method: true },
-    });
+    const requestedAmount = parseFloat(amount);
+    if (!Number.isFinite(requestedAmount) || requestedAmount <= 0) {
+      return NextResponse.json(
+        { error: "Valid amount is required" },
+        { status: 400 },
+      );
+    }
 
-    // Update invoice status if payment is linked
+    const roundMoney = (value: number) => Math.round(value * 100) / 100;
+
+    let payment: any = null;
+    let storeCreditAdded = 0;
+
     if (invoiceId) {
-      await updateInvoiceAfterPayment(parseInt(invoiceId));
+      const parsedInvoiceId = parseInt(invoiceId);
+      const invoice = await (prisma as any).invoice.findUnique({
+        where: { id: parsedInvoiceId },
+        include: {
+          customer: {
+            select: {
+              id: true,
+              name: true,
+              storeCredit: true,
+            },
+          },
+        },
+      });
+
+      if (!invoice) {
+        return NextResponse.json(
+          { error: "Invoice not found" },
+          { status: 404 },
+        );
+      }
+
+      const remaining = roundMoney(
+        Number(invoice.amount) - Number(invoice.paidAmount),
+      );
+      const appliedAmount = roundMoney(
+        Math.min(requestedAmount, Math.max(remaining, 0)),
+      );
+      const excessAmount = roundMoney(requestedAmount - appliedAmount);
+
+      if (excessAmount > 0 && !invoice.customerId) {
+        return NextResponse.json(
+          {
+            error:
+              "Cannot store excess payment as credit because this invoice has no linked customer",
+          },
+          { status: 400 },
+        );
+      }
+
+      const txResult = await prisma.$transaction(async (tx) => {
+        let mainPayment: any = null;
+
+        if (appliedAmount > 0) {
+          mainPayment = await tx.payment.create({
+            data: {
+              invoiceId: parsedInvoiceId,
+              amount: appliedAmount,
+              paymentDate: paymentDate ? new Date(paymentDate) : new Date(),
+              methodId: parseInt(methodId),
+              notes,
+              userId: user.id,
+              isMatched: true,
+              source: source || "manual",
+            },
+            include: { method: true },
+          });
+        }
+
+        if (excessAmount > 0) {
+          const creditPayment = await tx.payment.create({
+            data: {
+              invoiceId: null,
+              amount: excessAmount,
+              paymentDate: paymentDate ? new Date(paymentDate) : new Date(),
+              methodId: parseInt(methodId),
+              notes: `Store credit from excess payment on ${invoice.invoiceNumber}${notes ? ` | ${notes}` : ""}`,
+              userId: user.id,
+              isMatched: false,
+              source: "store_credit_excess",
+            },
+          });
+
+          await (tx as any).customer.update({
+            where: { id: invoice.customerId },
+            data: {
+              storeCredit: {
+                increment: excessAmount,
+              },
+            },
+          });
+
+          await (tx as any).customerCreditTransaction.create({
+            data: {
+              customerId: invoice.customerId,
+              amount: excessAmount,
+              type: "credit",
+              reason: `Excess payment captured as store credit from ${invoice.invoiceNumber}`,
+              paymentId: creditPayment.id,
+              invoiceId: parsedInvoiceId,
+              createdById: user.id,
+            },
+          });
+        }
+
+        return {
+          payment: mainPayment,
+          appliedAmount,
+          excessAmount,
+        };
+      });
+
+      payment = txResult.payment;
+      storeCreditAdded = txResult.excessAmount;
+
+      await updateInvoiceAfterPayment(parsedInvoiceId);
+    } else {
+      payment = await prisma.payment.create({
+        data: {
+          invoiceId: null,
+          amount: requestedAmount,
+          paymentDate: paymentDate ? new Date(paymentDate) : new Date(),
+          methodId: parseInt(methodId),
+          notes,
+          userId: user.id,
+          isMatched: false,
+          source: source || "manual",
+        },
+        include: { method: true },
+      });
     }
 
     // Invalidate dashboard cache
     invalidateDashboard();
 
-    return NextResponse.json(payment);
+    return NextResponse.json({
+      payment,
+      storeCreditAdded,
+      message:
+        storeCreditAdded > 0
+          ? `Payment recorded. $${storeCreditAdded.toFixed(2)} saved as store credit.`
+          : "Payment recorded successfully",
+    });
   } catch (error: any) {
-    console.error('Create payment error:', error);
+    console.error("Create payment error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

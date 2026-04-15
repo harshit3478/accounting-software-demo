@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
   try {
     const user = await requireAuth();
     const { searchParams } = new URL(request.url);
-    
+
     // Pagination params
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "10");
@@ -29,19 +29,46 @@ export async function GET(request: NextRequest) {
 
     // Sort params
     const sortBy = searchParams.get("sortBy") || "date";
-    const sortDirection = (searchParams.get("sortDirection") || "desc") as "asc" | "desc";
+    const sortDirection = (searchParams.get("sortDirection") || "desc") as
+      | "asc"
+      | "desc";
+
+    // Compatibility fallback when Prisma client/database is not yet migrated for "abandoned" status.
+    let supportsAbandonedStatus = true;
+    try {
+      await (prisma as any).invoice.count({ where: { status: "abandoned" } });
+    } catch {
+      supportsAbandonedStatus = false;
+    }
+
+    if (status === "abandoned" && !supportsAbandonedStatus) {
+      return NextResponse.json({
+        invoices: [],
+        pagination: {
+          total: 0,
+          pages: 0,
+          page,
+          limit,
+        },
+      });
+    }
 
     // Build where clause
     const where: any = {};
 
-    // By default, exclude inactive invoices unless explicitly requested
-    if (status === "inactive") {
-      where.status = "inactive";
+    // By default, exclude inactive/abandoned invoices unless explicitly requested
+    if (
+      status === "inactive" ||
+      (status === "abandoned" && supportsAbandonedStatus)
+    ) {
+      where.status = status;
     } else if (showInactive) {
-      // Show all including inactive — no status filter applied here
+      // Show all including inactive/abandoned — no status filter applied here
     } else {
-      // Default: exclude inactive
-      where.status = { not: "inactive" };
+      // Default: exclude inactive/abandoned
+      where.status = supportsAbandonedStatus
+        ? { notIn: ["inactive", "abandoned"] }
+        : { not: "inactive" };
     }
 
     // Search filter
@@ -53,7 +80,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Status filter (applied on top of inactive exclusion)
-    if (status !== "all" && status !== "inactive") {
+    if (status !== "all" && status !== "inactive" && status !== "abandoned") {
       where.status = status;
     }
 
@@ -73,7 +100,9 @@ export async function GET(request: NextRequest) {
     if (overdueDates === "2") {
       where.isLayaway = true;
       if (status === "all") {
-        where.status = { not: "paid" };
+        where.status = supportsAbandonedStatus
+          ? { notIn: ["paid", "inactive", "abandoned"] }
+          : { notIn: ["paid", "inactive"] };
       }
       // Find invoices that have overdue unpaid installments
       where.layawayPlan = {
@@ -103,7 +132,21 @@ export async function GET(request: NextRequest) {
       paymentMatches: true,
       terms: true,
       customer: true,
-      layawayPlan: { include: { installments: { orderBy: { dueDate: "asc" } } } },
+      editHistory: {
+        orderBy: { createdAt: "desc" },
+        include: {
+          editedBy: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+        },
+      },
+      layawayPlan: {
+        include: { installments: { orderBy: { dueDate: "asc" } } },
+      },
       user: {
         select: {
           id: true,
@@ -155,6 +198,14 @@ export async function GET(request: NextRequest) {
       paidAmount: invoice.paidAmount?.toNumber
         ? invoice.paidAmount.toNumber()
         : invoice.paidAmount,
+      customer: invoice.customer
+        ? {
+            ...invoice.customer,
+            storeCredit: (invoice.customer as any).storeCredit?.toNumber
+              ? (invoice.customer as any).storeCredit.toNumber()
+              : ((invoice.customer as any).storeCredit ?? 0),
+          }
+        : null,
       termsSnapshot: invoice.termsSnapshot || null,
       payments: (invoice.payments || []).map((payment: any) => ({
         ...payment,
@@ -162,19 +213,34 @@ export async function GET(request: NextRequest) {
           ? payment.amount.toNumber()
           : payment.amount,
       })),
-      layawayPlan: invoice.layawayPlan ? {
-        ...invoice.layawayPlan,
-        downPayment: invoice.layawayPlan.downPayment?.toNumber
-          ? invoice.layawayPlan.downPayment.toNumber()
-          : Number(invoice.layawayPlan.downPayment),
-        installments: (invoice.layawayPlan.installments || []).map((inst: any) => ({
-          ...inst,
-          amount: inst.amount?.toNumber ? inst.amount.toNumber() : Number(inst.amount),
-          paidAmount: inst.paidAmount != null
-            ? (inst.paidAmount?.toNumber ? inst.paidAmount.toNumber() : Number(inst.paidAmount))
-            : null,
-        })),
-      } : null,
+      layawayPlan: invoice.layawayPlan
+        ? {
+            ...invoice.layawayPlan,
+            downPayment: invoice.layawayPlan.downPayment?.toNumber
+              ? invoice.layawayPlan.downPayment.toNumber()
+              : Number(invoice.layawayPlan.downPayment),
+            installments: (invoice.layawayPlan.installments || []).map(
+              (inst: any) => ({
+                ...inst,
+                amount: inst.amount?.toNumber
+                  ? inst.amount.toNumber()
+                  : Number(inst.amount),
+                paidAmount:
+                  inst.paidAmount != null
+                    ? inst.paidAmount?.toNumber
+                      ? inst.paidAmount.toNumber()
+                      : Number(inst.paidAmount)
+                    : null,
+              }),
+            ),
+          }
+        : null,
+      editHistory: (invoice.editHistory || []).map((entry: any) => ({
+        ...entry,
+        createdAt: entry.createdAt?.toISOString
+          ? entry.createdAt.toISOString()
+          : entry.createdAt,
+      })),
     }));
 
     return NextResponse.json({
@@ -288,10 +354,12 @@ export async function POST(request: NextRequest) {
       else if (planFrequency === "bi-weekly") numInstallments = planMonths * 2;
       else numInstallments = planMonths * 4; // weekly
 
-      const installmentAmount = numInstallments > 0 ? remaining / numInstallments : 0;
+      const installmentAmount =
+        numInstallments > 0 ? remaining / numInstallments : 0;
       const invoiceDate = new Date(dueDate);
 
-      const installments: { dueDate: Date; amount: number; label: string }[] = [];
+      const installments: { dueDate: Date; amount: number; label: string }[] =
+        [];
 
       if (planDownPayment > 0) {
         installments.push({

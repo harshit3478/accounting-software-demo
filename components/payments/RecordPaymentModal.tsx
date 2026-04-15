@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import Modal from '../invoices/Modal';
-import LucideIcon from '../LucideIcon';
+import { useState, useEffect } from "react";
+import Modal from "../invoices/Modal";
+import LucideIcon from "../LucideIcon";
 
 interface PaymentMethodType {
   id: number;
@@ -27,20 +27,30 @@ interface Invoice {
   amount: number;
   paidAmount: number;
   status: string;
+  customerId?: number | null;
+  customer?: {
+    id: number;
+    name: string;
+    storeCredit?: number;
+  } | null;
 }
 
-export default function RecordPaymentModal({ isOpen, onClose, onSuccess }: RecordPaymentModalProps) {
+export default function RecordPaymentModal({
+  isOpen,
+  onClose,
+  onSuccess,
+}: RecordPaymentModalProps) {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodType[]>([]);
   const [payment, setPayment] = useState({
-    amount: '',
-    methodId: '' as string,
-    paymentDate: new Date().toISOString().split('T')[0],
-    notes: '',
-    invoiceId: '',
+    amount: "",
+    methodId: "" as string,
+    paymentDate: new Date().toISOString().split("T")[0],
+    notes: "",
+    invoiceId: "",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
 
   useEffect(() => {
     if (isOpen) {
@@ -48,73 +58,73 @@ export default function RecordPaymentModal({ isOpen, onClose, onSuccess }: Recor
       fetchPaymentMethods();
       // Reset form when modal opens
       setPayment({
-        amount: '',
-        methodId: '',
-        paymentDate: new Date().toISOString().split('T')[0],
-        notes: '',
-        invoiceId: '',
+        amount: "",
+        methodId: "",
+        paymentDate: new Date().toISOString().split("T")[0],
+        notes: "",
+        invoiceId: "",
       });
-      setError('');
+      setError("");
     }
   }, [isOpen]);
 
   const fetchPaymentMethods = async () => {
     try {
-      const res = await fetch('/api/payment-methods');
+      const res = await fetch("/api/payment-methods");
       if (res.ok) {
         const data = await res.json();
         const activeMethods = data.filter((m: PaymentMethodType) => m.isActive);
         setPaymentMethods(activeMethods);
         if (activeMethods.length > 0) {
-          setPayment(prev => ({ ...prev, methodId: String(activeMethods[0].id) }));
+          setPayment((prev) => ({
+            ...prev,
+            methodId: String(activeMethods[0].id),
+          }));
         }
       }
     } catch (error) {
-      console.error('Failed to fetch payment methods:', error);
+      console.error("Failed to fetch payment methods:", error);
     }
   };
 
   const fetchInvoices = async () => {
     try {
-      const res = await fetch('/api/invoices');
+      const res = await fetch("/api/invoices");
       if (res.ok) {
         const data = await res.json();
         const invoiceList = data.invoices || data;
         // Only show unpaid or partially paid invoices
-        const unpaidInvoices = (Array.isArray(invoiceList) ? invoiceList : []).filter((inv: Invoice) => 
-          inv.status !== 'paid' && inv.paidAmount < inv.amount
+        const unpaidInvoices = (
+          Array.isArray(invoiceList) ? invoiceList : []
+        ).filter(
+          (inv: Invoice) =>
+            inv.status !== "paid" && inv.paidAmount < inv.amount,
         );
         setInvoices(unpaidInvoices);
       }
     } catch (error) {
-      console.error('Failed to fetch invoices:', error);
+      console.error("Failed to fetch invoices:", error);
     }
   };
 
   const handleSubmit = async () => {
     if (!payment.amount || parseFloat(payment.amount) <= 0) {
-      setError('Please enter a valid amount');
+      setError("Please enter a valid amount");
       return;
     }
 
     const amount = parseFloat(payment.amount);
-    const selectedInvoice = invoices.find(inv => inv.id === parseInt(payment.invoiceId));
-    
-    if (selectedInvoice) {
-      const remaining = selectedInvoice.amount - selectedInvoice.paidAmount;
-      if (amount > remaining) {
-        setError(`Payment amount cannot exceed remaining balance of $${remaining.toFixed(2)}`);
-        return;
-      }
-    }
+    const selectedInvoice = invoices.find(
+      (inv) => inv.id === parseInt(payment.invoiceId),
+    );
 
     setIsSubmitting(true);
-    setError('');
+    setError("");
 
     try {
-      const res = await fetch('/api/payments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           amount,
           methodId: parseInt(payment.methodId),
@@ -125,15 +135,21 @@ export default function RecordPaymentModal({ isOpen, onClose, onSuccess }: Recor
       });
 
       if (res.ok) {
+        const data = await res.json();
+        if (data.storeCreditAdded > 0) {
+          alert(
+            `Payment recorded. $${Number(data.storeCreditAdded).toFixed(2)} saved as store credit.`,
+          );
+        }
         onSuccess();
         onClose();
       } else {
         const errorData = await res.json();
-        setError(errorData.error || 'Failed to record payment');
+        setError(errorData.error || "Failed to record payment");
       }
     } catch (error) {
-      console.error('Failed to record payment:', error);
-      setError('Failed to record payment. Please try again.');
+      console.error("Failed to record payment:", error);
+      setError("Failed to record payment. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -148,16 +164,40 @@ export default function RecordPaymentModal({ isOpen, onClose, onSuccess }: Recor
     }
   };
 
-  const selectedInvoice = invoices.find(inv => inv.id === parseInt(payment.invoiceId));
-  const remainingAmount = selectedInvoice ? selectedInvoice.amount - selectedInvoice.paidAmount : 0;
+  const selectedInvoice = invoices.find(
+    (inv) => inv.id === parseInt(payment.invoiceId),
+  );
+  const remainingAmount = selectedInvoice
+    ? selectedInvoice.amount - selectedInvoice.paidAmount
+    : 0;
+  const excessAmount =
+    selectedInvoice && payment.amount
+      ? Math.max(0, parseFloat(payment.amount || "0") - remainingAmount)
+      : 0;
+  const currentStoreCredit = selectedInvoice?.customer?.storeCredit || 0;
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Record New Payment" headerColor="blue">
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Record New Payment"
+      headerColor="blue"
+    >
       <div className="space-y-6">
         {error && (
           <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex items-start">
-            <svg className="w-5 h-5 text-red-500 mr-2 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            <svg
+              className="w-5 h-5 text-red-500 mr-2 mt-0.5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
             </svg>
             <p className="text-sm text-red-700">{error}</p>
           </div>
@@ -170,24 +210,31 @@ export default function RecordPaymentModal({ isOpen, onClose, onSuccess }: Recor
           </label>
           <select
             value={payment.invoiceId}
-            onChange={(e) => setPayment({ ...payment, invoiceId: e.target.value })}
+            onChange={(e) =>
+              setPayment({ ...payment, invoiceId: e.target.value })
+            }
             className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           >
             <option value="">No invoice (standalone payment)</option>
             {invoices.map((invoice) => (
               <option key={invoice.id} value={invoice.id}>
-                {invoice.invoiceNumber} - {invoice.clientName} 
+                {invoice.invoiceNumber} - {invoice.clientName}
                 (Remaining: ${(invoice.amount - invoice.paidAmount).toFixed(2)})
               </option>
             ))}
           </select>
           {selectedInvoice && (
             <p className="text-sm text-gray-600 mt-1">
-              Invoice total: ${selectedInvoice.amount.toFixed(2)} | 
-              Paid: ${selectedInvoice.paidAmount.toFixed(2)} | 
+              Invoice total: ${selectedInvoice.amount.toFixed(2)} | Paid: $
+              {selectedInvoice.paidAmount.toFixed(2)} |
               <span className="font-medium text-blue-600">
                 Remaining: ${remainingAmount.toFixed(2)}
               </span>
+            </p>
+          )}
+          {selectedInvoice && (
+            <p className="text-sm text-emerald-700 mt-1">
+              Available Store Credit: ${currentStoreCredit.toFixed(2)}
             </p>
           )}
         </div>
@@ -198,13 +245,17 @@ export default function RecordPaymentModal({ isOpen, onClose, onSuccess }: Recor
             Payment Amount <span className="text-red-500">*</span>
           </label>
           <div className="relative">
-            <span className="absolute left-4 top-2.5 text-gray-500 font-medium">$</span>
+            <span className="absolute left-4 top-2.5 text-gray-500 font-medium">
+              $
+            </span>
             <input
               type="number"
               min="0"
               step="0.01"
               value={payment.amount}
-              onChange={(e) => setPayment({ ...payment, amount: e.target.value })}
+              onChange={(e) =>
+                setPayment({ ...payment, amount: e.target.value })
+              }
               onBlur={handleAmountBlur}
               className="w-full border border-gray-300 rounded-lg pl-8 pr-4 py-2.5 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               placeholder="0.00"
@@ -212,11 +263,21 @@ export default function RecordPaymentModal({ isOpen, onClose, onSuccess }: Recor
             />
           </div>
           {selectedInvoice && parseFloat(payment.amount) > remainingAmount && (
-            <p className="text-sm text-amber-600 mt-1 flex items-center">
-              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            <p className="text-sm text-emerald-700 mt-1 flex items-center">
+              <svg
+                className="w-4 h-4 mr-1"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                />
               </svg>
-              Amount exceeds remaining balance
+              Excess ${excessAmount.toFixed(2)} will be saved as Store Credit
             </p>
           )}
         </div>
@@ -231,15 +292,34 @@ export default function RecordPaymentModal({ isOpen, onClose, onSuccess }: Recor
               <button
                 key={method.id}
                 type="button"
-                onClick={() => setPayment({ ...payment, methodId: String(method.id) })}
+                onClick={() =>
+                  setPayment({ ...payment, methodId: String(method.id) })
+                }
                 className={`p-3 rounded-lg border-2 transition-all ${
                   payment.methodId === String(method.id)
-                    ? 'border-blue-500 bg-blue-50 text-blue-700'
-                    : 'border-gray-300 hover:border-gray-400 text-gray-700'
+                    ? "border-blue-500 bg-blue-50 text-blue-700"
+                    : "border-gray-300 hover:border-gray-400 text-gray-700"
                 }`}
               >
-                {method.icon && <LucideIcon name={method.icon} fallback={method.name} size={24} className="mr-2" />}
-                <span className="font-medium" style={{ color: payment.methodId === String(method.id) ? undefined : method.color }}>{method.name}</span>
+                {method.icon && (
+                  <LucideIcon
+                    name={method.icon}
+                    fallback={method.name}
+                    size={24}
+                    className="mr-2"
+                  />
+                )}
+                <span
+                  className="font-medium"
+                  style={{
+                    color:
+                      payment.methodId === String(method.id)
+                        ? undefined
+                        : method.color,
+                  }}
+                >
+                  {method.name}
+                </span>
               </button>
             ))}
           </div>
@@ -253,8 +333,10 @@ export default function RecordPaymentModal({ isOpen, onClose, onSuccess }: Recor
           <input
             type="date"
             value={payment.paymentDate}
-            onChange={(e) => setPayment({ ...payment, paymentDate: e.target.value })}
-            max={new Date().toISOString().split('T')[0]}
+            onChange={(e) =>
+              setPayment({ ...payment, paymentDate: e.target.value })
+            }
+            max={new Date().toISOString().split("T")[0]}
             className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             required
           />
@@ -292,16 +374,41 @@ export default function RecordPaymentModal({ isOpen, onClose, onSuccess }: Recor
           >
             {isSubmitting ? (
               <>
-                <svg className="animate-spin h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                <svg
+                  className="animate-spin h-5 w-5 mr-2"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  ></circle>
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  ></path>
                 </svg>
                 Recording...
               </>
             ) : (
               <>
-                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
+                <svg
+                  className="w-5 h-5 mr-2"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M5 13l4 4L19 7"
+                  ></path>
                 </svg>
                 Record Payment
               </>

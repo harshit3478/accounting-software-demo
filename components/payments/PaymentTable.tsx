@@ -1,8 +1,12 @@
-'use client';
+"use client";
 
-import TableSkeleton from '../TableSkeleton';
-import PaymentTableRow from './PaymentTableRow';
-import type { Payment, PaymentSortField, SortDirection } from '../../hooks/usePayments';
+import TableSkeleton from "../TableSkeleton";
+import PaymentTableRow from "./PaymentTableRow";
+import type {
+  Payment,
+  PaymentSortField,
+  SortDirection,
+} from "../../hooks/usePayments";
 
 interface PaymentTableProps {
   payments: Payment[];
@@ -13,6 +17,7 @@ interface PaymentTableProps {
   onSort: (field: PaymentSortField) => void;
   onLink?: (payment: Payment) => void;
   onView?: (payment: Payment) => void;
+  onEditPayment?: (payment: Payment) => void;
   onEditNotes?: (payment: Payment) => void;
   totalItems?: number;
   children?: React.ReactNode;
@@ -27,18 +32,31 @@ export default function PaymentTable({
   onSort,
   onLink,
   onView,
+  onEditPayment,
   onEditNotes,
   totalItems,
-  children
+  children,
 }: PaymentTableProps) {
   const getSortIcon = (field: PaymentSortField) => {
     if (sortBy !== field) {
       return <span className="text-gray-400">↕</span>;
     }
-    return sortDirection === 'asc' ? <span className="text-blue-600">↑</span> : <span className="text-blue-600">↓</span>;
+    return sortDirection === "asc" ? (
+      <span className="text-blue-600">↑</span>
+    ) : (
+      <span className="text-blue-600">↓</span>
+    );
   };
 
-  const SortableHeader = ({ field, children, className = "" }: { field: PaymentSortField; children: React.ReactNode; className?: string }) => (
+  const SortableHeader = ({
+    field,
+    children,
+    className = "",
+  }: {
+    field: PaymentSortField;
+    children: React.ReactNode;
+    className?: string;
+  }) => (
     <th
       className={`px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors bg-gray-50 ${className}`}
       onClick={() => onSort(field)}
@@ -54,7 +72,9 @@ export default function PaymentTable({
     return (
       <div className="bg-white rounded-xl shadow-lg border border-gray-200 mb-8">
         <div className="px-6 py-4 border-b border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900">Payment History</h3>
+          <h3 className="text-lg font-semibold text-gray-900">
+            Payment History
+          </h3>
         </div>
         <TableSkeleton rows={10} />
       </div>
@@ -65,24 +85,28 @@ export default function PaymentTable({
     return (
       <div className="bg-white rounded-xl shadow-lg border border-gray-200 mb-8">
         <div className="px-6 py-4 border-b border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900">Payment History</h3>
+          <h3 className="text-lg font-semibold text-gray-900">
+            Payment History
+          </h3>
         </div>
         <div className="p-12 text-center">
-          <svg 
-            className="mx-auto h-12 w-12 text-gray-400" 
-            fill="none" 
-            stroke="currentColor" 
+          <svg
+            className="mx-auto h-12 w-12 text-gray-400"
+            fill="none"
+            stroke="currentColor"
             viewBox="0 0 24 24"
           >
-            <path 
-              strokeLinecap="round" 
-              strokeLinejoin="round" 
-              strokeWidth="2" 
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="2"
               d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"
             ></path>
           </svg>
           <p className="text-gray-500 mt-4">No payments found</p>
-          <p className="text-sm text-gray-400 mt-1">Record your first payment from an invoice</p>
+          <p className="text-sm text-gray-400 mt-1">
+            Record your first payment from an invoice
+          </p>
         </div>
       </div>
     );
@@ -92,9 +116,14 @@ export default function PaymentTable({
     <div className="bg-white rounded-xl shadow-lg border border-gray-200 flex flex-col h-full">
       <div className="px-6 py-4 border-b border-gray-200 flex-none">
         <div className="flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-gray-900">Payment History</h3>
+          <h3 className="text-lg font-semibold text-gray-900">
+            Payment History
+          </h3>
           <span className="text-sm text-gray-500">
-            {totalItems !== undefined ? totalItems : payments.length} payment{(totalItems !== undefined ? totalItems : payments.length) !== 1 ? 's' : ''}
+            {totalItems !== undefined ? totalItems : payments.length} payment
+            {(totalItems !== undefined ? totalItems : payments.length) !== 1
+              ? "s"
+              : ""}
           </span>
         </div>
       </div>
@@ -103,12 +132,18 @@ export default function PaymentTable({
         <table className="min-w-full divide-y divide-gray-200 relative table-fixed">
           <thead className="bg-gray-50 sticky top-0 z-10 shadow-sm">
             <tr>
-              <SortableHeader field="date" className="w-[10%]">Date</SortableHeader>
+              <SortableHeader field="date" className="w-[10%]">
+                Date
+              </SortableHeader>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 w-[12%]">
                 Invoice
               </th>
-              <SortableHeader field="client" className="w-[20%]">Client</SortableHeader>
-              <SortableHeader field="amount" className="w-[10%]">Amount</SortableHeader>
+              <SortableHeader field="client" className="w-[20%]">
+                Client
+              </SortableHeader>
+              <SortableHeader field="amount" className="w-[10%]">
+                Amount
+              </SortableHeader>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 w-[12%]">
                 Method
               </th>
@@ -122,11 +157,12 @@ export default function PaymentTable({
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
             {paginatedPayments.map((payment) => (
-              <PaymentTableRow 
-                key={payment.id} 
-                payment={payment} 
-                onLink={onLink} 
+              <PaymentTableRow
+                key={payment.id}
+                payment={payment}
+                onLink={onLink}
                 onView={onView}
+                onEditPayment={onEditPayment}
                 onEditNotes={onEditNotes}
               />
             ))}
