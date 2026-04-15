@@ -1,36 +1,47 @@
-'use client';
+"use client";
 
-import { Suspense } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
-import Navigation from '../../components/Navigation';
-import { ToastProvider, useToastContext } from '../../components/ToastContext';
-import PaymentMethodsTab from '../../components/settings/PaymentMethodsTab';
-import UserManagementTab from '../../components/settings/UserManagementTab';
-import RegularizationsTab from '../../components/settings/RegularizationsTab';
-import CustomersTab from '../../components/settings/CustomersTab';
-import TermsConditionsTab from '../../components/settings/TermsConditionsTab';
-import QuickBooksTab from '../../components/settings/QuickBooksTab';
-import LayawaySettingsTab from '../../components/settings/LayawaySettingsTab';
-import { CreditCard, Users, CalendarCheck2, UsersRound, FileText, Link2, Layers } from 'lucide-react';
+import { Suspense } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
+import Navigation from "../../components/Navigation";
+import { ToastProvider, useToastContext } from "../../components/ToastContext";
+import PaymentMethodsTab from "../../components/settings/PaymentMethodsTab";
+import UserManagementTab from "../../components/settings/UserManagementTab";
+import RegularizationsTab from "../../components/settings/RegularizationsTab";
+import CustomersTab from "../../components/settings/CustomersTab";
+import TermsConditionsTab from "../../components/settings/TermsConditionsTab";
+import ShippingFeeRulesTab from "../../components/settings/ShippingFeeRulesTab";
+import QuickBooksTab from "../../components/settings/QuickBooksTab";
+import LayawaySettingsTab from "../../components/settings/LayawaySettingsTab";
+import {
+  CreditCard,
+  Users,
+  CalendarCheck2,
+  UsersRound,
+  FileText,
+  Link2,
+  Layers,
+  Truck,
+} from "lucide-react";
 
 const TABS = [
-  { id: 'payment-methods', label: 'Payment Methods', icon: CreditCard },
-  { id: 'users', label: 'User Management', icon: Users },
-  { id: 'regularizations', label: 'Regularizations', icon: CalendarCheck2 },
-  { id: 'customers', label: 'Clients', icon: UsersRound },
-  { id: 'terms', label: 'Terms & Conditions', icon: FileText },
+  { id: "payment-methods", label: "Payment Methods", icon: CreditCard },
+  { id: "users", label: "User Management", icon: Users },
+  { id: "regularizations", label: "Regularizations", icon: CalendarCheck2 },
+  { id: "customers", label: "Clients", icon: UsersRound },
+  { id: "terms", label: "Terms & Conditions", icon: FileText },
+  { id: "shipping-fee-rules", label: "Shipping Fee Rules", icon: Truck },
   // { id: 'layaway', label: 'Layaway', icon: Layers },
-  { id: 'quickbooks', label: 'QuickBooks', icon: Link2 },
+  { id: "quickbooks", label: "QuickBooks", icon: Link2 },
 ] as const;
 
-type TabId = typeof TABS[number]['id'];
+type TabId = (typeof TABS)[number]["id"];
 
 function SettingsContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { showSuccess, showError } = useToastContext();
 
-  const activeTab = (searchParams.get('tab') as TabId) || 'payment-methods';
+  const activeTab = (searchParams.get("tab") as TabId) || "payment-methods";
 
   const setActiveTab = (tab: TabId) => {
     router.push(`/settings?tab=${tab}`);
@@ -38,22 +49,41 @@ function SettingsContent() {
 
   const renderTabContent = () => {
     switch (activeTab) {
-      case 'payment-methods':
-        return <PaymentMethodsTab showSuccess={showSuccess} showError={showError} />;
-      case 'users':
-        return <UserManagementTab showSuccess={showSuccess} showError={showError} />;
-      case 'regularizations':
-        return <RegularizationsTab showSuccess={showSuccess} showError={showError} />;
-      case 'customers':
+      case "payment-methods":
+        return (
+          <PaymentMethodsTab showSuccess={showSuccess} showError={showError} />
+        );
+      case "users":
+        return (
+          <UserManagementTab showSuccess={showSuccess} showError={showError} />
+        );
+      case "regularizations":
+        return (
+          <RegularizationsTab showSuccess={showSuccess} showError={showError} />
+        );
+      case "customers":
         return <CustomersTab showSuccess={showSuccess} showError={showError} />;
-      case 'terms':
-        return <TermsConditionsTab showSuccess={showSuccess} showError={showError} />;
+      case "terms":
+        return (
+          <TermsConditionsTab showSuccess={showSuccess} showError={showError} />
+        );
+      case "shipping-fee-rules":
+        return (
+          <ShippingFeeRulesTab
+            showSuccess={showSuccess}
+            showError={showError}
+          />
+        );
       // case 'layaway':
       //   return <LayawaySettingsTab showSuccess={showSuccess} showError={showError} />;
-      case 'quickbooks':
-        return <QuickBooksTab showSuccess={showSuccess} showError={showError} />;
+      case "quickbooks":
+        return (
+          <QuickBooksTab showSuccess={showSuccess} showError={showError} />
+        );
       default:
-        return <PaymentMethodsTab showSuccess={showSuccess} showError={showError} />;
+        return (
+          <PaymentMethodsTab showSuccess={showSuccess} showError={showError} />
+        );
     }
   };
 
@@ -64,7 +94,9 @@ function SettingsContent() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-6">
           <h1 className="text-3xl font-bold text-gray-900">Settings</h1>
-          <p className="text-gray-600 mt-1">Manage your system configuration and preferences</p>
+          <p className="text-gray-600 mt-1">
+            Manage your system configuration and preferences
+          </p>
         </div>
 
         <div className="flex gap-6">
@@ -80,11 +112,14 @@ function SettingsContent() {
                     onClick={() => setActiveTab(tab.id)}
                     className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                       isActive
-                        ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                        : 'text-gray-700 hover:bg-gray-100 border border-transparent'
+                        ? "bg-blue-50 text-blue-700 border border-blue-200"
+                        : "text-gray-700 hover:bg-gray-100 border border-transparent"
                     }`}
                   >
-                    <Icon size={18} className={isActive ? 'text-blue-600' : 'text-gray-400'} />
+                    <Icon
+                      size={18}
+                      className={isActive ? "text-blue-600" : "text-gray-400"}
+                    />
                     {tab.label}
                   </button>
                 );

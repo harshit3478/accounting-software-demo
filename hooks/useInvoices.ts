@@ -17,9 +17,12 @@ export interface Invoice {
   subtotal: number;
   tax: number;
   discount: number;
+  shippingFee?: number;
+  insuranceAmount?: number;
   amount: number;
   paidAmount: number;
   dueDate: string;
+  dueDateReason?: string | null;
   status: "paid" | "pending" | "overdue" | "partial" | "abandoned" | "inactive";
   isLayaway: boolean;
   createdAt: string;

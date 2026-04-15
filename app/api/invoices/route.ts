@@ -5,6 +5,7 @@ import {
   generateInvoiceNumber,
   calculateInvoiceStatus,
 } from "../../../lib/invoice-utils";
+import { calculateInsuranceAmount } from "../../../lib/insurance";
 import { invalidateDashboard } from "../../../lib/cache-helpers";
 
 export async function GET(request: NextRequest) {
@@ -131,6 +132,7 @@ export async function GET(request: NextRequest) {
       payments: { include: { method: true } },
       paymentMatches: true,
       terms: true,
+      shippingFeeRule: true,
       customer: true,
       editHistory: {
         orderBy: { createdAt: "desc" },
@@ -192,6 +194,12 @@ export async function GET(request: NextRequest) {
       discount: invoice.discount?.toNumber
         ? invoice.discount.toNumber()
         : invoice.discount,
+      shippingFee: invoice.shippingFee?.toNumber
+        ? invoice.shippingFee.toNumber()
+        : invoice.shippingFee,
+      insuranceAmount: invoice.insuranceAmount?.toNumber
+        ? invoice.insuranceAmount.toNumber()
+        : invoice.insuranceAmount,
       amount: invoice.amount?.toNumber
         ? invoice.amount.toNumber()
         : invoice.amount,
@@ -270,13 +278,26 @@ export async function POST(request: NextRequest) {
       tax,
       discount,
       dueDate,
+      dueDateReason,
       description,
       isLayaway,
       layawayPlan,
       useDefaultTerms,
       termsId,
       newTerms,
+      shippingFee,
+      shippingFeeRuleId,
+      insuranceAmount,
     } = await request.json();
+
+    const normalizedDueDateReason =
+      typeof dueDateReason === "string" ? dueDateReason.trim() : "";
+    if (!normalizedDueDateReason) {
+      return NextResponse.json(
+        { error: "Due date reason is required" },
+        { status: 400 },
+      );
+    }
 
     // Generate unique invoice number
     const invoiceNumber = await generateInvoiceNumber();
@@ -284,8 +305,15 @@ export async function POST(request: NextRequest) {
     // Calculate total amount
     const taxAmount = tax || 0;
     const discountAmount = discount || 0;
-    const totalAmount =
+    const shippingFeeAmount = shippingFee || 0;
+    const preShippingTotal =
       parseFloat(subtotal) + parseFloat(taxAmount) - parseFloat(discountAmount);
+    const insuranceFeeAmount =
+      insuranceAmount !== undefined && insuranceAmount !== null
+        ? Number(insuranceAmount)
+        : calculateInsuranceAmount(preShippingTotal);
+    const totalAmount =
+      preShippingTotal + parseFloat(shippingFeeAmount) + insuranceFeeAmount;
 
     // Handle terms: either attach default, attach existing terms by id, or create new terms
     let attachedTermsId: number | null = null;
@@ -327,9 +355,12 @@ export async function POST(request: NextRequest) {
         subtotal: parseFloat(subtotal),
         tax: parseFloat(taxAmount),
         discount: parseFloat(discountAmount),
+        shippingFee: parseFloat(shippingFeeAmount),
+        insuranceAmount: insuranceFeeAmount,
         amount: totalAmount,
         paidAmount: 0,
         dueDate: new Date(dueDate),
+        dueDateReason: normalizedDueDateReason,
         status: "pending",
         isLayaway: isLayaway || false,
         description,
@@ -338,6 +369,7 @@ export async function POST(request: NextRequest) {
         source: source || "manual",
         termsId: attachedTermsId,
         termsSnapshot: termsSnapshot || null,
+        shippingFeeRuleId: shippingFeeRuleId || null,
       },
     });
 
@@ -417,6 +449,12 @@ export async function POST(request: NextRequest) {
       discount: invAny.discount?.toNumber
         ? invAny.discount.toNumber()
         : invAny.discount,
+      shippingFee: invAny.shippingFee?.toNumber
+        ? invAny.shippingFee.toNumber()
+        : invAny.shippingFee,
+      insuranceAmount: invAny.insuranceAmount?.toNumber
+        ? invAny.insuranceAmount.toNumber()
+        : invAny.insuranceAmount,
       amount: invAny.amount?.toNumber
         ? invAny.amount.toNumber()
         : invAny.amount,

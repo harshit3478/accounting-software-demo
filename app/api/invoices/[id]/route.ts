@@ -3,6 +3,7 @@ import prisma from "../../../../lib/prisma";
 import { requireAuth } from "../../../../lib/auth";
 import { invalidateDashboard } from "../../../../lib/cache-helpers";
 import { calculateInvoiceStatus } from "../../../../lib/invoice-utils";
+import { updateInvoiceAfterPayment } from "../../../../lib/invoice-utils";
 
 export async function PUT(
   request: NextRequest,
@@ -17,7 +18,10 @@ export async function PUT(
       subtotal,
       tax,
       discount,
+      shippingFee,
+      insuranceAmount,
       dueDate,
+      dueDateReason,
       description,
       isLayaway,
       editReason,
@@ -43,11 +47,33 @@ export async function PUT(
       return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
     }
 
+    const existingInvoiceAny = existingInvoice as any;
+    const normalizedDueDateReason =
+      typeof dueDateReason === "string" ? dueDateReason.trim() : "";
+    if (!normalizedDueDateReason) {
+      return NextResponse.json(
+        { error: "Due date reason is required" },
+        { status: 400 },
+      );
+    }
+
     // Calculate total amount
     const taxAmount = tax || 0;
     const discountAmount = discount || 0;
+    const shippingFeeAmount =
+      shippingFee !== undefined
+        ? parseFloat(shippingFee)
+        : existingInvoice.shippingFee.toNumber();
+    const insuranceFeeAmount =
+      insuranceAmount !== undefined
+        ? parseFloat(insuranceAmount)
+        : Number(existingInvoiceAny.insuranceAmount?.toNumber?.() ?? 0);
     const totalAmount =
-      parseFloat(subtotal) + parseFloat(taxAmount) - parseFloat(discountAmount);
+      parseFloat(subtotal) +
+      parseFloat(taxAmount) -
+      parseFloat(discountAmount) +
+      shippingFeeAmount +
+      insuranceFeeAmount;
 
     const nextData = {
       clientName,
@@ -55,8 +81,11 @@ export async function PUT(
       subtotal: parseFloat(subtotal),
       tax: parseFloat(taxAmount),
       discount: parseFloat(discountAmount),
+      shippingFee: shippingFeeAmount,
+      insuranceAmount: insuranceFeeAmount,
       amount: totalAmount,
       dueDate: new Date(dueDate),
+      dueDateReason: normalizedDueDateReason,
       description,
       isLayaway: isLayaway || false,
       customerId: customerId !== undefined ? customerId || null : undefined,
@@ -86,8 +115,23 @@ export async function PUT(
       existingInvoice.discount.toNumber(),
       nextData.discount,
     );
+    trackChange(
+      "shippingFee",
+      existingInvoice.shippingFee.toNumber(),
+      nextData.shippingFee,
+    );
+    trackChange(
+      "insuranceAmount",
+      Number(existingInvoiceAny.insuranceAmount?.toNumber?.() ?? 0),
+      nextData.insuranceAmount,
+    );
     trackChange("amount", existingInvoice.amount.toNumber(), nextData.amount);
     trackChange("dueDate", existingInvoice.dueDate, nextData.dueDate);
+    trackChange(
+      "dueDateReason",
+      (existingInvoiceAny.dueDateReason as string | null) || null,
+      nextData.dueDateReason || null,
+    );
     trackChange(
       "description",
       existingInvoice.description || null,
@@ -124,6 +168,10 @@ export async function PUT(
       subtotal: invoice.subtotal.toNumber(),
       tax: invoice.tax.toNumber(),
       discount: invoice.discount.toNumber(),
+      shippingFee: invoice.shippingFee.toNumber(),
+      insuranceAmount: Number(
+        (invoice as any).insuranceAmount?.toNumber?.() ?? 0,
+      ),
       amount: invoice.amount.toNumber(),
       paidAmount: invoice.paidAmount.toNumber(),
     };

@@ -25,6 +25,7 @@ interface Invoice {
   amount: number;
   paidAmount: number;
   dueDate: string;
+  dueDateReason?: string | null;
   status: "paid" | "pending" | "overdue" | "partial" | "abandoned" | "inactive";
   isLayaway: boolean;
   createdAt: string;
@@ -49,6 +50,7 @@ export default function EditInvoiceModal({
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
   const customerRef = useRef<HTMLDivElement>(null);
   const [dueDate, setDueDate] = useState("");
+  const [dueDateReason, setDueDateReason] = useState("");
   const [items, setItems] = useState<InvoiceItem[]>([
     { name: "", quantity: 1, price: 0 },
   ]);
@@ -96,6 +98,7 @@ export default function EditInvoiceModal({
       setClientName(invoice.clientName);
       setCustomerId(invoice.customerId || null);
       setDueDate(invoice.dueDate);
+      setDueDateReason(invoice.dueDateReason || "");
       setItems(invoice.items || [{ name: "", quantity: 1, price: 0 }]);
       setTax(invoice.tax);
       setTaxType("fixed"); // Default to fixed, adjust based on your needs
@@ -131,16 +134,7 @@ export default function EditInvoiceModal({
 
   const validateDate = (selectedDate: string) => {
     if (!selectedDate) {
-      setDateError("");
-      return true;
-    }
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const selected = new Date(selectedDate);
-    selected.setHours(0, 0, 0, 0);
-
-    if (selected < today) {
-      setDateError("Due date cannot be in the past");
+      setDateError("Due date is required");
       return false;
     }
     setDateError("");
@@ -160,6 +154,13 @@ export default function EditInvoiceModal({
 
     if (!validateDate(dueDate)) {
       return { success: false, error: "Invalid due date" };
+    }
+
+    if (!dueDateReason.trim()) {
+      return {
+        success: false,
+        error: "Please provide reason for due date",
+      };
     }
 
     if (
@@ -188,6 +189,7 @@ export default function EditInvoiceModal({
           tax: calculateTaxAmount(),
           discount: calculateDiscountAmount(),
           dueDate,
+          dueDateReason: dueDateReason.trim(),
           isLayaway,
           editReason: editReason.trim(),
         }),
@@ -330,6 +332,17 @@ export default function EditInvoiceModal({
             {dateError && (
               <p className="text-red-500 text-sm mt-1">{dateError}</p>
             )}
+            <label className="block text-sm font-medium text-gray-700 mt-4 mb-2">
+              Due Date Reason <span className="text-red-500">*</span>
+            </label>
+            <textarea
+              value={dueDateReason}
+              onChange={(e) => setDueDateReason(e.target.value)}
+              rows={3}
+              className="w-full px-4 py-2 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              placeholder="Why this due date is selected"
+              required
+            />
           </div>
         </div>
 

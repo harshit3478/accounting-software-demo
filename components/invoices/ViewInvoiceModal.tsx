@@ -58,6 +58,7 @@ interface Invoice {
   amount: number;
   paidAmount: number;
   dueDate: string;
+  dueDateReason?: string | null;
   status: "paid" | "pending" | "overdue" | "partial" | "abandoned" | "inactive";
   isLayaway: boolean;
   createdAt: string;
@@ -84,6 +85,18 @@ interface Invoice {
   }>;
 }
 
+interface ShipmentDetails {
+  trackingNumber?: string | null;
+  orderStatus?: string | null;
+  carrier?: string | null;
+  shippingService?: string | null;
+  serviceCode?: string | null;
+  liveTrackingUrl?: string | null;
+  bookNumber?: string | null;
+  orderId?: string | null;
+  orderNumber?: string | null;
+}
+
 interface ViewInvoiceModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -104,6 +117,10 @@ export default function ViewInvoiceModal({
     LayawayInstallment[]
   >([]);
   const [defaultTerms, setDefaultTerms] = useState<string[] | null>(null);
+  const [shipmentDetails, setShipmentDetails] =
+    useState<ShipmentDetails | null>(null);
+  const [shipmentLoading, setShipmentLoading] = useState(false);
+  const [shipmentError, setShipmentError] = useState<string | null>(null);
   const invoiceRef = useRef<HTMLDivElement>(null);
   const imageTemplateRef = useRef<HTMLDivElement>(null);
 
@@ -153,6 +170,28 @@ export default function ViewInvoiceModal({
       fetchPayments();
       if (invoice.layawayPlan?.installments) {
         setLocalInstallments(invoice.layawayPlan.installments);
+      }
+
+      if (invoice.shipmentId || invoice.trackingNumber) {
+        setShipmentLoading(true);
+        setShipmentError(null);
+        fetch(`/api/xps/shipments?invoiceId=${invoice.id}`)
+          .then(async (res) => {
+            if (!res.ok) {
+              throw new Error("Failed to fetch shipment details");
+            }
+            return res.json();
+          })
+          .then((data) => setShipmentDetails(data))
+          .catch((err) => {
+            setShipmentError(err.message || "Failed to fetch shipment details");
+            setShipmentDetails(null);
+          })
+          .finally(() => setShipmentLoading(false));
+      } else {
+        setShipmentDetails(null);
+        setShipmentError(null);
+        setShipmentLoading(false);
       }
     }
   }, [isOpen, invoice]);
@@ -276,6 +315,19 @@ export default function ViewInvoiceModal({
     );
   };
 
+  const trackedNumber =
+    shipmentDetails?.trackingNumber || invoice.trackingNumber || null;
+  const shipmentStatus =
+    shipmentDetails?.orderStatus ||
+    shipmentDetails?.shippingService ||
+    shipmentDetails?.carrier ||
+    (trackedNumber ? "In transit" : null);
+  const trackingUrl =
+    shipmentDetails?.liveTrackingUrl ||
+    (trackedNumber
+      ? `https://tools.usps.com/go/TrackConfirmAction?tLabels=${encodeURIComponent(trackedNumber)}`
+      : null);
+
   return (
     <Modal
       isOpen={isOpen}
@@ -381,6 +433,11 @@ export default function ViewInvoiceModal({
                 <p className="text-lg font-semibold text-gray-900">
                   {formatDate(invoice.dueDate)}
                 </p>
+                {invoice.dueDateReason && (
+                  <p className="text-xs text-gray-600 mt-1">
+                    Reason: {invoice.dueDateReason}
+                  </p>
+                )}
                 {new Date(invoice.dueDate) < new Date() &&
                   invoice.status !== "paid" && (
                     <p className="text-xs text-red-600 mt-1">Overdue</p>
@@ -421,28 +478,77 @@ export default function ViewInvoiceModal({
             {(invoice.shipmentId || invoice.trackingNumber) && (
               <div className="mt-4 pt-4 border-t border-gray-300">
                 <h5 className="text-sm font-medium text-gray-900 mb-2">
-                  Shipment Details
+                  Shipment Tracking
                 </h5>
-                <div className="grid grid-cols-2 gap-4">
-                  {invoice.shipmentId && (
-                    <div>
-                      <p className="text-xs text-gray-500 uppercase">
-                        Shipment ID
-                      </p>
-                      <p className="text-sm font-mono text-gray-700">
-                        {invoice.shipmentId}
-                      </p>
-                    </div>
-                  )}
-                  {invoice.trackingNumber && (
-                    <div>
-                      <p className="text-xs text-gray-500 uppercase">
-                        Tracking Number
-                      </p>
-                      <p className="text-sm font-mono text-gray-700">
-                        {invoice.trackingNumber}
-                      </p>
-                    </div>
+                <div className="rounded-xl border border-sky-200 bg-sky-50 p-4 space-y-3">
+                  {shipmentLoading ? (
+                    <p className="text-sm text-sky-700">
+                      Loading live parcel status from XPS...
+                    </p>
+                  ) : shipmentError ? (
+                    <p className="text-sm text-red-600">{shipmentError}</p>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                          <p className="text-xs text-gray-500 uppercase">
+                            Tracking Number
+                          </p>
+                          <p className="font-mono text-sm font-semibold text-gray-800">
+                            {trackedNumber || "Not generated yet"}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500 uppercase">
+                            Parcel Status
+                          </p>
+                          <p className="text-sm font-semibold text-gray-800">
+                            {shipmentStatus || "Pending"}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500 uppercase">
+                            Shipment ID
+                          </p>
+                          <p className="font-mono text-sm text-gray-700">
+                            {invoice.shipmentId ||
+                              shipmentDetails?.bookNumber ||
+                              shipmentDetails?.orderId ||
+                              shipmentDetails?.orderNumber ||
+                              "-"}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-3">
+                        {trackingUrl && trackedNumber && (
+                          <a
+                            href={trackingUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center rounded-lg bg-sky-600 px-3 py-2 text-sm font-medium text-white hover:bg-sky-700"
+                          >
+                            Track on USPS
+                          </a>
+                        )}
+                        {shipmentDetails?.carrier && (
+                          <span className="text-sm text-gray-600">
+                            Carrier:{" "}
+                            <span className="font-medium text-gray-900">
+                              {shipmentDetails.carrier}
+                            </span>
+                          </span>
+                        )}
+                        {shipmentDetails?.shippingService && (
+                          <span className="text-sm text-gray-600">
+                            Service:{" "}
+                            <span className="font-medium text-gray-900">
+                              {shipmentDetails.shippingService}
+                            </span>
+                          </span>
+                        )}
+                      </div>
+                    </>
                   )}
                 </div>
               </div>

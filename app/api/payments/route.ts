@@ -119,7 +119,7 @@ export async function GET(request: NextRequest) {
     });
 
     // Convert Decimal to number for JSON serialization
-    const serializedPayments = payments.map((payment) => ({
+    const serializedPayments = payments.map((payment: any) => ({
       ...payment,
       amount: payment.amount.toNumber(),
       editHistory: (payment.editHistory || []).map((entry: any) => ({

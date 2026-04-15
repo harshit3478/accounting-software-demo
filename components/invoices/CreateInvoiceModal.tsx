@@ -6,6 +6,7 @@ import PreviewInvoiceModal from "./PreviewInvoiceModal";
 import InvoiceItemsEditor from "./InvoiceItemsEditor";
 import InvoiceSummary from "./InvoiceSummary";
 import { InvoiceItem } from "./types";
+import { calculateInsuranceAmount } from "../../lib/insurance";
 
 interface CustomerOption {
   id: number;
@@ -19,6 +20,16 @@ interface TermOption {
   title: string | null;
   lines: string[];
   isDefault: boolean;
+}
+
+interface ShippingFeeRule {
+  id: number;
+  name: string;
+  minAmount: number | null;
+  maxAmount: number | null;
+  fee: number;
+  isActive: boolean;
+  sortOrder: number;
 }
 
 interface CreateInvoiceModalProps {
@@ -46,6 +57,7 @@ export default function CreateInvoiceModal({
   });
   const [creatingCustomer, setCreatingCustomer] = useState(false);
   const [dueDate, setDueDate] = useState("");
+  const [dueDateReason, setDueDateReason] = useState("");
   const customerRef = useRef<HTMLDivElement>(null);
 
   // Load layaway defaults from localStorage
@@ -100,6 +112,43 @@ export default function CreateInvoiceModal({
         setTermsOptions([]);
         setSelectedTermsId("custom");
       });
+
+    fetch("/api/shipping-fee-rules?active=true")
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        const rules: ShippingFeeRule[] = Array.isArray(data)
+          ? data.map((r: any) => ({
+              id: r.id,
+              name: r.name,
+              minAmount: r.minAmount == null ? null : Number(r.minAmount),
+              maxAmount: r.maxAmount == null ? null : Number(r.maxAmount),
+              fee: Number(r.fee || 0),
+              isActive: !!r.isActive,
+              sortOrder: Number(r.sortOrder || 0),
+            }))
+          : [];
+
+        setShippingFeeRules(rules);
+
+        const subtotal = calculateSubtotal();
+        const matchingRule = rules.find((r) =>
+          doesRuleMatchSubtotal(r, subtotal),
+        );
+        if (matchingRule) {
+          setSelectedShippingFeeRuleId(matchingRule.id);
+          setShippingFee(matchingRule.fee);
+        } else {
+          setSelectedShippingFeeRuleId("none");
+          setShippingFee(0);
+        }
+        setIsShippingFeeManuallyOverridden(false);
+      })
+      .catch(() => {
+        setShippingFeeRules([]);
+        setSelectedShippingFeeRuleId("none");
+        setShippingFee(0);
+        setIsShippingFeeManuallyOverridden(false);
+      });
   }, [isOpen]);
 
   // Close dropdown on click outside
@@ -140,6 +189,18 @@ export default function CreateInvoiceModal({
     number | "custom" | "none"
   >("none");
   const [customTerms, setCustomTerms] = useState<string[]>([""]);
+  const [shippingFeeRules, setShippingFeeRules] = useState<ShippingFeeRule[]>(
+    [],
+  );
+  const [selectedShippingFeeRuleId, setSelectedShippingFeeRuleId] = useState<
+    number | "none"
+  >("none");
+  const [shippingFee, setShippingFee] = useState(0);
+  const [isShippingFeeManuallyOverridden, setIsShippingFeeManuallyOverridden] =
+    useState(false);
+  const [insuranceAmount, setInsuranceAmount] = useState(0);
+  const [isInsuranceManuallyOverridden, setIsInsuranceManuallyOverridden] =
+    useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [dateError, setDateError] = useState("");
@@ -160,24 +221,73 @@ export default function CreateInvoiceModal({
       : discount;
   };
 
-  const calculateTotal = () => {
+  const calculatePreShippingTotal = () => {
     return (
       calculateSubtotal() + calculateTaxAmount() - calculateDiscountAmount()
     );
   };
 
+  const calculateTotal = () => {
+    return (
+      calculateSubtotal() +
+      calculateTaxAmount() -
+      calculateDiscountAmount() +
+      shippingFee +
+      insuranceAmount
+    );
+  };
+
+  const doesRuleMatchSubtotal = (
+    rule: ShippingFeeRule,
+    amount: number,
+  ): boolean => {
+    if (rule.minAmount != null && amount < rule.minAmount) return false;
+    if (rule.maxAmount != null && amount > rule.maxAmount) return false;
+    return true;
+  };
+
+  useEffect(() => {
+    if (!isOpen || shippingFeeRules.length === 0) return;
+
+    const amount = calculatePreShippingTotal();
+    const matchingRule = shippingFeeRules.find((r) =>
+      doesRuleMatchSubtotal(r, amount),
+    );
+
+    setSelectedShippingFeeRuleId(matchingRule ? matchingRule.id : "none");
+
+    // Auto-apply fee unless user has manually overridden it.
+    if (!isShippingFeeManuallyOverridden) {
+      setShippingFee(matchingRule ? matchingRule.fee : 0);
+    }
+  }, [
+    isOpen,
+    items,
+    tax,
+    taxType,
+    discount,
+    discountType,
+    shippingFeeRules,
+    isShippingFeeManuallyOverridden,
+  ]);
+
+  useEffect(() => {
+    if (!isOpen || isInsuranceManuallyOverridden) return;
+    const amount = calculatePreShippingTotal();
+    setInsuranceAmount(calculateInsuranceAmount(amount));
+  }, [
+    isOpen,
+    items,
+    tax,
+    taxType,
+    discount,
+    discountType,
+    isInsuranceManuallyOverridden,
+  ]);
+
   const validateDate = (selectedDate: string) => {
     if (!selectedDate) {
-      setDateError("");
-      return true;
-    }
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const selected = new Date(selectedDate);
-    selected.setHours(0, 0, 0, 0);
-
-    if (selected < today) {
-      setDateError("Due date cannot be in the past");
+      setDateError("Due date is required");
       return false;
     }
     setDateError("");
@@ -229,6 +339,7 @@ export default function CreateInvoiceModal({
     setClientName("");
     setCustomerId(null);
     setDueDate("");
+    setDueDateReason("");
     setItems([{ name: "", quantity: 1, price: 0 }]);
     setTax(0);
     setTaxType("fixed");
@@ -241,6 +352,12 @@ export default function CreateInvoiceModal({
     setLayawayNotes("");
     setSelectedTermsId("none");
     setCustomTerms([""]);
+    setShippingFeeRules([]);
+    setSelectedShippingFeeRuleId("none");
+    setShippingFee(0);
+    setIsShippingFeeManuallyOverridden(false);
+    setInsuranceAmount(0);
+    setIsInsuranceManuallyOverridden(false);
     setDateError("");
     setShowNewCustomerForm(false);
     setNewCustomerData({ name: "", email: "", phone: "" });
@@ -253,6 +370,11 @@ export default function CreateInvoiceModal({
     }
 
     if (!validateDate(dueDate)) {
+      return;
+    }
+
+    if (!dueDateReason.trim()) {
+      onError?.("Please provide reason for due date");
       return;
     }
 
@@ -277,10 +399,17 @@ export default function CreateInvoiceModal({
         clientName,
         customerId: customerId || undefined,
         dueDate,
+        dueDateReason: dueDateReason.trim(),
         items,
         subtotal,
         tax: calculateTaxAmount(),
         discount: calculateDiscountAmount(),
+        shippingFee,
+        insuranceAmount,
+        shippingFeeRuleId:
+          selectedShippingFeeRuleId === "none"
+            ? null
+            : selectedShippingFeeRuleId,
         isLayaway,
         ...(isLayaway && {
           layawayPlan: {
@@ -529,6 +658,17 @@ export default function CreateInvoiceModal({
               {dateError && (
                 <p className="text-red-500 text-sm mt-1">{dateError}</p>
               )}
+              <label className="block text-sm font-medium text-gray-700 mt-4 mb-2">
+                Due Date Reason <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                value={dueDateReason}
+                onChange={(e) => setDueDateReason(e.target.value)}
+                rows={3}
+                className="w-full px-4 py-2 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Why this due date is selected"
+                required
+              />
             </div>
           </div>
 
@@ -635,6 +775,129 @@ export default function CreateInvoiceModal({
                     className="w-full px-4 py-2 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     placeholder="0.00"
                   />
+                </div>
+
+                <div className="p-4 bg-indigo-50 border border-indigo-200 rounded-lg space-y-3">
+                  <h4 className="text-sm font-semibold text-indigo-900">
+                    Shipping Fee Rules
+                  </h4>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Apply Rule
+                    </label>
+                    <select
+                      value={String(selectedShippingFeeRuleId)}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        if (value === "none") {
+                          setSelectedShippingFeeRuleId("none");
+                          setIsShippingFeeManuallyOverridden(true);
+                          return;
+                        }
+                        const parsed = parseInt(value, 10);
+                        if (!Number.isNaN(parsed)) {
+                          setSelectedShippingFeeRuleId(parsed);
+                          const selectedRule = shippingFeeRules.find(
+                            (r) => r.id === parsed,
+                          );
+                          if (selectedRule) {
+                            setShippingFee(selectedRule.fee);
+                          }
+                          setIsShippingFeeManuallyOverridden(false);
+                        }
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 text-gray-900 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    >
+                      <option value="none">
+                        No rule (manual shipping fee)
+                      </option>
+                      {shippingFeeRules.map((rule) => {
+                        const rangeText =
+                          rule.minAmount == null && rule.maxAmount == null
+                            ? "All subtotals"
+                            : rule.minAmount != null && rule.maxAmount == null
+                              ? `>= $${rule.minAmount.toFixed(2)}`
+                              : rule.minAmount == null && rule.maxAmount != null
+                                ? `<= $${rule.maxAmount.toFixed(2)}`
+                                : `$${(rule.minAmount as number).toFixed(2)} - $${(rule.maxAmount as number).toFixed(2)}`;
+
+                        return (
+                          <option key={rule.id} value={rule.id}>
+                            {rule.name} ({rangeText}) - ${rule.fee.toFixed(2)}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Shipping Fee ($)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={shippingFee || ""}
+                      onChange={(e) => {
+                        setShippingFee(parseFloat(e.target.value) || 0);
+                        setIsShippingFeeManuallyOverridden(true);
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 text-gray-900 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    />
+                    <p className="mt-1 text-xs text-gray-600">
+                      You can override the fee manually even when a rule is
+                      selected.
+                    </p>
+                    {isShippingFeeManuallyOverridden && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setIsShippingFeeManuallyOverridden(false)
+                        }
+                        className="mt-2 text-xs font-medium text-indigo-700 hover:text-indigo-900"
+                      >
+                        Use Auto Rule
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="pt-2 border-t border-indigo-200">
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-medium text-gray-700">
+                        Insurance ($)
+                      </label>
+                      {!isInsuranceManuallyOverridden && (
+                        <span className="text-[11px] text-indigo-700 font-medium">
+                          Auto from invoice value
+                        </span>
+                      )}
+                    </div>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={insuranceAmount || ""}
+                      onChange={(e) => {
+                        setInsuranceAmount(parseFloat(e.target.value) || 0);
+                        setIsInsuranceManuallyOverridden(true);
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 text-gray-900 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    />
+                    <p className="mt-1 text-xs text-gray-600">
+                      Insurance is auto-calculated from invoice value and can be
+                      manually adjusted.
+                    </p>
+                    {isInsuranceManuallyOverridden && (
+                      <button
+                        type="button"
+                        onClick={() => setIsInsuranceManuallyOverridden(false)}
+                        className="mt-2 text-xs font-medium text-indigo-700 hover:text-indigo-900"
+                      >
+                        Use Auto Insurance
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Layaway Checkbox */}
@@ -941,6 +1204,8 @@ export default function CreateInvoiceModal({
                 taxType={taxType}
                 discount={discount}
                 discountType={discountType}
+                shippingFee={shippingFee}
+                insuranceAmount={insuranceAmount}
                 total={calculateTotal()}
               />
             </div>
@@ -960,6 +1225,8 @@ export default function CreateInvoiceModal({
         taxType={taxType}
         discount={discount}
         discountType={discountType}
+        shippingFee={shippingFee}
+        insuranceAmount={insuranceAmount}
         total={calculateTotal()}
         isLayaway={isLayaway}
         isSubmitting={isCreating}
