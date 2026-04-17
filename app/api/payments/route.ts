@@ -3,6 +3,7 @@ import prisma from "../../../lib/prisma";
 import { requireAuth } from "../../../lib/auth";
 import { updateInvoiceAfterPayment } from "../../../lib/invoice-utils";
 import { invalidateDashboard } from "../../../lib/cache-helpers";
+import { sendPaymentConfirmation } from "../../../lib/email";
 
 export async function GET(request: NextRequest) {
   try {
@@ -189,6 +190,7 @@ export async function POST(request: NextRequest) {
             select: {
               id: true,
               name: true,
+              email: true,
               storeCredit: true,
             },
           },
@@ -286,6 +288,16 @@ export async function POST(request: NextRequest) {
       storeCreditAdded = txResult.excessAmount;
 
       await updateInvoiceAfterPayment(parsedInvoiceId);
+
+      // Fire-and-forget: email failure must never block the payment response
+      const newRemaining = roundMoney(Math.max(remaining - txResult.appliedAmount, 0));
+      if (invoice.customer?.email && txResult.payment) {
+        sendPaymentConfirmation(
+          { id: txResult.payment.id, amount: txResult.appliedAmount, paymentDate: txResult.payment.paymentDate },
+          { invoiceNumber: invoice.invoiceNumber, amount: Number(invoice.amount), newRemaining },
+          { name: invoice.customer.name, email: invoice.customer.email },
+        ).catch((err) => console.error('[Email] sendPaymentConfirmation failed:', err));
+      }
     } else {
       payment = await prisma.payment.create({
         data: {
