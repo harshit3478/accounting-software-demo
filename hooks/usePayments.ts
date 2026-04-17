@@ -39,17 +39,31 @@ export interface Payment {
       amount: number;
     };
   }>;
+  editHistory?: Array<{
+    id: number;
+    reason: string;
+    changes?: Record<string, { from: any; to: any }> | null;
+    createdAt: string;
+    editedBy?: {
+      id: number;
+      name: string;
+      email?: string;
+    };
+  }>;
 }
 
 export interface PaymentStats {
-  byMethod: Record<number, { amount: number; count: number; name: string; color: string }>;
+  byMethod: Record<
+    number,
+    { amount: number; count: number; name: string; color: string }
+  >;
   totalToday: number;
   totalCount: number;
 }
 
-export type PaymentMethodFilter = 'all' | string; // 'all' or methodId as string
-export type PaymentSortField = 'date' | 'amount' | 'client';
-export type SortDirection = 'asc' | 'desc';
+export type PaymentMethodFilter = "all" | string; // 'all' or methodId as string
+export type PaymentSortField = "date" | "amount" | "client";
+export type SortDirection = "asc" | "desc";
 
 export interface DateRange {
   startDate: string;
@@ -64,7 +78,7 @@ interface UsePaymentsReturn {
   paginatedPayments: Payment[];
   isLoading: boolean;
   unmatchedCount: number;
-  
+
   // Filters
   filterMethod: PaymentMethodFilter;
   setFilterMethod: (filter: PaymentMethodFilter) => void;
@@ -72,12 +86,12 @@ interface UsePaymentsReturn {
   setSearchQuery: (query: string) => void;
   dateRange: DateRange | null;
   setDateRange: (range: DateRange | null) => void;
-  
+
   // Sorting
   sortBy: PaymentSortField;
   sortDirection: SortDirection;
   handleSort: (field: PaymentSortField) => void;
-  
+
   // Pagination
   currentPage: number;
   totalPages: number;
@@ -85,7 +99,7 @@ interface UsePaymentsReturn {
   itemsPerPage: number;
   setCurrentPage: (page: number) => void;
   setItemsPerPage: (items: number) => void;
-  
+
   // Modals
   showRecordModal: boolean;
   setShowRecordModal: (show: boolean) => void;
@@ -93,11 +107,11 @@ interface UsePaymentsReturn {
   setShowViewModal: (show: boolean) => void;
   showCSVUploadModal: boolean;
   setShowCSVUploadModal: (show: boolean) => void;
-  
+
   // Selected payment
   viewingPayment: Payment | null;
   setViewingPayment: (payment: Payment | null) => void;
-  
+
   // Actions
   fetchPayments: () => Promise<void>;
   fetchUnmatchedCount: () => Promise<void>;
@@ -106,7 +120,7 @@ interface UsePaymentsReturn {
   handleItemsPerPageChange: (items: number) => void;
   handleExportPDF: () => Promise<void>;
   handleExportCSV: () => Promise<void>;
-  
+
   // Statistics
   stats: PaymentStats;
   filteredStats: PaymentStats;
@@ -129,36 +143,38 @@ export function usePayments(): UsePaymentsReturn {
     totalToday: 0,
     totalCount: 0,
   });
-  
+
   const [isLoading, setIsLoading] = useState(true);
   const [totalPages, setTotalPages] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
 
   // Initialize state from URL params
   const [filterMethod, setFilterMethodState] = useState<PaymentMethodFilter>(
-    (searchParams.get("method") as PaymentMethodFilter) || "all"
+    (searchParams.get("method") as PaymentMethodFilter) || "all",
   );
-  const [searchQuery, setSearchQueryState] = useState(searchParams.get("search") || "");
+  const [searchQuery, setSearchQueryState] = useState(
+    searchParams.get("search") || "",
+  );
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState(searchQuery);
-  
+
   const [dateRange, setDateRangeState] = useState<DateRange | null>(
     searchParams.get("startDate") && searchParams.get("endDate")
       ? {
           startDate: searchParams.get("startDate")!,
           endDate: searchParams.get("endDate")!,
         }
-      : null
+      : null,
   );
 
-  const [sortBy, setSortBy] = useState<PaymentSortField>('date');
-  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const [sortBy, setSortBy] = useState<PaymentSortField>("date");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
 
   // Server handles sorting - just pass through
   const sortedPayments = payments;
-  
+
   // Pagination
   const [currentPage, setCurrentPage] = useState(
-    parseInt(searchParams.get("page") || "1")
+    parseInt(searchParams.get("page") || "1"),
   );
   const [itemsPerPage, setItemsPerPageState] = useState(10);
 
@@ -169,9 +185,9 @@ export function usePayments(): UsePaymentsReturn {
       setItemsPerPageState(parseInt(savedItemsPerPage));
     }
     // Fetch payment methods for filters/display
-    fetch('/api/payment-methods')
-      .then(res => res.ok ? res.json() : [])
-      .then(data => setPaymentMethods(data))
+    fetch("/api/payment-methods")
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => setPaymentMethods(data))
       .catch(() => {});
   }, []);
 
@@ -182,19 +198,22 @@ export function usePayments(): UsePaymentsReturn {
   const [viewingPayment, setViewingPayment] = useState<Payment | null>(null);
 
   // Update URL helper
-  const updateUrl = useCallback((params: Record<string, string | null>) => {
-    const newSearchParams = new URLSearchParams(searchParams.toString());
-    
-    Object.entries(params).forEach(([key, value]) => {
-      if (value === null || value === "" || value === "all") {
-        newSearchParams.delete(key);
-      } else {
-        newSearchParams.set(key, value);
-      }
-    });
+  const updateUrl = useCallback(
+    (params: Record<string, string | null>) => {
+      const newSearchParams = new URLSearchParams(searchParams.toString());
 
-    router.push(`${pathname}?${newSearchParams.toString()}`);
-  }, [pathname, router, searchParams]);
+      Object.entries(params).forEach(([key, value]) => {
+        if (value === null || value === "" || value === "all") {
+          newSearchParams.delete(key);
+        } else {
+          newSearchParams.set(key, value);
+        }
+      });
+
+      router.push(`${pathname}?${newSearchParams.toString()}`);
+    },
+    [pathname, router, searchParams],
+  );
 
   // Wrappers
   const setFilterMethod = (method: PaymentMethodFilter) => {
@@ -213,7 +232,7 @@ export function usePayments(): UsePaymentsReturn {
     updateUrl({
       startDate: range?.startDate || null,
       endDate: range?.endDate || null,
-      page: "1"
+      page: "1",
     });
   };
 
@@ -232,10 +251,10 @@ export function usePayments(): UsePaymentsReturn {
 
   const handleSort = (field: PaymentSortField) => {
     if (sortBy === field) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
     } else {
       setSortBy(field);
-      setSortDirection('asc');
+      setSortDirection("asc");
     }
   };
 
@@ -254,13 +273,13 @@ export function usePayments(): UsePaymentsReturn {
   // Fetch unmatched count
   const fetchUnmatchedCount = async () => {
     try {
-      const response = await fetch('/api/payments/unmatched');
+      const response = await fetch("/api/payments/unmatched");
       if (response.ok) {
         const result = await response.json();
         setUnmatchedCount(result.summary.count);
       }
     } catch (err) {
-      console.error('Failed to fetch unmatched count:', err);
+      console.error("Failed to fetch unmatched count:", err);
     }
   };
 
@@ -285,26 +304,38 @@ export function usePayments(): UsePaymentsReturn {
         const data = await res.json();
         const fetchedPayments = data.payments.map((payment: any) => ({
           ...payment,
-          paymentDate: payment.paymentDate ? new Date(payment.paymentDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-          createdAt: payment.createdAt ? new Date(payment.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+          paymentDate: payment.paymentDate
+            ? new Date(payment.paymentDate).toISOString().split("T")[0]
+            : new Date().toISOString().split("T")[0],
+          createdAt: payment.createdAt
+            ? new Date(payment.createdAt).toISOString().split("T")[0]
+            : new Date().toISOString().split("T")[0],
         }));
-        
+
         setPayments(fetchedPayments);
         setTotalPages(data.pagination.pages);
         setTotalItems(data.pagination.total);
 
         // Calculate stats from all fetched payments
-        const byMethod: PaymentStats['byMethod'] = {};
+        const byMethod: PaymentStats["byMethod"] = {};
         for (const p of fetchedPayments) {
           const mId = p.method?.id || p.methodId;
           if (!byMethod[mId]) {
-            byMethod[mId] = { amount: 0, count: 0, name: p.method?.name || 'Unknown', color: p.method?.color || '#6B7280' };
+            byMethod[mId] = {
+              amount: 0,
+              count: 0,
+              name: p.method?.name || "Unknown",
+              color: p.method?.color || "#6B7280",
+            };
           }
           byMethod[mId].amount += p.amount;
           byMethod[mId].count += 1;
         }
 
-        const totalAmount = fetchedPayments.reduce((sum: number, p: any) => sum + p.amount, 0);
+        const totalAmount = fetchedPayments.reduce(
+          (sum: number, p: any) => sum + p.amount,
+          0,
+        );
 
         setStats({
           byMethod,
@@ -312,25 +343,43 @@ export function usePayments(): UsePaymentsReturn {
           totalCount: fetchedPayments.length,
         });
       } else {
-        showError('Failed to fetch payments');
+        showError("Failed to fetch payments");
       }
     } catch (error) {
-      console.error('Failed to fetch payments:', error);
-      showError('Failed to fetch payments');
+      console.error("Failed to fetch payments:", error);
+      showError("Failed to fetch payments");
     } finally {
       setIsLoading(false);
     }
-  }, [currentPage, itemsPerPage, filterMethod, debouncedSearchQuery, dateRange, sortBy, sortDirection, showError]);
+  }, [
+    currentPage,
+    itemsPerPage,
+    filterMethod,
+    debouncedSearchQuery,
+    dateRange,
+    sortBy,
+    sortDirection,
+    showError,
+  ]);
 
-  const [lastUpdateTimestamp, setLastUpdateTimestamp] = useState<string | null>(null);
-
+  const [lastUpdateTimestamp, setLastUpdateTimestamp] = useState<string | null>(
+    null,
+  );
 
   // Initial fetch
   useEffect(() => {
     fetchPayments();
     fetchUnmatchedCount();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterMethod, debouncedSearchQuery, dateRange, currentPage, itemsPerPage, sortBy, sortDirection]);
+  }, [
+    filterMethod,
+    debouncedSearchQuery,
+    dateRange,
+    currentPage,
+    itemsPerPage,
+    sortBy,
+    sortDirection,
+  ]);
 
   const handleViewPayment = (payment: Payment) => {
     setViewingPayment(payment);
@@ -339,41 +388,47 @@ export function usePayments(): UsePaymentsReturn {
 
   const handleExportPDF = async () => {
     try {
-      const jsPDF = (await import('jspdf')).default;
-      const autoTable = (await import('jspdf-autotable')).default;
+      const jsPDF = (await import("jspdf")).default;
+      const autoTable = (await import("jspdf-autotable")).default;
       const doc = new jsPDF();
-      
+
       // Title
       doc.setFontSize(20);
-      doc.setFont('helvetica', 'bold');
-      doc.text('Payment History Report', 105, 20, { align: 'center' });
-      
+      doc.setFont("helvetica", "bold");
+      doc.text("Payment History Report", 105, 20, { align: "center" });
+
       // Subtitle with date
       doc.setFontSize(10);
-      doc.setFont('helvetica', 'normal');
+      doc.setFont("helvetica", "normal");
       doc.setTextColor(100);
-      doc.text(`Generated: ${new Date().toLocaleDateString()}`, 105, 28, { align: 'center' });
-      
+      doc.text(`Generated: ${new Date().toLocaleDateString()}`, 105, 28, {
+        align: "center",
+      });
+
       let yPos = 40;
-      
+
       // Summary section in a box
       doc.setTextColor(0);
       doc.setFillColor(245, 247, 250);
-      doc.roundedRect(15, yPos, 180, 42, 3, 3, 'F');
+      doc.roundedRect(15, yPos, 180, 42, 3, 3, "F");
       doc.setDrawColor(200, 200, 200);
-      doc.roundedRect(15, yPos, 180, 42, 3, 3, 'S');
-      
+      doc.roundedRect(15, yPos, 180, 42, 3, 3, "S");
+
       yPos += 8;
       doc.setFontSize(11);
-      doc.setFont('helvetica', 'bold');
-      doc.text('Summary', 20, yPos);
-      
+      doc.setFont("helvetica", "bold");
+      doc.text("Summary", 20, yPos);
+
       yPos += 7;
       doc.setFontSize(10);
-      doc.setFont('helvetica', 'normal');
-      
+      doc.setFont("helvetica", "normal");
+
       doc.text(`Total Payments: ${payments.length}`, 20, yPos);
-      doc.text(`Total Amount: $${stats.totalToday.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, 110, yPos);
+      doc.text(
+        `Total Amount: $${stats.totalToday.toLocaleString("en-US", { minimumFractionDigits: 2 })}`,
+        110,
+        yPos,
+      );
       yPos += 7;
 
       // Dynamic method stats
@@ -381,66 +436,78 @@ export function usePayments(): UsePaymentsReturn {
       for (let i = 0; i < methodEntries.length; i++) {
         const entry = methodEntries[i];
         const xPos = i % 2 === 0 ? 20 : 110;
-        doc.text(`${entry.name}: $${entry.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })} (${entry.count})`, xPos, yPos);
+        doc.text(
+          `${entry.name}: $${entry.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })} (${entry.count})`,
+          xPos,
+          yPos,
+        );
         if (i % 2 === 1) yPos += 7;
       }
       if (methodEntries.length % 2 === 1) yPos += 7;
-      
+
       yPos += 15;
-      
+
       // Prepare table data
-      const tableData = payments.map(payment => {
+      const tableData = payments.map((payment) => {
         const date = new Date(payment.paymentDate).toLocaleDateString();
-        const invoice = payment.invoice?.invoiceNumber || 
-                       payment.paymentMatches?.map(m => m.invoice.invoiceNumber).join(', ') || 
-                       'Unmatched';
-        const client = payment.invoice?.clientName || 
-                      payment.paymentMatches?.[0]?.invoice.clientName || 
-                      'N/A';
-        const amount = `$${payment.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
-        const method = payment.method?.name || 'Unknown';
-        const notes = payment.notes ? (payment.notes.length > 30 ? payment.notes.substring(0, 27) + '...' : payment.notes) : '-';
-        
+        const invoice =
+          payment.invoice?.invoiceNumber ||
+          payment.paymentMatches
+            ?.map((m) => m.invoice.invoiceNumber)
+            .join(", ") ||
+          "Unmatched";
+        const client =
+          payment.invoice?.clientName ||
+          payment.paymentMatches?.[0]?.invoice.clientName ||
+          "N/A";
+        const amount = `$${payment.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
+        const method = payment.method?.name || "Unknown";
+        const notes = payment.notes
+          ? payment.notes.length > 30
+            ? payment.notes.substring(0, 27) + "..."
+            : payment.notes
+          : "-";
+
         return [date, invoice, client, amount, method, notes];
       });
-      
+
       // Generate professional table with autoTable
       autoTable(doc, {
         startY: yPos,
-        head: [['Date', 'Invoice #', 'Client', 'Amount', 'Method', 'Notes']],
+        head: [["Date", "Invoice #", "Client", "Amount", "Method", "Notes"]],
         body: tableData,
-        theme: 'striped',
+        theme: "striped",
         headStyles: {
           fillColor: [75, 0, 130], // Purple theme for payments
           textColor: 255,
-          fontStyle: 'bold',
-          halign: 'left',
-          fontSize: 10
+          fontStyle: "bold",
+          halign: "left",
+          fontSize: 10,
         },
         bodyStyles: {
           fontSize: 9,
-          textColor: 50
+          textColor: 50,
         },
         alternateRowStyles: {
-          fillColor: [245, 247, 250]
+          fillColor: [245, 247, 250],
         },
         columnStyles: {
           0: { cellWidth: 25 },
           1: { cellWidth: 30 },
           2: { cellWidth: 35 },
-          3: { halign: 'right', cellWidth: 25 },
+          3: { halign: "right", cellWidth: 25 },
           4: { cellWidth: 25 },
-          5: { cellWidth: 35 }
+          5: { cellWidth: 35 },
         },
         margin: { left: 15, right: 15 },
-        didParseCell: function(data) {
+        didParseCell: function (data) {
           // Color code payment method column using dynamic colors
-          if (data.column.index === 4 && data.section === 'body') {
-            data.cell.styles.fontStyle = 'bold';
+          if (data.column.index === 4 && data.section === "body") {
+            data.cell.styles.fontStyle = "bold";
           }
-        }
+        },
       });
-      
+
       // Footer
       const pageCount = doc.getNumberOfPages();
       doc.setFontSize(8);
@@ -451,15 +518,15 @@ export function usePayments(): UsePaymentsReturn {
           `Generated on ${new Date().toLocaleString()} - Page ${i} of ${pageCount}`,
           105,
           285,
-          { align: 'center' }
+          { align: "center" },
         );
       }
-      
-      doc.save('payment-history.pdf');
-      showSuccess('PDF exported successfully!');
+
+      doc.save("payment-history.pdf");
+      showSuccess("PDF exported successfully!");
     } catch (error) {
-      console.error('Error exporting PDF:', error);
-      showError('Failed to export PDF');
+      console.error("Error exporting PDF:", error);
+      showError("Failed to export PDF");
     }
   };
 
@@ -475,28 +542,28 @@ export function usePayments(): UsePaymentsReturn {
       }
 
       const response = await fetch(`/api/payments/export?${params.toString()}`);
-      
+
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('Export response error:', response.status, errorText);
+        console.error("Export response error:", response.status, errorText);
         throw new Error(`Export failed: ${response.status}`);
       }
 
       // Download the CSV file
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
+      const link = document.createElement("a");
       link.href = url;
-      link.download = `payments-export-${new Date().toISOString().split('T')[0]}.csv`;
+      link.download = `payments-export-${new Date().toISOString().split("T")[0]}.csv`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
 
-      showSuccess('CSV exported successfully!');
+      showSuccess("CSV exported successfully!");
     } catch (error) {
-      console.error('Error exporting CSV:', error);
-      showError('Failed to export CSV');
+      console.error("Error exporting CSV:", error);
+      showError("Failed to export CSV");
     }
   };
 

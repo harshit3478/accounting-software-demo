@@ -21,6 +21,7 @@ import InvoiceTable from "../../components/invoices/InvoiceTable";
 import InvoiceToolbar from "../../components/invoices/InvoiceToolbar";
 import { useInvoices } from "../../hooks/useInvoices";
 import Footer from "@/components/Footer";
+import AbandonInvoiceModal from "../../components/invoices/AbandonInvoiceModal";
 
 function InvoicesPageContent() {
   const { showSuccess, showError, showInfo } = useToastContext();
@@ -90,8 +91,10 @@ function InvoicesPageContent() {
   } = useInvoices(showSuccess, showError, showInfo);
 
   // Shipment Details Modal State
-  const [showShipmentDetailsModal, setShowShipmentDetailsModal] = useState(false);
-  const [viewingShipmentInvoice, setViewingShipmentInvoice] = useState<any>(null);
+  const [showShipmentDetailsModal, setShowShipmentDetailsModal] =
+    useState(false);
+  const [viewingShipmentInvoice, setViewingShipmentInvoice] =
+    useState<any>(null);
 
   // Link Payment Modal State
   const [showLinkModal, setShowLinkModal] = useState(false);
@@ -113,8 +116,8 @@ function InvoicesPageContent() {
 
   const handlePrintPDF = async (invoice: any) => {
     // Open window synchronously (inside user gesture) before any await
-    const w = window.open('about:blank', '_blank');
-    await generateSingleInvoicePDF(invoice, 'print', w);
+    const w = window.open("about:blank", "_blank");
+    await generateSingleInvoicePDF(invoice, "print", w);
   };
 
   // Keyboard shortcuts
@@ -124,7 +127,7 @@ function InvoicesPageContent() {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
         const searchInput = document.querySelector(
-          'input[placeholder*="Search"]'
+          'input[placeholder*="Search"]',
         ) as HTMLInputElement;
         searchInput?.focus();
       }
@@ -160,13 +163,34 @@ function InvoicesPageContent() {
           onExportClick={handleExportCSV}
           onImportClick={() => setShowCSVUploadModal(true)}
         />
-        <InvoiceStats stats={stats} showFiltered={statusFilter !== 'all' || typeFilter !== 'all' || !!searchTerm || !!dateRange} />
+        <InvoiceStats
+          stats={stats}
+          showFiltered={
+            statusFilter !== "all" ||
+            typeFilter !== "all" ||
+            !!searchTerm ||
+            !!dateRange
+          }
+        />
         {customerIdFilter && (
           <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+              />
             </svg>
-            <span>Showing invoices for <strong>{customerNameFilter || "a specific client"}</strong></span>
+            <span>
+              Showing invoices for{" "}
+              <strong>{customerNameFilter || "a specific client"}</strong>
+            </span>
             <button
               onClick={() => setCustomerIdFilter(null)}
               className="ml-auto text-blue-600 hover:text-blue-800 font-medium"
@@ -260,20 +284,41 @@ function InvoicesPageContent() {
         invoice={paymentInvoice}
       />
 
-      <ConfirmModal
-        isOpen={showDeleteConfirm}
-        onClose={() => {
-          setShowDeleteConfirm(false);
-          setDeletingInvoice(null);
-        }}
-        onConfirm={handleDeleteConfirm}
-        title="Deactivate Invoice"
-        message={`Are you sure you want to deactivate invoice ${deletingInvoice?.invoiceNumber}? It will be marked as inactive and hidden from default views.`}
-        confirmText="Deactivate Invoice"
-        cancelText="Cancel"
-        type="danger"
-        isLoading={isDeleting}
-      />
+      {deletingInvoice?.status === "inactive" ||
+      deletingInvoice?.status === "abandoned" ? (
+        <ConfirmModal
+          isOpen={showDeleteConfirm}
+          onClose={() => {
+            setShowDeleteConfirm(false);
+            setDeletingInvoice(null);
+          }}
+          onConfirm={() => handleDeleteConfirm({ targetStatus: "reactivate" })}
+          title="Reactivate Invoice"
+          message={`Are you sure you want to reactivate invoice ${deletingInvoice?.invoiceNumber}?`}
+          confirmText="Reactivate"
+          cancelText="Cancel"
+          type="warning"
+          isLoading={isDeleting}
+        />
+      ) : (
+        <AbandonInvoiceModal
+          isOpen={showDeleteConfirm}
+          invoice={deletingInvoice as any}
+          isSubmitting={isDeleting}
+          onClose={() => {
+            setShowDeleteConfirm(false);
+            setDeletingInvoice(null);
+          }}
+          onConfirm={(payload) => {
+            handleDeleteConfirm({
+              targetStatus: "abandoned",
+              editReason: payload.editReason,
+              paymentAction: payload.paymentAction,
+              targetInvoiceId: payload.targetInvoiceId || null,
+            });
+          }}
+        />
+      )}
 
       <ShipInvoiceModal
         isOpen={showShipModal}
@@ -340,7 +385,13 @@ function InvoicesPageContent() {
 export default function InvoicesPage() {
   return (
     <ToastProvider>
-      <Suspense fallback={<div className="h-screen flex items-center justify-center">Loading invoices...</div>}>
+      <Suspense
+        fallback={
+          <div className="h-screen flex items-center justify-center">
+            Loading invoices...
+          </div>
+        }
+      >
         <InvoicesPageContent />
       </Suspense>
     </ToastProvider>

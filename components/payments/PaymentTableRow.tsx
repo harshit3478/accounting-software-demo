@@ -1,32 +1,39 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { MoreVertical, Printer, Eye, Link2, Edit3 } from 'lucide-react';
-import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
-import { Button } from '../ui/button';
-import { generatePaymentReceiptPDF } from '../../lib/payment-receipt';
-import type { Payment } from '../../hooks/usePayments';
+import { useState } from "react";
+import { MoreVertical, Printer, Eye, Link2, Edit3 } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
+import { Button } from "../ui/button";
+import { generatePaymentReceiptPDF } from "../../lib/payment-receipt";
+import type { Payment } from "../../hooks/usePayments";
 
 interface PaymentTableRowProps {
   payment: Payment;
   onLink?: (payment: Payment) => void;
   onView?: (payment: Payment) => void;
+  onEditPayment?: (payment: Payment) => void;
   onEditNotes?: (payment: Payment) => void;
 }
 
-export default function PaymentTableRow({ payment, onLink, onView, onEditNotes }: PaymentTableRowProps) {
+export default function PaymentTableRow({
+  payment,
+  onLink,
+  onView,
+  onEditPayment,
+  onEditNotes,
+}: PaymentTableRowProps) {
   const [showActionsMenu, setShowActionsMenu] = useState(false);
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
+    return new Date(dateString).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
     });
   };
 
-  const getMethodBadgeStyle = (method: Payment['method']) => {
-    const color = method?.color || '#6B7280';
+  const getMethodBadgeStyle = (method: Payment["method"]) => {
+    const color = method?.color || "#6B7280";
     return {
       backgroundColor: `${color}20`,
       color: color,
@@ -41,17 +48,21 @@ export default function PaymentTableRow({ payment, onLink, onView, onEditNotes }
       date: payment.paymentDate,
       notes: payment.notes,
       method: payment.method,
-      invoice: payment.invoice ? {
-        invoiceNumber: payment.invoice.invoiceNumber,
-        clientName: payment.invoice.clientName,
-        amount: payment.invoice.amount,
-        paidAmount: payment.invoice.amount // Assuming this is available
-      } : payment.paymentMatches?.[0] ? {
-        invoiceNumber: payment.paymentMatches[0].invoice.invoiceNumber,
-        clientName: payment.paymentMatches[0].invoice.clientName,
-        amount: payment.paymentMatches[0].invoice.amount,
-        paidAmount: payment.paymentMatches[0].invoice.amount
-      } : null
+      invoice: payment.invoice
+        ? {
+            invoiceNumber: payment.invoice.invoiceNumber,
+            clientName: payment.invoice.clientName,
+            amount: payment.invoice.amount,
+            paidAmount: payment.invoice.amount, // Assuming this is available
+          }
+        : payment.paymentMatches?.[0]
+          ? {
+              invoiceNumber: payment.paymentMatches[0].invoice.invoiceNumber,
+              clientName: payment.paymentMatches[0].invoice.clientName,
+              amount: payment.paymentMatches[0].invoice.amount,
+              paidAmount: payment.paymentMatches[0].invoice.amount,
+            }
+          : null,
     });
   };
 
@@ -59,10 +70,15 @@ export default function PaymentTableRow({ payment, onLink, onView, onEditNotes }
     handlePrintReceipt();
   };
 
-  const isUnmatched = !payment.invoice && (!payment.paymentMatches || payment.paymentMatches.length === 0);
+  const isUnmatched =
+    !payment.invoice &&
+    (!payment.paymentMatches || payment.paymentMatches.length === 0);
 
   return (
-    <tr className="hover:bg-gray-50 transition-colors" onDoubleClick={handleDoubleClick}>
+    <tr
+      className="hover:bg-gray-50 transition-colors"
+      onDoubleClick={handleDoubleClick}
+    >
       <td className="px-4 py-3 text-sm text-gray-600">
         {formatDate(payment.paymentDate)}
       </td>
@@ -83,11 +99,20 @@ export default function PaymentTableRow({ payment, onLink, onView, onEditNotes }
       </td>
       <td className="px-4 py-3 text-sm text-gray-900">
         {payment.invoice ? (
-          <span className="break-words line-clamp-2" title={payment.invoice.clientName}>{payment.invoice.clientName}</span>
+          <span
+            className="break-words line-clamp-2"
+            title={payment.invoice.clientName}
+          >
+            {payment.invoice.clientName}
+          </span>
         ) : payment.paymentMatches && payment.paymentMatches.length > 0 ? (
           <div className="flex flex-col space-y-1">
             {payment.paymentMatches.map((match) => (
-              <span key={match.id} className="break-words line-clamp-1 text-xs" title={match.invoice.clientName}>
+              <span
+                key={match.id}
+                className="break-words line-clamp-1 text-xs"
+                title={match.invoice.clientName}
+              >
                 {match.invoice.clientName}
               </span>
             ))}
@@ -104,11 +129,14 @@ export default function PaymentTableRow({ payment, onLink, onView, onEditNotes }
           className="px-2 py-1 rounded-full text-xs font-medium inline-block truncate max-w-full"
           style={getMethodBadgeStyle(payment.method)}
         >
-          {payment.method?.name || 'Unknown'}
+          {payment.method?.name || "Unknown"}
         </span>
       </td>
       <td className="px-4 py-3 text-sm text-gray-600">
-        <span className="break-words line-clamp-3" title={payment.notes || undefined}>
+        <span
+          className="break-words line-clamp-3"
+          title={payment.notes || undefined}
+        >
           {payment.notes || <span className="text-gray-400">-</span>}
         </span>
       </td>
@@ -162,6 +190,18 @@ export default function PaymentTableRow({ payment, onLink, onView, onEditNotes }
                 >
                   <Edit3 className="h-4 w-4" />
                   Edit Notes
+                </button>
+              )}
+              {onEditPayment && (
+                <button
+                  onClick={() => {
+                    setShowActionsMenu(false);
+                    onEditPayment(payment);
+                  }}
+                  className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md text-left"
+                >
+                  <Edit3 className="h-4 w-4" />
+                  Edit Payment
                 </button>
               )}
             </div>

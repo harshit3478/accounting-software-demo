@@ -2,10 +2,19 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "../../../../lib/prisma";
 import { requireAuth } from "../../../../lib/auth";
 
+function isStoreCreditCompatibilityError(error: any): boolean {
+  const message = String(error?.message || "");
+  return (
+    message.includes("storeCredit") ||
+    message.includes("Unknown arg") ||
+    error?.code === "P2022"
+  );
+}
+
 // GET /api/customers/[id] — single customer with financial stats
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     await requireAuth();
@@ -15,27 +24,63 @@ export async function GET(
       return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
     }
 
-    const customer = await prisma.customer.findUnique({
-      where: { id },
-      include: {
-        invoices: {
-          select: {
-            id: true,
-            invoiceNumber: true,
-            clientName: true,
-            amount: true,
-            paidAmount: true,
-            status: true,
-            dueDate: true,
-            createdAt: true,
+    let customer: any = null;
+    try {
+      customer = await prisma.customer.findUnique({
+        where: { id },
+        include: {
+          invoices: {
+            select: {
+              id: true,
+              invoiceNumber: true,
+              clientName: true,
+              amount: true,
+              paidAmount: true,
+              status: true,
+              dueDate: true,
+              createdAt: true,
+            },
+            orderBy: { createdAt: "desc" },
           },
-          orderBy: { createdAt: "desc" },
         },
-      },
-    });
+      });
+    } catch (error: any) {
+      if (!isStoreCreditCompatibilityError(error)) {
+        throw error;
+      }
+      customer = await prisma.customer.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone: true,
+          address: true,
+          notes: true,
+          createdAt: true,
+          updatedAt: true,
+          invoices: {
+            select: {
+              id: true,
+              invoiceNumber: true,
+              clientName: true,
+              amount: true,
+              paidAmount: true,
+              status: true,
+              dueDate: true,
+              createdAt: true,
+            },
+            orderBy: { createdAt: "desc" },
+          },
+        },
+      });
+    }
 
     if (!customer) {
-      return NextResponse.json({ error: "Customer not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Customer not found" },
+        { status: 404 },
+      );
     }
 
     // Compute financial stats
@@ -63,7 +108,7 @@ export async function GET(
       if (outstanding > 0 && inv.status !== "paid") {
         const dueDate = new Date(inv.dueDate);
         const daysOverdue = Math.floor(
-          (now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24)
+          (now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24),
         );
 
         if (daysOverdue > 90) {
@@ -83,7 +128,8 @@ export async function GET(
     }
 
     const totalOutstanding = totalRevenue - totalPaid;
-    const outstandingRatio = totalRevenue > 0 ? totalOutstanding / totalRevenue : 0;
+    const outstandingRatio =
+      totalRevenue > 0 ? totalOutstanding / totalRevenue : 0;
 
     // Health score
     let healthScore: "green" | "yellow" | "red" = "green";
@@ -95,6 +141,9 @@ export async function GET(
 
     return NextResponse.json({
       ...customer,
+      storeCredit: (customer as any).storeCredit?.toNumber
+        ? (customer as any).storeCredit.toNumber()
+        : ((customer as any).storeCredit ?? 0),
       stats: {
         totalRevenue,
         totalPaid,
@@ -116,7 +165,7 @@ export async function GET(
     }
     return NextResponse.json(
       { error: "Failed to fetch customer" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -124,7 +173,7 @@ export async function GET(
 // PUT /api/customers/[id] — update customer
 export async function PUT(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     await requireAuth();
@@ -150,6 +199,16 @@ export async function PUT(
         address: address || null,
         notes: notes || null,
       },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        address: true,
+        notes: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     });
 
     return NextResponse.json(customer);
@@ -159,7 +218,7 @@ export async function PUT(
     }
     return NextResponse.json(
       { error: "Failed to update customer" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -167,7 +226,7 @@ export async function PUT(
 // DELETE /api/customers/[id] — delete customer (nullify invoice FKs)
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     await requireAuth();
@@ -192,7 +251,7 @@ export async function DELETE(
     }
     return NextResponse.json(
       { error: "Failed to delete customer" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

@@ -16,6 +16,8 @@ interface PreviewInvoiceModalProps {
   taxType: "fixed" | "percentage";
   discount: number;
   discountType: "fixed" | "percentage";
+  shippingFee?: number;
+  insuranceAmount?: number;
   total: number;
   isLayaway: boolean;
   isSubmitting?: boolean;
@@ -35,6 +37,8 @@ export default function PreviewInvoiceModal({
   taxType,
   discount,
   discountType,
+  shippingFee = 0,
+  insuranceAmount = 0,
   total,
   isLayaway,
   isSubmitting = false,
@@ -227,6 +231,18 @@ export default function PreviewInvoiceModal({
             </span>
             <span className="font-medium text-red-600">
               -${getDiscountAmount().toFixed(2)}
+            </span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-600">Shipping Fee:</span>
+            <span className="font-medium text-gray-900">
+              ${shippingFee.toFixed(2)}
+            </span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-600">Insurance:</span>
+            <span className="font-medium text-gray-900">
+              ${insuranceAmount.toFixed(2)}
             </span>
           </div>
           <div className="border-t border-gray-300 pt-2 mt-2 flex justify-between">

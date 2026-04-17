@@ -7,17 +7,58 @@ import {
   getShipmentFromXps,
 } from "../../../../lib/xps";
 
+function normalizeShipment(data: any) {
+  const shipment = data?.shipment || data?.order || data || null;
+  if (!shipment) return null;
+
+  const trackingNumber =
+    shipment.trackingNumber ||
+    shipment.trackingNo ||
+    shipment.tracking ||
+    shipment.tracking_numbers?.[0] ||
+    shipment.trackingNumbers?.[0] ||
+    null;
+
+  const orderStatus =
+    shipment.orderStatus ||
+    shipment.status ||
+    shipment.fulfillmentStatus ||
+    shipment.shippingStatus ||
+    "Pending";
+
+  const carrier =
+    shipment.carrierCode ||
+    shipment.carrier ||
+    shipment.shippingService ||
+    null;
+
+  const liveTrackingUrl = trackingNumber
+    ? `https://tools.usps.com/go/TrackConfirmAction?tLabels=${encodeURIComponent(trackingNumber)}`
+    : null;
+
+  return {
+    ...shipment,
+    trackingNumber,
+    orderStatus,
+    carrier,
+    liveTrackingUrl,
+  };
+}
+
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
-    const invoiceId = searchParams.get('invoiceId');
+    const invoiceId = searchParams.get("invoiceId");
 
     if (!invoiceId) {
-      return NextResponse.json({ error: "Invoice ID required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Invoice ID required" },
+        { status: 400 },
+      );
     }
 
     const data = await getShipmentFromXps(invoiceId);
-    return NextResponse.json(data);
+    return NextResponse.json(normalizeShipment(data));
   } catch (err: any) {
     console.error("Get shipment error", err);
     return NextResponse.json({ error: err.message }, { status: 500 });
@@ -32,7 +73,7 @@ export async function POST(req: Request) {
     if (!invoiceId) {
       return NextResponse.json(
         { error: "invoiceId is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -44,6 +85,7 @@ export async function POST(req: Request) {
     }
 
     const res = await putOrderToXps(invoice, address || {}, packages || []);
+    const shipment = normalizeShipment(res.raw);
 
     // Save the shipment ID (which corresponds to invoice.id in XPS) to the database
     // so the UI knows this invoice has a pending shipment.
@@ -51,15 +93,21 @@ export async function POST(req: Request) {
       where: { id: Number(invoiceId) },
       data: {
         shipmentId: invoice.id.toString(),
+        trackingNumber: shipment?.trackingNumber || null,
       },
     });
-    
-    return NextResponse.json({ success: true, message: "Order sent to XPS", xps: res, invoice: updatedInvoice });
+
+    return NextResponse.json({
+      success: true,
+      message: "Order sent to XPS",
+      xps: shipment || res,
+      invoice: updatedInvoice,
+    });
   } catch (err: any) {
     console.error("Create shipment error", err);
     return NextResponse.json(
       { error: err?.message || "Unknown error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -75,7 +123,7 @@ export async function PATCH(req: Request) {
       if (!invoiceId)
         return NextResponse.json(
           { error: "shipmentId or invoiceId required" },
-          { status: 400 }
+          { status: 400 },
         );
       invoice = await prisma.invoice.findUnique({
         where: { id: Number(invoiceId) },
@@ -83,7 +131,7 @@ export async function PATCH(req: Request) {
       if (!invoice)
         return NextResponse.json(
           { error: "Invoice not found" },
-          { status: 404 }
+          { status: 404 },
         );
       id = invoice.shipmentId as string | undefined;
     }
@@ -91,42 +139,46 @@ export async function PATCH(req: Request) {
     if (!id)
       return NextResponse.json(
         { error: "Shipment id not found for invoice" },
-        { status: 400 }
+        { status: 400 },
       );
 
     if (!invoice) {
-       invoice = await prisma.invoice.findFirst({ where: { shipmentId: id } });
+      invoice = await prisma.invoice.findFirst({ where: { shipmentId: id } });
     }
 
     if (!invoice) {
-       return NextResponse.json({ error: "Invoice not found for shipment" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Invoice not found for shipment" },
+        { status: 404 },
+      );
     }
 
     // Reuse the PUT order logic to update details
     // Ensure we pass packages if provided, otherwise we might be overwriting with empty
     // Ideally the UI should always send full state on update.
     const res = await putOrderToXps(invoice, address || {}, packages || []);
-
-    const dataToUpdate: any = {
-      // If we got a tracking number from somewhere else we might update it, but putOrder usually doesn't return it
-      // trackingNumber: res.trackingNumber || null, 
-    };
+    const shipment = normalizeShipment(res.raw);
 
     if (invoice) {
-       // Just returning the invoice for now as we didn't change DB state
-      // const updated = await prisma.invoice.update({
-      //   where: { id: invoice.id },
-      //   data: dataToUpdate as any,
-      // });
-      return NextResponse.json({ invoice: invoice, xps: res });
+      const updatedInvoice = await prisma.invoice.update({
+        where: { id: invoice.id },
+        data: {
+          trackingNumber:
+            shipment?.trackingNumber || invoice.trackingNumber || null,
+        } as any,
+      });
+      return NextResponse.json({
+        invoice: updatedInvoice,
+        xps: shipment || res,
+      });
     }
 
-    return NextResponse.json({ xps: res });
+    return NextResponse.json({ xps: shipment || res });
   } catch (err: any) {
     console.error("Update shipment error", err);
     return NextResponse.json(
       { error: err?.message || "Unknown error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -142,7 +194,7 @@ export async function DELETE(req: Request) {
       if (!invoiceId)
         return NextResponse.json(
           { error: "shipmentId or invoiceId required" },
-          { status: 400 }
+          { status: 400 },
         );
       invoice = await prisma.invoice.findUnique({
         where: { id: Number(invoiceId) },
@@ -150,7 +202,7 @@ export async function DELETE(req: Request) {
       if (!invoice)
         return NextResponse.json(
           { error: "Invoice not found" },
-          { status: 404 }
+          { status: 404 },
         );
       id = invoice.shipmentId as string | undefined;
     }
@@ -158,7 +210,7 @@ export async function DELETE(req: Request) {
     if (!id)
       return NextResponse.json(
         { error: "Shipment id not found for invoice" },
-        { status: 400 }
+        { status: 400 },
       );
 
     const res = await cancelShipmentWithXps(id);
@@ -180,7 +232,7 @@ export async function DELETE(req: Request) {
     console.error("Cancel shipment error", err);
     return NextResponse.json(
       { error: err?.message || "Unknown error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

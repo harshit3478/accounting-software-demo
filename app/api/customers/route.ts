@@ -2,6 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "../../../lib/prisma";
 import { requireAuth } from "../../../lib/auth";
 
+function isStoreCreditCompatibilityError(error: any): boolean {
+  const message = String(error?.message || "");
+  return (
+    message.includes("storeCredit") ||
+    message.includes("Unknown arg") ||
+    error?.code === "P2022"
+  );
+}
+
 // GET /api/customers — list with search + pagination
 export async function GET(request: NextRequest) {
   try {
@@ -25,20 +34,53 @@ export async function GET(request: NextRequest) {
 
     if (all) {
       // Return all customers (for autocomplete dropdowns)
-      const customers = await prisma.customer.findMany({
-        where,
-        orderBy: { name: "asc" },
-        select: { id: true, name: true, email: true, phone: true },
-      });
-      return NextResponse.json(customers);
+      let customers: any[] = [];
+      try {
+        customers = await prisma.customer.findMany({
+          where,
+          orderBy: { name: "asc" },
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+            storeCredit: true,
+          },
+        });
+      } catch (error: any) {
+        if (!isStoreCreditCompatibilityError(error)) {
+          throw error;
+        }
+        customers = await prisma.customer.findMany({
+          where,
+          orderBy: { name: "asc" },
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+          },
+        });
+      }
+
+      return NextResponse.json(
+        customers.map((c) => ({
+          ...c,
+          storeCredit: (c as any).storeCredit?.toNumber
+            ? (c as any).storeCredit.toNumber()
+            : ((c as any).storeCredit ?? 0),
+        })),
+      );
     }
 
     const sortBy = searchParams.get("sortBy") || "revenue";
     const top = searchParams.get("top"); // e.g. "10" for top 10
 
     // Fetch customers with their invoices for stats calculation
-    const [customersRaw, total] = await Promise.all([
-      prisma.customer.findMany({
+    let customersRaw: any[] = [];
+    const total = await prisma.customer.count({ where });
+    try {
+      customersRaw = await prisma.customer.findMany({
         where,
         skip: top ? undefined : skip,
         take: top ? parseInt(top) : limit,
@@ -54,9 +96,37 @@ export async function GET(request: NextRequest) {
             },
           },
         },
-      }),
-      prisma.customer.count({ where }),
-    ]);
+      });
+    } catch (error: any) {
+      if (!isStoreCreditCompatibilityError(error)) {
+        throw error;
+      }
+      customersRaw = await prisma.customer.findMany({
+        where,
+        skip: top ? undefined : skip,
+        take: top ? parseInt(top) : limit,
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone: true,
+          address: true,
+          notes: true,
+          createdAt: true,
+          updatedAt: true,
+          _count: { select: { invoices: true } },
+          invoices: {
+            select: {
+              amount: true,
+              paidAmount: true,
+              status: true,
+              dueDate: true,
+              createdAt: true,
+            },
+          },
+        },
+      });
+    }
 
     const now = new Date();
 
@@ -81,7 +151,8 @@ export async function GET(request: NextRequest) {
         const outstanding = amount - paid;
         if (outstanding > 0 && inv.status !== "paid") {
           const daysOverdue = Math.floor(
-            (now.getTime() - new Date(inv.dueDate).getTime()) / (1000 * 60 * 60 * 24)
+            (now.getTime() - new Date(inv.dueDate).getTime()) /
+              (1000 * 60 * 60 * 24),
           );
           if (daysOverdue > 0) overdueCount++;
           if (daysOverdue > 60) aging60Plus += outstanding;
@@ -89,7 +160,8 @@ export async function GET(request: NextRequest) {
       }
 
       const totalOutstanding = totalRevenue - totalPaid;
-      const outstandingRatio = totalRevenue > 0 ? totalOutstanding / totalRevenue : 0;
+      const outstandingRatio =
+        totalRevenue > 0 ? totalOutstanding / totalRevenue : 0;
 
       let healthScore: "green" | "yellow" | "red" = "green";
       if (aging60Plus > 0 || outstandingRatio > 0.5) {
@@ -102,6 +174,9 @@ export async function GET(request: NextRequest) {
       const { invoices: _, ...customerData } = c;
       return {
         ...customerData,
+        storeCredit: (c as any).storeCredit?.toNumber
+          ? (c as any).storeCredit.toNumber()
+          : ((c as any).storeCredit ?? 0),
         stats: {
           totalRevenue,
           totalPaid,
@@ -140,7 +215,10 @@ export async function GET(request: NextRequest) {
     if (error.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    return NextResponse.json({ error: "Failed to fetch customers" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to fetch customers" },
+      { status: 500 },
+    );
   }
 }
 
@@ -163,6 +241,16 @@ export async function POST(request: NextRequest) {
         address: address || null,
         notes: notes || null,
       },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        address: true,
+        notes: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     });
 
     return NextResponse.json(customer, { status: 201 });
@@ -170,6 +258,9 @@ export async function POST(request: NextRequest) {
     if (error.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    return NextResponse.json({ error: "Failed to create customer" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to create customer" },
+      { status: 500 },
+    );
   }
 }

@@ -1,17 +1,22 @@
-'use client';
+"use client";
 
-import { useState, Suspense } from 'react';
-import { useRouter } from 'next/navigation';
-import Navigation from '../../components/Navigation';
-import Pagination from '../../components/Pagination';
-import { RecordPaymentModal, ViewPaymentModal, LinkInvoiceModal } from '../../components/payments';
-import { ToastProvider, useToastContext } from '../../components/ToastContext';
-import CSVUploadModal from '../../components/CSVUploadModal';
-import PaymentToolbar from '../../components/payments/PaymentToolbar';
-import PaymentSourceCards from '../../components/payments/PaymentSourceCards';
-import PaymentTable from '../../components/payments/PaymentTable';
-import { usePayments } from '../../hooks/usePayments';
-import Footer from '@/components/Footer';
+import { useState, Suspense } from "react";
+import { useRouter } from "next/navigation";
+import Navigation from "../../components/Navigation";
+import Pagination from "../../components/Pagination";
+import {
+  RecordPaymentModal,
+  ViewPaymentModal,
+  LinkInvoiceModal,
+} from "../../components/payments";
+import EditPaymentModal from "../../components/payments/EditPaymentModal";
+import { ToastProvider, useToastContext } from "../../components/ToastContext";
+import CSVUploadModal from "../../components/CSVUploadModal";
+import PaymentToolbar from "../../components/payments/PaymentToolbar";
+import PaymentSourceCards from "../../components/payments/PaymentSourceCards";
+import PaymentTable from "../../components/payments/PaymentTable";
+import { usePayments } from "../../hooks/usePayments";
+import Footer from "@/components/Footer";
 
 function PaymentsPageContent() {
   const router = useRouter();
@@ -57,6 +62,8 @@ function PaymentsPageContent() {
   // Link Invoice Modal State
   const [showLinkModal, setShowLinkModal] = useState(false);
   const [linkingPayment, setLinkingPayment] = useState<any>(null);
+  const [showEditPaymentModal, setShowEditPaymentModal] = useState(false);
+  const [editingPayment, setEditingPayment] = useState<any>(null);
 
   const handleOpenLinkModal = (payment: any) => {
     setLinkingPayment(payment);
@@ -68,63 +75,77 @@ function PaymentsPageContent() {
     setShowViewModal(true);
   };
 
+  const handleEditPayment = (payment: any) => {
+    setEditingPayment(payment);
+    setShowEditPaymentModal(true);
+  };
+
   const handleEditNotes = async (payment: any) => {
-    const newNotes = prompt('Edit payment notes:', payment.notes || '');
+    const newNotes = prompt("Edit payment notes:", payment.notes || "");
     if (newNotes !== null) {
+      const editReason = prompt("Reason for this edit:");
+      if (editReason === null || !editReason.trim()) {
+        showError("Edit reason is required");
+        return;
+      }
+
       try {
         const response = await fetch(`/api/payments/${payment.id}/notes`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ notes: newNotes.trim() || null })
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            notes: newNotes.trim() || null,
+            editReason: editReason.trim(),
+          }),
         });
-        
+
         if (response.ok) {
-          showSuccess('Notes updated successfully!');
+          showSuccess("Notes updated successfully!");
           fetchPayments();
         } else {
-          showError('Failed to update notes');
+          showError("Failed to update notes");
         }
       } catch (error) {
-        showError('Failed to update notes');
+        showError("Failed to update notes");
       }
     }
   };
 
   const handleSync = async () => {
-    showSuccess('Sync started...');
+    showSuccess("Sync started...");
     setIsSyncing(true);
     try {
-      const res = await fetch('/api/quickbooks/sync', {
-        method: 'POST',
+      const res = await fetch("/api/quickbooks/sync", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json'
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          daysBack: 30 // Sync last 30 days
-        })
+          daysBack: 30, // Sync last 30 days
+        }),
       });
-      
+
       const data = await res.json();
-      
+
       if (res.ok) {
-        showSuccess(`Sync complete! Created: ${data.created}, Updated: ${data.updated}`);
+        showSuccess(
+          `Sync complete! Created: ${data.created}, Updated: ${data.updated}`,
+        );
         fetchPayments(); // Refresh payments list
       } else {
         showError(`Sync failed: ${data.error}`);
       }
     } catch (error) {
-      console.error('Sync error:', error);
-      showError('Failed to sync with QuickBooks');
+      console.error("Sync error:", error);
+      showError("Failed to sync with QuickBooks");
     } finally {
       setIsSyncing(false);
     }
   };
 
   // Check if any filters are active
-  const isFiltered = 
-    filterMethod !== 'all' || 
-    searchQuery.trim() !== '' || 
-    dateRange !== null;
+  const isFiltered =
+    filterMethod !== "all" || searchQuery.trim() !== "" || dateRange !== null;
 
   return (
     <div className="bg-gray-50 h-screen flex flex-col overflow-hidden">
@@ -145,7 +166,7 @@ function PaymentsPageContent() {
           onImportClick={() => setShowCSVUploadModal(true)}
           onSyncClick={handleSync}
           isSyncing={isSyncing}
-          onMatchClick={() => router.push('/payments/matching')}
+          onMatchClick={() => router.push("/payments/matching")}
           unmatchedCount={unmatchedCount}
           paymentMethods={paymentMethods}
         />
@@ -170,6 +191,7 @@ function PaymentsPageContent() {
             onSort={handleSort}
             onLink={handleOpenLinkModal}
             onView={handleViewPayment}
+            onEditPayment={handleEditPayment}
             onEditNotes={handleEditNotes}
             totalItems={totalItems}
           >
@@ -190,7 +212,7 @@ function PaymentsPageContent() {
         onClose={() => setShowRecordModal(false)}
         onSuccess={() => {
           fetchPayments();
-          showSuccess('Payment recorded successfully!');
+          showSuccess("Payment recorded successfully!");
         }}
       />
 
@@ -201,6 +223,19 @@ function PaymentsPageContent() {
           setViewingPayment(null);
         }}
         payment={viewingPayment}
+      />
+
+      <EditPaymentModal
+        isOpen={showEditPaymentModal}
+        onClose={() => {
+          setShowEditPaymentModal(false);
+          setEditingPayment(null);
+        }}
+        payment={editingPayment}
+        onSuccess={() => {
+          fetchPayments();
+          showSuccess("Payment updated successfully!");
+        }}
       />
 
       <LinkInvoiceModal
@@ -220,7 +255,9 @@ function PaymentsPageContent() {
         isOpen={showCSVUploadModal}
         onClose={() => setShowCSVUploadModal(false)}
         onSuccess={() => {
-          showSuccess('Payments uploaded successfully! Use Payment Matching to link them to invoices.');
+          showSuccess(
+            "Payments uploaded successfully! Use Payment Matching to link them to invoices.",
+          );
           fetchPayments();
         }}
         title="Bulk Upload Payments"
@@ -236,7 +273,13 @@ function PaymentsPageContent() {
 export default function PaymentsPage() {
   return (
     <ToastProvider>
-      <Suspense fallback={<div className="h-screen flex items-center justify-center">Loading payments...</div>}>
+      <Suspense
+        fallback={
+          <div className="h-screen flex items-center justify-center">
+            Loading payments...
+          </div>
+        }
+      >
         <PaymentsPageContent />
       </Suspense>
     </ToastProvider>

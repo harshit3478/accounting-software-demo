@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import type { InvoiceFilter } from '../../hooks/useInvoices';
-import DateRangePicker from '../DateRangePicker';
+import { useState } from "react";
+import type { InvoiceFilter } from "../../hooks/useInvoices";
+import DateRangePicker from "../DateRangePicker";
 
 interface InvoiceFiltersProps {
   filter: InvoiceFilter;
@@ -31,13 +31,46 @@ export default function InvoiceFilters({
 }: InvoiceFiltersProps) {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const filters: { value: InvoiceFilter; label: string; color: string }[] = [
-    { value: 'all', label: 'All', color: 'bg-gray-100 text-gray-800 hover:bg-gray-200' },
-    { value: 'pending', label: 'Pending', color: 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200' },
-    { value: 'paid', label: 'Paid', color: 'bg-green-100 text-green-800 hover:bg-green-200' },
-    { value: 'overdue', label: 'Overdue', color: 'bg-red-100 text-red-800 hover:bg-red-200' },
-    { value: 'partial', label: 'Partial', color: 'bg-blue-100 text-blue-800 hover:bg-blue-200' },
-    { value: 'layaway', label: 'Layaway', color: 'bg-purple-100 text-purple-800 hover:bg-purple-200' },
-    { value: 'inactive', label: 'Inactive', color: 'bg-gray-200 text-gray-600 hover:bg-gray-300' },
+    {
+      value: "all",
+      label: "All",
+      color: "bg-gray-100 text-gray-800 hover:bg-gray-200",
+    },
+    {
+      value: "pending",
+      label: "Pending",
+      color: "bg-yellow-100 text-yellow-800 hover:bg-yellow-200",
+    },
+    {
+      value: "paid",
+      label: "Paid",
+      color: "bg-green-100 text-green-800 hover:bg-green-200",
+    },
+    {
+      value: "overdue",
+      label: "Overdue",
+      color: "bg-red-100 text-red-800 hover:bg-red-200",
+    },
+    {
+      value: "partial",
+      label: "Partial",
+      color: "bg-blue-100 text-blue-800 hover:bg-blue-200",
+    },
+    {
+      value: "abandoned",
+      label: "Abandoned",
+      color: "bg-orange-100 text-orange-800 hover:bg-orange-200",
+    },
+    {
+      value: "layaway",
+      label: "Layaway",
+      color: "bg-purple-100 text-purple-800 hover:bg-purple-200",
+    },
+    {
+      value: "inactive",
+      label: "Inactive",
+      color: "bg-gray-200 text-gray-600 hover:bg-gray-300",
+    },
   ];
 
   return (
@@ -50,8 +83,8 @@ export default function InvoiceFilters({
             onClick={() => onFilterChange(f.value)}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
               filter === f.value
-                ? f.color.replace('hover:', '')
-                : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                ? f.color.replace("hover:", "")
+                : "bg-gray-50 text-gray-600 hover:bg-gray-100"
             }`}
           >
             {f.label}
@@ -94,26 +127,39 @@ export default function InvoiceFilters({
                   onClick={() => setShowDatePicker(!showDatePicker)}
                   className={`px-4 py-2 border rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
                     dateRange
-                      ? 'bg-indigo-50 border-indigo-300 text-indigo-700'
-                      : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                      ? "bg-indigo-50 border-indigo-300 text-indigo-700"
+                      : "bg-white border-gray-300 text-gray-700 hover:bg-gray-50"
                   }`}
                 >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  <svg
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                    />
                   </svg>
-                  {dateRange ? 'Date Range Active' : 'Filter by Date'}
+                  {dateRange ? "Date Range Active" : "Filter by Date"}
                 </button>
                 {showDatePicker && (
                   <div className="absolute right-0 mt-2 z-10">
                     <DateRangePicker
                       value={{
-                        startDate: dateRange?.start || '',
-                        endDate: dateRange?.end || '',
-                        preset: 'custom'
+                        startDate: dateRange?.start || "",
+                        endDate: dateRange?.end || "",
+                        preset: "custom",
                       }}
                       onChange={(range) => {
                         if (range.startDate && range.endDate) {
-                          onDateRangeChange({ start: range.startDate, end: range.endDate });
+                          onDateRangeChange({
+                            start: range.startDate,
+                            end: range.endDate,
+                          });
                         } else {
                           onDateRangeChange(null);
                         }
@@ -144,11 +190,23 @@ export default function InvoiceFilters({
         {/* Active Date Range Display */}
         {dateRange && (
           <div className="flex items-center gap-2 text-sm text-indigo-700 bg-indigo-50 px-3 py-2 rounded-lg">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+              />
             </svg>
             <span>
-              Showing invoices from {new Date(dateRange.start).toLocaleDateString()} to {new Date(dateRange.end).toLocaleDateString()}
+              Showing invoices from{" "}
+              {new Date(dateRange.start).toLocaleDateString()} to{" "}
+              {new Date(dateRange.end).toLocaleDateString()}
             </span>
             <button
               onClick={() => onDateRangeChange?.(null)}

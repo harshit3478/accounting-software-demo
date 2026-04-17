@@ -21,6 +21,7 @@ enum InvoiceStatus {
   pending
   overdue
   partial
+  abandoned
   inactive
 }
 
@@ -40,30 +41,34 @@ enum RegularizationType {
 }
 
 model User {
-  id           Int      @id @default(autoincrement())
-  email        String   @unique
+  id           Int       @id @default(autoincrement())
+  email        String    @unique
   passwordHash String?
   otpCode      String?
   otpExpiresAt DateTime?
-  role         Role     @default(accountant)
+  role         Role      @default(accountant)
   privileges   Json?
   name         String
-  googleId     String?  @unique
+  googleId     String?   @unique
   resetToken   String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   invoices                   Invoice[]
   payments                   Payment[]
   documents                  Document[]
   paymentMatches             PaymentInvoiceMatch[]
-  deletedDocumentsAsUploader DeletedDocument[]       @relation("DeletedDocOriginalUploader")
-  deletedDocumentsAsDeleter  DeletedDocument[]       @relation("DeletedDocDeleter")
+  deletedDocumentsAsUploader DeletedDocument[]           @relation("DeletedDocOriginalUploader")
+  deletedDocumentsAsDeleter  DeletedDocument[]           @relation("DeletedDocDeleter")
   quickbooksConnection       QuickBooksConnection?
   // Terms created by this user
   termsCreated               Term[]
   attendanceEntries          AttendanceEntry[]
   regularizationRequests     RegularizationRequest[]
+  invoiceEdits               InvoiceEditHistory[]
+  paymentEdits               PaymentEditHistory[]
+  creditTransactions         CustomerCreditTransaction[]
+  shippingFeeRulesCreated    ShippingFeeRule[]
 
   @@map("users")
 }
@@ -83,15 +88,18 @@ model Invoice {
   items Json? // [{name, quantity, pricePerItem}]
 
   // Financial details
-  subtotal   Decimal @db.Decimal(10, 2)
-  tax        Decimal @default(0) @db.Decimal(10, 2)
-  discount   Decimal @default(0) @db.Decimal(10, 2)
-  amount     Decimal @db.Decimal(10, 2) // Total amount
-  paidAmount Decimal @default(0) @db.Decimal(10, 2) // Track partial payments
+  subtotal        Decimal @db.Decimal(10, 2)
+  tax             Decimal @default(0) @db.Decimal(10, 2)
+  discount        Decimal @default(0) @db.Decimal(10, 2)
+  shippingFee     Decimal @default(0) @db.Decimal(10, 2)
+  insuranceAmount Decimal @default(0) @db.Decimal(10, 2)
+  amount          Decimal @db.Decimal(10, 2) // Total amount
+  paidAmount      Decimal @default(0) @db.Decimal(10, 2) // Track partial payments
 
-  dueDate   DateTime
-  status    InvoiceStatus @default(pending)
-  isLayaway Boolean       @default(false)
+  dueDate       DateTime
+  dueDateReason String?       @db.Text
+  status        InvoiceStatus @default(pending)
+  isLayaway     Boolean       @default(false)
 
   description String?
   createdAt   DateTime @default(now())
@@ -102,17 +110,40 @@ model Invoice {
   trackingNumber String? @db.VarChar(255)
 
   // Terms and conditions attached to this invoice (snapshot stored for immutability)
-  termsId       Int?
-  termsSnapshot Json?
+  termsId           Int?
+  termsSnapshot     Json?
+  shippingFeeRuleId Int?
 
-  user           User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  customer       Customer?             @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  payments       Payment[]
-  paymentMatches PaymentInvoiceMatch[]
-  terms          Term?                 @relation(fields: [termsId], references: [id], onDelete: SetNull)
-  layawayPlan    LayawayPlan?
+  user               User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  customer           Customer?                   @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  payments           Payment[]
+  paymentMatches     PaymentInvoiceMatch[]
+  editHistory        InvoiceEditHistory[]
+  creditTransactions CustomerCreditTransaction[]
+  terms              Term?                       @relation(fields: [termsId], references: [id], onDelete: SetNull)
+  layawayPlan        LayawayPlan?
+  shippingFeeRule    ShippingFeeRule?            @relation(fields: [shippingFeeRuleId], references: [id], onDelete: SetNull)
 
   @@map("invoices")
+}
+
+model ShippingFeeRule {
+  id        Int      @id @default(autoincrement())
+  name      String
+  minAmount Decimal? @db.Decimal(10, 2)
+  maxAmount Decimal? @db.Decimal(10, 2)
+  fee       Decimal  @db.Decimal(10, 2)
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdBy Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  creator  User      @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+  invoices Invoice[]
+
+  @@index([isActive, sortOrder])
+  @@map("shipping_fee_rules")
 }
 
 model Payment {
@@ -139,10 +170,12 @@ model Payment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  invoice        Invoice?              @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  user           User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  method         PaymentMethodEntry    @relation(fields: [methodId], references: [id])
-  paymentMatches PaymentInvoiceMatch[]
+  invoice            Invoice?                    @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  user               User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  method             PaymentMethodEntry          @relation(fields: [methodId], references: [id])
+  paymentMatches     PaymentInvoiceMatch[]
+  editHistory        PaymentEditHistory[]
+  creditTransactions CustomerCreditTransaction[]
 
   @@map("payments")
 }
@@ -302,16 +335,18 @@ model AttendanceEntry {
 }
 
 model Customer {
-  id        Int      @id @default(autoincrement())
-  name      String
-  email     String?
-  phone     String?
-  address   String?  @db.Text
-  notes     String?  @db.Text
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          Int      @id @default(autoincrement())
+  name        String
+  email       String?
+  phone       String?
+  address     String?  @db.Text
+  notes       String?  @db.Text
+  storeCredit Decimal  @default(0) @db.Decimal(10, 2)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  invoices Invoice[]
+  invoices           Invoice[]
+  creditTransactions CustomerCreditTransaction[]
 
   @@map("customers")
 }
@@ -383,4 +418,54 @@ model RegularizationRequest {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("regularization_requests")
+}
+
+model InvoiceEditHistory {
+  id         Int      @id @default(autoincrement())
+  invoiceId  Int
+  editedById Int
+  reason     String   @db.Text
+  changes    Json?
+  createdAt  DateTime @default(now())
+
+  invoice  Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  editedBy User    @relation(fields: [editedById], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId, createdAt])
+  @@map("invoice_edit_history")
+}
+
+model PaymentEditHistory {
+  id         Int      @id @default(autoincrement())
+  paymentId  Int
+  editedById Int
+  reason     String   @db.Text
+  changes    Json?
+  createdAt  DateTime @default(now())
+
+  payment  Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  editedBy User    @relation(fields: [editedById], references: [id], onDelete: Cascade)
+
+  @@index([paymentId, createdAt])
+  @@map("payment_edit_history")
+}
+
+model CustomerCreditTransaction {
+  id          Int      @id @default(autoincrement())
+  customerId  Int
+  amount      Decimal  @db.Decimal(10, 2)
+  type        String   @default("credit") // "credit" or "debit"
+  reason      String?  @db.Text
+  paymentId   Int?
+  invoiceId   Int?
+  createdById Int?
+  createdAt   DateTime @default(now())
+
+  customer  Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  payment   Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  invoice   Invoice? @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  createdBy User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([customerId, createdAt])
+  @@map("customer_credit_transactions")
 }

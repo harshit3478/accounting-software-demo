@@ -27,6 +27,7 @@ export interface XpsOrderPayload {
   fulfillmentStatus: string;
   shippingService?: string;
   shippingTotal?: string;
+  orderGroup?: string;
   weightUnit: "lb" | "kg";
   dimUnit: "in" | "cm";
   dueByDate?: string;
@@ -58,7 +59,11 @@ export interface XpsOrderPayload {
   packages?: XpsPackage[];
 }
 
-export async function putOrderToXps(invoice: any, address: XpsAddress, packages: XpsPackage[]) {
+export async function putOrderToXps(
+  invoice: any,
+  address: XpsAddress,
+  packages: XpsPackage[],
+) {
   const base = process.env.XPS_API_BASE || process.env.NEXT_PUBLIC_XPS_API_BASE;
   const key = process.env.XPS_API_KEY || process.env.NEXT_PUBLIC_XPS_API_KEY;
   const customerId = process.env.XPS_CUSTOMER_ID;
@@ -71,14 +76,20 @@ export async function putOrderToXps(invoice: any, address: XpsAddress, packages:
     throw new Error("XPS Customer ID or Integration ID not configured");
   }
 
+  const normalizedPackages =
+    Array.isArray(packages) && packages.length > 0
+      ? packages
+      : [{ weight: "1" }];
+  const invoiceInsurance = Number(invoice?.insuranceAmount || 0);
+
   // Construct payload
   const payload: XpsOrderPayload = {
     orderId: invoice.id.toString(),
-    orderDate: new Date().toISOString().split('T')[0],
+    orderDate: new Date().toISOString().split("T")[0],
     orderNumber: invoice.invoiceNumber,
     fulfillmentStatus: "pending",
     weightUnit: "lb", // Defaulting to lb, should be configurable
-    dimUnit: "in",    // Defaulting to in
+    dimUnit: "in", // Defaulting to in
     sender: {
       name: process.env.XPS_SENDER_NAME || "My Company",
       company: process.env.XPS_SENDER_NAME || "My Company",
@@ -88,7 +99,7 @@ export async function putOrderToXps(invoice: any, address: XpsAddress, packages:
       state: process.env.XPS_SENDER_STATE || "ST",
       zip: process.env.XPS_SENDER_ZIP || "00000",
       country: process.env.XPS_SENDER_COUNTRY || "US",
-      phone: process.env.XPS_SENDER_PHONE
+      phone: process.env.XPS_SENDER_PHONE,
     },
     receiver: {
       name: address.name || "Unknown",
@@ -100,42 +111,48 @@ export async function putOrderToXps(invoice: any, address: XpsAddress, packages:
       zip: address.postalCode || "",
       country: address.country || "US",
       phone: address.phone,
-      email: address.email
+      email: address.email,
     },
     shippingService: "Ground",
     shippingTotal: invoice.amount ? invoice.amount.toString() : "0.00",
-    dueByDate: invoice.dueDate ? new Date(invoice.dueDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+    dueByDate: invoice.dueDate
+      ? new Date(invoice.dueDate).toISOString().split("T")[0]
+      : new Date().toISOString().split("T")[0],
     orderGroup: "Web Orders",
-    items: Array.isArray(invoice.items) 
+    items: Array.isArray(invoice.items)
       ? invoice.items.map((item: any, idx: number) => ({
           productId: (idx + 1).toString(),
           sku: (idx + 1).toString(),
           title: item.name || "Item",
           price: item.pricePerItem ? item.pricePerItem.toString() : "0",
           quantity: item.quantity ? Math.round(Number(item.quantity)) : 1,
-          weight: "0", 
+          weight: "0",
           imgUrl: "",
           htsNumber: "",
           countryOfOrigin: "US",
-          lineId: (idx + 1).toString()
+          lineId: (idx + 1).toString(),
         }))
-      : [{
-          productId: "1",
-          sku: "1",
-          title: "General Item",
-          price: invoice.amount ? invoice.amount.toString() : "0",
-          quantity: 1,
-          weight: packages[0]?.weight || "1",
-          imgUrl: "",
-          htsNumber: "",
-          countryOfOrigin: "US",
-          lineId: "1"
-      }],
-    packages: packages.map(p => ({
+      : [
+          {
+            productId: "1",
+            sku: "1",
+            title: "General Item",
+            price: invoice.amount ? invoice.amount.toString() : "0",
+            quantity: 1,
+            weight: packages[0]?.weight || "1",
+            imgUrl: "",
+            htsNumber: "",
+            countryOfOrigin: "US",
+            lineId: "1",
+          },
+        ],
+    packages: normalizedPackages.map((p, idx) => ({
       ...p,
-      insuranceAmount: p.insuranceAmount || "0",
-      declaredValue: p.declaredValue || "0"
-    }))
+      insuranceAmount:
+        p.insuranceAmount ?? (idx === 0 ? invoiceInsurance.toFixed(2) : "0"),
+      declaredValue:
+        p.declaredValue || (invoice.amount ? invoice.amount.toString() : "0"),
+    })),
   };
 
   const url = `${base.replace(/\/+$/, "")}/customers/${customerId}/integrations/${integrationId}/orders/${invoice.id}`;
@@ -144,13 +161,13 @@ export async function putOrderToXps(invoice: any, address: XpsAddress, packages:
     method: "PUT",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `RSIS ${key}`, // Correct auth format
+      Authorization: `RSIS ${key}`, // Correct auth format
     },
     body: JSON.stringify(payload),
   });
 
   const data = await res.json();
-  
+
   if (!res.ok) {
     const msg = data?.error || "XPS put order failed";
     throw new Error(msg);
@@ -159,13 +176,17 @@ export async function putOrderToXps(invoice: any, address: XpsAddress, packages:
   return { success: true, raw: data };
 }
 
-// In XPS, PUT /orders will create or update the order. 
+// In XPS, PUT /orders will create or update the order.
 // We reuse putOrderToXps logic by importing it or extracting the logic.
-// However, since we need the invoice object to construct the payload, 
+// However, since we need the invoice object to construct the payload,
 // and this function signature only has shipmentId/address, we need to fetch the invoice first or change the signature.
 // For now, we are handling the "Update" logic directly in the route handler by calling putOrderToXps again.
 // So we can essentially alias this or leave it as a placeholder that explains the architecture.
-export async function updateShipmentWithXps(shipmentId: string, address: XpsAddress, packages: XpsPackage[]) {
+export async function updateShipmentWithXps(
+  shipmentId: string,
+  address: XpsAddress,
+  packages: XpsPackage[],
+) {
   // This function is technically redundant as PUT order handles updates.
   // The API route calls putOrderToXps directly.
   return true;
@@ -176,7 +197,7 @@ export async function cancelShipmentWithXps(shipmentId: string) {
   // Usually you just archive it or void the label if printed.
   // For 'pending' orders, we might DELETE /orders/{orderId} if supported
   // But standard practice is just to ignore it or void label.
-  
+
   const base = process.env.XPS_API_BASE || process.env.NEXT_PUBLIC_XPS_API_BASE;
   const key = process.env.XPS_API_KEY || process.env.NEXT_PUBLIC_XPS_API_KEY;
   const customerId = process.env.XPS_CUSTOMER_ID;
@@ -185,19 +206,19 @@ export async function cancelShipmentWithXps(shipmentId: string) {
   // Attempt to delete/cancel if API supports it, otherwise just return true
   // Docs: DELETE /customers/{customerId}/integrations/{integrationId}/orders/{orderId}
   const url = `${base?.replace(/\/+$/, "")}/customers/${customerId}/integrations/${integrationId}/orders/${shipmentId}`;
-  
+
   try {
-      await fetch(url, {
-        method: "DELETE",
-        headers: {
-            "Authorization": `RSIS ${key}`
-        }
-      });
-      return true;
+    await fetch(url, {
+      method: "DELETE",
+      headers: {
+        Authorization: `RSIS ${key}`,
+      },
+    });
+    return true;
   } catch (e) {
-      console.error("Failed to cancel XPS order", e);
-      // We don't want to block our local cancel if remote fails
-      return false;
+    console.error("Failed to cancel XPS order", e);
+    // We don't want to block our local cancel if remote fails
+    return false;
   }
 }
 
@@ -210,33 +231,33 @@ export async function getShipmentFromXps(invoiceId: string) {
   // Direct access via /orders/{id} is forbidden (403). We must search instead.
   // Using keyword search to find the specific order.
   const url = `${base?.replace(/\/+$/, "")}/customers/${customerId}/integrations/${integrationId}/orders?keyword=${invoiceId}`;
-  
+
   console.log(`[XPS] Fetching shipment details via search: ${url}`);
 
   const res = await fetch(url, {
     method: "GET",
-    headers: { "Authorization": `RSIS ${key}` }
+    headers: { Authorization: `RSIS ${key}` },
   });
 
   if (!res.ok) {
     console.error(`[XPS] Fetch failed: ${res.status} ${res.statusText}`);
     try {
-        const errBody = await res.text();
-        console.error(`[XPS] Error body:`, errBody);
+      const errBody = await res.text();
+      console.error(`[XPS] Error body:`, errBody);
     } catch (e) {}
     return null;
   }
 
   const data = await res.json();
-  
+
   // Find the exact order from the list
   if (data && data.orders && Array.isArray(data.orders)) {
-      const match = data.orders.find((order: any) => order.orderId === invoiceId);
-      if (match) {
-          return match;
-      }
+    const match = data.orders.find((order: any) => order.orderId === invoiceId);
+    if (match) {
+      return match;
+    }
   }
-  
+
   console.log(`[XPS] Order ${invoiceId} not found in search results`);
   return null;
 }

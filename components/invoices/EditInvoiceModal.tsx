@@ -1,10 +1,10 @@
-'use client';
+"use client";
 
-import { useState, useEffect, useRef } from 'react';
-import Modal from './Modal';
-import InvoiceItemsEditor from './InvoiceItemsEditor';
-import InvoiceSummary from './InvoiceSummary';
-import { InvoiceItem } from './types';
+import { useState, useEffect, useRef } from "react";
+import Modal from "./Modal";
+import InvoiceItemsEditor from "./InvoiceItemsEditor";
+import InvoiceSummary from "./InvoiceSummary";
+import { InvoiceItem } from "./types";
 
 interface CustomerOption {
   id: number;
@@ -25,7 +25,8 @@ interface Invoice {
   amount: number;
   paidAmount: number;
   dueDate: string;
-  status: 'paid' | 'pending' | 'overdue' | 'partial' | 'inactive';
+  dueDateReason?: string | null;
+  status: "paid" | "pending" | "overdue" | "partial" | "abandoned" | "inactive";
   isLayaway: boolean;
   createdAt: string;
 }
@@ -37,28 +38,39 @@ interface EditInvoiceModalProps {
   invoice: Invoice | null;
 }
 
-export default function EditInvoiceModal({ isOpen, onClose, onSuccess, invoice }: EditInvoiceModalProps) {
-  const [clientName, setClientName] = useState('');
+export default function EditInvoiceModal({
+  isOpen,
+  onClose,
+  onSuccess,
+  invoice,
+}: EditInvoiceModalProps) {
+  const [clientName, setClientName] = useState("");
   const [customerId, setCustomerId] = useState<number | null>(null);
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
   const customerRef = useRef<HTMLDivElement>(null);
-  const [dueDate, setDueDate] = useState('');
-  const [items, setItems] = useState<InvoiceItem[]>([{ name: '', quantity: 1, price: 0 }]);
+  const [dueDate, setDueDate] = useState("");
+  const [dueDateReason, setDueDateReason] = useState("");
+  const [items, setItems] = useState<InvoiceItem[]>([
+    { name: "", quantity: 1, price: 0 },
+  ]);
   const [tax, setTax] = useState(0);
-  const [taxType, setTaxType] = useState<'fixed' | 'percentage'>('fixed');
+  const [taxType, setTaxType] = useState<"fixed" | "percentage">("fixed");
   const [discount, setDiscount] = useState(0);
-  const [discountType, setDiscountType] = useState<'fixed' | 'percentage'>('fixed');
+  const [discountType, setDiscountType] = useState<"fixed" | "percentage">(
+    "fixed",
+  );
   const [isLayaway, setIsLayaway] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
-  const [dateError, setDateError] = useState('');
+  const [dateError, setDateError] = useState("");
+  const [editReason, setEditReason] = useState("");
 
   // Fetch customers for autocomplete
   useEffect(() => {
     if (isOpen) {
-      fetch('/api/customers?all=true')
-        .then(res => res.ok ? res.json() : [])
-        .then(data => setCustomers(data))
+      fetch("/api/customers?all=true")
+        .then((res) => (res.ok ? res.json() : []))
+        .then((data) => setCustomers(data))
         .catch(() => {});
     }
   }, [isOpen]);
@@ -66,66 +78,66 @@ export default function EditInvoiceModal({ isOpen, onClose, onSuccess, invoice }
   // Close dropdown on click outside
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (customerRef.current && !customerRef.current.contains(e.target as Node)) {
+      if (
+        customerRef.current &&
+        !customerRef.current.contains(e.target as Node)
+      ) {
         setShowCustomerDropdown(false);
       }
     };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  const filteredCustomers = customers.filter(c =>
-    c.name.toLowerCase().includes(clientName.toLowerCase())
-  ).slice(0, 8);
+  const filteredCustomers = customers
+    .filter((c) => c.name.toLowerCase().includes(clientName.toLowerCase()))
+    .slice(0, 8);
 
   useEffect(() => {
     if (invoice && isOpen) {
       setClientName(invoice.clientName);
       setCustomerId(invoice.customerId || null);
       setDueDate(invoice.dueDate);
-      setItems(invoice.items || [{ name: '', quantity: 1, price: 0 }]);
+      setDueDateReason(invoice.dueDateReason || "");
+      setItems(invoice.items || [{ name: "", quantity: 1, price: 0 }]);
       setTax(invoice.tax);
-      setTaxType('fixed'); // Default to fixed, adjust based on your needs
+      setTaxType("fixed"); // Default to fixed, adjust based on your needs
       setDiscount(invoice.discount);
-      setDiscountType('fixed');
+      setDiscountType("fixed");
       setIsLayaway(invoice.isLayaway);
-      setDateError('');
+      setEditReason("");
+      setDateError("");
     }
   }, [invoice, isOpen]);
 
   const calculateSubtotal = () => {
-    return items.reduce((sum, item) => sum + (item.quantity * item.price), 0);
+    return items.reduce((sum, item) => sum + item.quantity * item.price, 0);
   };
 
   const calculateTaxAmount = () => {
     const subtotal = calculateSubtotal();
-    return taxType === 'percentage' ? (subtotal * tax) / 100 : tax;
+    return taxType === "percentage" ? (subtotal * tax) / 100 : tax;
   };
 
   const calculateDiscountAmount = () => {
     const subtotal = calculateSubtotal();
-    return discountType === 'percentage' ? (subtotal * discount) / 100 : discount;
+    return discountType === "percentage"
+      ? (subtotal * discount) / 100
+      : discount;
   };
 
   const calculateTotal = () => {
-    return calculateSubtotal() + calculateTaxAmount() - calculateDiscountAmount();
+    return (
+      calculateSubtotal() + calculateTaxAmount() - calculateDiscountAmount()
+    );
   };
 
   const validateDate = (selectedDate: string) => {
     if (!selectedDate) {
-      setDateError('');
-      return true;
-    }
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const selected = new Date(selectedDate);
-    selected.setHours(0, 0, 0, 0);
-
-    if (selected < today) {
-      setDateError('Due date cannot be in the past');
+      setDateError("Due date is required");
       return false;
     }
-    setDateError('');
+    setDateError("");
     return true;
   };
 
@@ -137,24 +149,38 @@ export default function EditInvoiceModal({ isOpen, onClose, onSuccess, invoice }
 
   const handleUpdateInvoice = async () => {
     if (!invoice || !clientName.trim() || !dueDate) {
-      return { success: false, error: 'Please fill in all required fields' };
+      return { success: false, error: "Please fill in all required fields" };
     }
 
     if (!validateDate(dueDate)) {
-      return { success: false, error: 'Invalid due date' };
+      return { success: false, error: "Invalid due date" };
     }
 
-    if (items.length === 0 || items.some(item => !item.name.trim() || item.price <= 0)) {
-      return { success: false, error: 'Please add at least one valid item' };
+    if (!dueDateReason.trim()) {
+      return {
+        success: false,
+        error: "Please provide reason for due date",
+      };
+    }
+
+    if (
+      items.length === 0 ||
+      items.some((item) => !item.name.trim() || item.price <= 0)
+    ) {
+      return { success: false, error: "Please add at least one valid item" };
+    }
+
+    if (!editReason.trim()) {
+      return { success: false, error: "Please provide a reason for this edit" };
     }
 
     setIsUpdating(true);
     try {
       const subtotal = calculateSubtotal();
-      
+
       const res = await fetch(`/api/invoices/${invoice.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           clientName,
           customerId: customerId || null,
@@ -163,7 +189,9 @@ export default function EditInvoiceModal({ isOpen, onClose, onSuccess, invoice }
           tax: calculateTaxAmount(),
           discount: calculateDiscountAmount(),
           dueDate,
+          dueDateReason: dueDateReason.trim(),
           isLayaway,
+          editReason: editReason.trim(),
         }),
       });
 
@@ -173,11 +201,14 @@ export default function EditInvoiceModal({ isOpen, onClose, onSuccess, invoice }
         return { success: true };
       } else {
         const error = await res.json();
-        return { success: false, error: error.error || 'Failed to update invoice' };
+        return {
+          success: false,
+          error: error.error || "Failed to update invoice",
+        };
       }
     } catch (error) {
-      console.error('Failed to update invoice:', error);
-      return { success: false, error: 'Failed to update invoice' };
+      console.error("Failed to update invoice:", error);
+      return { success: false, error: "Failed to update invoice" };
     } finally {
       setIsUpdating(false);
     }
@@ -199,14 +230,29 @@ export default function EditInvoiceModal({ isOpen, onClose, onSuccess, invoice }
       >
         {isUpdating ? (
           <>
-            <svg className="animate-spin h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            <svg
+              className="animate-spin h-5 w-5 mr-2"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle
+                className="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                strokeWidth="4"
+              ></circle>
+              <path
+                className="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              ></path>
             </svg>
             Updating...
           </>
         ) : (
-          'Update Invoice'
+          "Update Invoice"
         )}
       </button>
     </div>
@@ -242,27 +288,33 @@ export default function EditInvoiceModal({ isOpen, onClose, onSuccess, invoice }
               className="w-full px-4 py-2 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               placeholder="Search or enter client name"
             />
-            {showCustomerDropdown && clientName && filteredCustomers.length > 0 && (
-              <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                {filteredCustomers.map(c => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => {
-                      setClientName(c.name);
-                      setCustomerId(c.id);
-                      setShowCustomerDropdown(false);
-                    }}
-                    className="w-full text-left px-4 py-2 hover:bg-blue-50 text-sm text-gray-900 border-b border-gray-50 last:border-0"
-                  >
-                    <span className="font-medium">{c.name}</span>
-                    {c.phone && <span className="text-gray-400 ml-2">{c.phone}</span>}
-                  </button>
-                ))}
-              </div>
-            )}
+            {showCustomerDropdown &&
+              clientName &&
+              filteredCustomers.length > 0 && (
+                <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                  {filteredCustomers.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => {
+                        setClientName(c.name);
+                        setCustomerId(c.id);
+                        setShowCustomerDropdown(false);
+                      }}
+                      className="w-full text-left px-4 py-2 hover:bg-blue-50 text-sm text-gray-900 border-b border-gray-50 last:border-0"
+                    >
+                      <span className="font-medium">{c.name}</span>
+                      {c.phone && (
+                        <span className="text-gray-400 ml-2">{c.phone}</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
             {customerId && (
-              <p className="text-xs text-green-600 mt-1">Linked to existing customer</p>
+              <p className="text-xs text-green-600 mt-1">
+                Linked to existing customer
+              </p>
             )}
           </div>
           <div>
@@ -274,10 +326,23 @@ export default function EditInvoiceModal({ isOpen, onClose, onSuccess, invoice }
               value={dueDate}
               onChange={handleDateChange}
               className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 ${
-                dateError ? 'border-red-500' : 'border-gray-300'
+                dateError ? "border-red-500" : "border-gray-300"
               }`}
             />
-            {dateError && <p className="text-red-500 text-sm mt-1">{dateError}</p>}
+            {dateError && (
+              <p className="text-red-500 text-sm mt-1">{dateError}</p>
+            )}
+            <label className="block text-sm font-medium text-gray-700 mt-4 mb-2">
+              Due Date Reason <span className="text-red-500">*</span>
+            </label>
+            <textarea
+              value={dueDateReason}
+              onChange={(e) => setDueDateReason(e.target.value)}
+              rows={3}
+              className="w-full px-4 py-2 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              placeholder="Why this due date is selected"
+              required
+            />
           </div>
         </div>
 
@@ -297,22 +362,22 @@ export default function EditInvoiceModal({ isOpen, onClose, onSuccess, invoice }
                   <div className="flex gap-2">
                     <button
                       type="button"
-                      onClick={() => setTaxType('fixed')}
+                      onClick={() => setTaxType("fixed")}
                       className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
-                        taxType === 'fixed'
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                        taxType === "fixed"
+                          ? "bg-blue-600 text-white"
+                          : "bg-gray-200 text-gray-700 hover:bg-gray-300"
                       }`}
                     >
                       $
                     </button>
                     <button
                       type="button"
-                      onClick={() => setTaxType('percentage')}
+                      onClick={() => setTaxType("percentage")}
                       className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
-                        taxType === 'percentage'
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                        taxType === "percentage"
+                          ? "bg-blue-600 text-white"
+                          : "bg-gray-200 text-gray-700 hover:bg-gray-300"
                       }`}
                     >
                       %
@@ -323,7 +388,7 @@ export default function EditInvoiceModal({ isOpen, onClose, onSuccess, invoice }
                   type="number"
                   min="0"
                   step="0.01"
-                  value={tax || ''}
+                  value={tax || ""}
                   onChange={(e) => setTax(parseFloat(e.target.value) || 0)}
                   onBlur={(e) => {
                     const val = parseFloat(e.target.value);
@@ -345,22 +410,22 @@ export default function EditInvoiceModal({ isOpen, onClose, onSuccess, invoice }
                   <div className="flex gap-2">
                     <button
                       type="button"
-                      onClick={() => setDiscountType('fixed')}
+                      onClick={() => setDiscountType("fixed")}
                       className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
-                        discountType === 'fixed'
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                        discountType === "fixed"
+                          ? "bg-blue-600 text-white"
+                          : "bg-gray-200 text-gray-700 hover:bg-gray-300"
                       }`}
                     >
                       $
                     </button>
                     <button
                       type="button"
-                      onClick={() => setDiscountType('percentage')}
+                      onClick={() => setDiscountType("percentage")}
                       className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
-                        discountType === 'percentage'
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                        discountType === "percentage"
+                          ? "bg-blue-600 text-white"
+                          : "bg-gray-200 text-gray-700 hover:bg-gray-300"
                       }`}
                     >
                       %
@@ -371,7 +436,7 @@ export default function EditInvoiceModal({ isOpen, onClose, onSuccess, invoice }
                   type="number"
                   min="0"
                   step="0.01"
-                  value={discount || ''}
+                  value={discount || ""}
                   onChange={(e) => setDiscount(parseFloat(e.target.value) || 0)}
                   onBlur={(e) => {
                     const val = parseFloat(e.target.value);
@@ -393,7 +458,10 @@ export default function EditInvoiceModal({ isOpen, onClose, onSuccess, invoice }
                   onChange={(e) => setIsLayaway(e.target.checked)}
                   className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 mr-2"
                 />
-                <label htmlFor="editIsLayaway" className="text-sm font-medium text-gray-700">
+                <label
+                  htmlFor="editIsLayaway"
+                  className="text-sm font-medium text-gray-700"
+                >
                   Mark as Layaway (Installment Payment Plan)
                 </label>
               </div>
@@ -408,6 +476,20 @@ export default function EditInvoiceModal({ isOpen, onClose, onSuccess, invoice }
               total={calculateTotal()}
             />
           </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Reason for Edit <span className="text-red-500">*</span>
+          </label>
+          <textarea
+            value={editReason}
+            onChange={(e) => setEditReason(e.target.value)}
+            rows={3}
+            className="w-full px-4 py-2 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            placeholder="Why are you editing this invoice?"
+            required
+          />
         </div>
       </div>
     </Modal>
