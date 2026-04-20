@@ -37,11 +37,11 @@ export async function POST(request: NextRequest) {
       `Generated OTP for ${email}: ${otp} (expires at ${otpExpiresAt.toISOString()})`,
     );
     // Send Email
-    // const emailResult = await sendLoginOtp(email, otp);
+    const emailResult = await sendLoginOtp(email, otp);
 
-    // if (!emailResult.success) {
-    //   return NextResponse.json({ error: 'Failed to send email' }, { status: 500 });
-    // }
+    if (!emailResult.success) {
+      return NextResponse.json({ error: 'Failed to send email' }, { status: 500 });
+    }
 
     return NextResponse.json({ message: "OTP sent successfully" });
   } catch (error) {

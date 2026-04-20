@@ -32,10 +32,7 @@ export default function PaymentSourceCards({
         </div>
       )}
 
-      <div
-        className="grid gap-3"
-        style={{ gridTemplateColumns: `repeat(${paymentMethods.length}, minmax(0, 1fr))` }}
-      >
+      <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
         {paymentMethods.map((method) => {
           const methodId = String(method.id);
           const methodStats = displayStats.byMethod[method.id];
