@@ -6,7 +6,11 @@ import PreviewInvoiceModal from "./PreviewInvoiceModal";
 import InvoiceItemsEditor from "./InvoiceItemsEditor";
 import InvoiceSummary from "./InvoiceSummary";
 import { InvoiceItem } from "./types";
-import { calculateInsuranceAmount } from "../../lib/insurance";
+import {
+  calculateInsuranceAmount,
+  DEFAULT_INSURANCE_BANDS,
+  type InsuranceBand,
+} from "../../lib/insurance";
 
 interface CustomerOption {
   id: number;
@@ -32,6 +36,13 @@ interface ShippingFeeRule {
   sortOrder: number;
 }
 
+interface DueDateReasonOption {
+  id: number;
+  reason: string;
+  isActive: boolean;
+  sortOrder: number;
+}
+
 interface CreateInvoiceModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -45,6 +56,14 @@ export default function CreateInvoiceModal({
   onSuccess,
   onError,
 }: CreateInvoiceModalProps) {
+  const getTodayDateString = () => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, "0");
+    const day = String(today.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
   const [clientName, setClientName] = useState("");
   const [customerId, setCustomerId] = useState<number | null>(null);
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
@@ -56,9 +75,45 @@ export default function CreateInvoiceModal({
     phone: "",
   });
   const [creatingCustomer, setCreatingCustomer] = useState(false);
+  const [invoiceDate, setInvoiceDate] = useState(getTodayDateString());
   const [dueDate, setDueDate] = useState("");
   const [dueDateReason, setDueDateReason] = useState("");
+  const [dueDateReasons, setDueDateReasons] = useState<DueDateReasonOption[]>(
+    [],
+  );
   const customerRef = useRef<HTMLDivElement>(null);
+
+  const isBackDate = (selectedDate: string) => {
+    if (!selectedDate) return false;
+
+    const parsed = new Date(selectedDate);
+    if (Number.isNaN(parsed.getTime())) return false;
+
+    const selected = new Date(parsed);
+    selected.setHours(0, 0, 0, 0);
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    return selected < today;
+  };
+
+  const isFutureDate = (selectedDate: string) => {
+    if (!selectedDate) return false;
+
+    const parsed = new Date(selectedDate);
+    if (Number.isNaN(parsed.getTime())) return false;
+
+    const selected = new Date(parsed);
+    selected.setHours(0, 0, 0, 0);
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    return selected > today;
+  };
+
+  const requiresDueDateReason = isBackDate(dueDate);
 
   // Load layaway defaults from localStorage
   useEffect(() => {
@@ -149,7 +204,49 @@ export default function CreateInvoiceModal({
         setShippingFee(0);
         setIsShippingFeeManuallyOverridden(false);
       });
+
+    fetch("/api/due-date-reasons?active=true")
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        const reasons: DueDateReasonOption[] = Array.isArray(data)
+          ? data.map((r: any) => ({
+              id: r.id,
+              reason: r.reason,
+              isActive: !!r.isActive,
+              sortOrder: Number(r.sortOrder || 0),
+            }))
+          : [];
+
+        setDueDateReasons(reasons);
+      })
+      .catch(() => {
+        setDueDateReasons([]);
+      });
+
+    fetch("/api/insurance-rules")
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        const rules: InsuranceBand[] = Array.isArray(data)
+          ? data.map((rule: any) => ({
+              maxValue: Number(rule.maxValue),
+              clientShare: Number(rule.clientShare),
+            }))
+          : [];
+
+        if (rules.length > 0) {
+          setInsuranceBands(rules);
+        }
+      })
+      .catch(() => {
+        setInsuranceBands(DEFAULT_INSURANCE_BANDS);
+      });
   }, [isOpen]);
+
+  useEffect(() => {
+    if (!requiresDueDateReason) {
+      setDueDateReason("");
+    }
+  }, [requiresDueDateReason]);
 
   // Close dropdown on click outside
   useEffect(() => {
@@ -198,11 +295,18 @@ export default function CreateInvoiceModal({
   const [shippingFee, setShippingFee] = useState(0);
   const [isShippingFeeManuallyOverridden, setIsShippingFeeManuallyOverridden] =
     useState(false);
+  const [insuranceBands, setInsuranceBands] = useState<InsuranceBand[]>(
+    DEFAULT_INSURANCE_BANDS,
+  );
+  const [useCustomInsuranceBase, setUseCustomInsuranceBase] = useState(false);
+  const [insuranceBaseAmount, setInsuranceBaseAmount] = useState("");
+  const [insuranceBaseError, setInsuranceBaseError] = useState("");
   const [insuranceAmount, setInsuranceAmount] = useState(0);
   const [isInsuranceManuallyOverridden, setIsInsuranceManuallyOverridden] =
     useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [invoiceDateError, setInvoiceDateError] = useState("");
   const [dateError, setDateError] = useState("");
 
   const calculateSubtotal = () => {
@@ -235,6 +339,18 @@ export default function CreateInvoiceModal({
       shippingFee +
       insuranceAmount
     );
+  };
+
+  const getInsuranceCalculationBase = () => {
+    const preShippingTotal = calculatePreShippingTotal();
+    if (!useCustomInsuranceBase) return preShippingTotal;
+
+    const parsed = Number(insuranceBaseAmount);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      return preShippingTotal;
+    }
+
+    return Math.min(parsed, preShippingTotal);
   };
 
   const doesRuleMatchSubtotal = (
@@ -273,8 +389,10 @@ export default function CreateInvoiceModal({
 
   useEffect(() => {
     if (!isOpen || isInsuranceManuallyOverridden) return;
-    const amount = calculatePreShippingTotal();
-    setInsuranceAmount(calculateInsuranceAmount(amount));
+    const insuranceCalculationBase = getInsuranceCalculationBase();
+    setInsuranceAmount(
+      calculateInsuranceAmount(insuranceCalculationBase, insuranceBands),
+    );
   }, [
     isOpen,
     items,
@@ -282,6 +400,9 @@ export default function CreateInvoiceModal({
     taxType,
     discount,
     discountType,
+    insuranceBands,
+    insuranceBaseAmount,
+    useCustomInsuranceBase,
     isInsuranceManuallyOverridden,
   ]);
 
@@ -298,6 +419,25 @@ export default function CreateInvoiceModal({
     const newDate = e.target.value;
     setDueDate(newDate);
     validateDate(newDate);
+  };
+
+  const validateInvoiceDate = (selectedDate: string) => {
+    if (!selectedDate) {
+      setInvoiceDateError("Invoice date is required");
+      return false;
+    }
+    if (isFutureDate(selectedDate)) {
+      setInvoiceDateError("Invoice date cannot be in the future");
+      return false;
+    }
+    setInvoiceDateError("");
+    return true;
+  };
+
+  const handleInvoiceDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newDate = e.target.value;
+    setInvoiceDate(newDate);
+    validateInvoiceDate(newDate);
   };
 
   const handleCreateNewCustomer = async () => {
@@ -338,8 +478,10 @@ export default function CreateInvoiceModal({
   const resetForm = () => {
     setClientName("");
     setCustomerId(null);
+    setInvoiceDate(getTodayDateString());
     setDueDate("");
     setDueDateReason("");
+    setDueDateReasons([]);
     setItems([{ name: "", quantity: 1, price: 0 }]);
     setTax(0);
     setTaxType("fixed");
@@ -356,16 +498,25 @@ export default function CreateInvoiceModal({
     setSelectedShippingFeeRuleId("none");
     setShippingFee(0);
     setIsShippingFeeManuallyOverridden(false);
+    setInsuranceBands(DEFAULT_INSURANCE_BANDS);
+    setUseCustomInsuranceBase(false);
+    setInsuranceBaseAmount("");
+    setInsuranceBaseError("");
     setInsuranceAmount(0);
     setIsInsuranceManuallyOverridden(false);
+    setInvoiceDateError("");
     setDateError("");
     setShowNewCustomerForm(false);
     setNewCustomerData({ name: "", email: "", phone: "" });
   };
 
   const handleCreateInvoice = async () => {
-    if (!clientName.trim() || !dueDate) {
+    if (!clientName.trim() || !invoiceDate || !dueDate) {
       onError?.("Please fill in all required fields");
+      return;
+    }
+
+    if (!validateInvoiceDate(invoiceDate)) {
       return;
     }
 
@@ -373,9 +524,29 @@ export default function CreateInvoiceModal({
       return;
     }
 
-    if (!dueDateReason.trim()) {
+    if (requiresDueDateReason && !dueDateReason.trim()) {
       onError?.("Please provide reason for due date");
       return;
+    }
+
+    if (useCustomInsuranceBase) {
+      const parsedBase = Number(insuranceBaseAmount);
+      const preShippingTotal = calculatePreShippingTotal();
+      if (!Number.isFinite(parsedBase) || parsedBase <= 0) {
+        setInsuranceBaseError(
+          "Insurance applied-on amount must be greater than 0",
+        );
+        return;
+      }
+
+      if (parsedBase > preShippingTotal) {
+        setInsuranceBaseError(
+          "Insurance applied-on amount cannot exceed invoice value before shipping",
+        );
+        return;
+      }
+
+      setInsuranceBaseError("");
     }
 
     if (
@@ -398,14 +569,18 @@ export default function CreateInvoiceModal({
       const payload: any = {
         clientName,
         customerId: customerId || undefined,
+        invoiceDate,
         dueDate,
-        dueDateReason: dueDateReason.trim(),
+        dueDateReason: requiresDueDateReason ? dueDateReason.trim() : null,
         items,
         subtotal,
         tax: calculateTaxAmount(),
         discount: calculateDiscountAmount(),
         shippingFee,
         insuranceAmount,
+        insuranceBaseAmount: useCustomInsuranceBase
+          ? Number(insuranceBaseAmount)
+          : null,
         shippingFeeRuleId:
           selectedShippingFeeRuleId === "none"
             ? null
@@ -645,6 +820,21 @@ export default function CreateInvoiceModal({
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
+                Invoice Date <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="date"
+                value={invoiceDate}
+                onChange={handleInvoiceDateChange}
+                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 ${
+                  invoiceDateError ? "border-red-500" : "border-gray-300"
+                }`}
+              />
+              {invoiceDateError && (
+                <p className="text-red-500 text-sm mt-1">{invoiceDateError}</p>
+              )}
+
+              <label className="block text-sm font-medium text-gray-700 mb-2">
                 Due Date <span className="text-red-500">*</span>
               </label>
               <input
@@ -658,17 +848,29 @@ export default function CreateInvoiceModal({
               {dateError && (
                 <p className="text-red-500 text-sm mt-1">{dateError}</p>
               )}
-              <label className="block text-sm font-medium text-gray-700 mt-4 mb-2">
-                Due Date Reason <span className="text-red-500">*</span>
-              </label>
-              <textarea
-                value={dueDateReason}
-                onChange={(e) => setDueDateReason(e.target.value)}
-                rows={3}
-                className="w-full px-4 py-2 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="Why this due date is selected"
-                required
-              />
+              {requiresDueDateReason && (
+                <>
+                  <label className="block text-sm font-medium text-gray-700 mt-4 mb-2">
+                    Due Date Reason <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={dueDateReason}
+                    onChange={(e) => setDueDateReason(e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    required
+                  >
+                    <option value="">Select a reason</option>
+                    {dueDateReasons.map((reason) => (
+                      <option key={reason.id} value={reason.reason}>
+                        {reason.reason}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Required only for back-dated due dates.
+                  </p>
+                </>
+              )}
             </div>
           </div>
 
@@ -897,6 +1099,59 @@ export default function CreateInvoiceModal({
                         Use Auto Insurance
                       </button>
                     )}
+
+                    <div className="mt-3 border-t border-indigo-200 pt-3">
+                      <div className="flex items-center gap-2 mb-2">
+                        <input
+                          id="useCustomInsuranceBase"
+                          type="checkbox"
+                          checked={useCustomInsuranceBase}
+                          onChange={(e) => {
+                            setUseCustomInsuranceBase(e.target.checked);
+                            setInsuranceBaseError("");
+                            if (!e.target.checked) {
+                              setInsuranceBaseAmount("");
+                            }
+                          }}
+                          className="w-4 h-4 text-indigo-600 rounded"
+                        />
+                        <label
+                          htmlFor="useCustomInsuranceBase"
+                          className="text-xs font-medium text-gray-700"
+                        >
+                          Apply insurance on custom amount
+                        </label>
+                      </div>
+
+                      {useCustomInsuranceBase && (
+                        <>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                            Insurance Applied On Amount ($)
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={insuranceBaseAmount}
+                            onChange={(e) => {
+                              setInsuranceBaseAmount(e.target.value);
+                              setInsuranceBaseError("");
+                            }}
+                            className="w-full px-3 py-2 border border-gray-300 text-gray-900 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                            placeholder="e.g. 500.00"
+                          />
+                          {insuranceBaseError && (
+                            <p className="mt-1 text-xs text-red-600">
+                              {insuranceBaseError}
+                            </p>
+                          )}
+                          <p className="mt-1 text-xs text-gray-600">
+                            Current invoice value before shipping: $
+                            {calculatePreShippingTotal().toFixed(2)}
+                          </p>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -1218,7 +1473,9 @@ export default function CreateInvoiceModal({
         onClose={() => setShowPreview(false)}
         onConfirm={handleConfirmCreate}
         clientName={clientName}
+        invoiceDate={invoiceDate}
         dueDate={dueDate}
+        dueDateReason={requiresDueDateReason ? dueDateReason : null}
         items={items}
         subtotal={calculateSubtotal()}
         tax={tax}
@@ -1227,6 +1484,9 @@ export default function CreateInvoiceModal({
         discountType={discountType}
         shippingFee={shippingFee}
         insuranceAmount={insuranceAmount}
+        insuranceBaseAmount={
+          useCustomInsuranceBase ? Number(insuranceBaseAmount || 0) : null
+        }
         total={calculateTotal()}
         isLayaway={isLayaway}
         isSubmitting={isCreating}

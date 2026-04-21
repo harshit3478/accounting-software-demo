@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
-import prisma from '../../../../../lib/prisma';
-import { requireAuth } from '../../../../../lib/auth';
-import { updateInvoiceAfterPayment } from '../../../../../lib/invoice-utils';
+import { NextRequest, NextResponse } from "next/server";
+import prisma from "../../../../../lib/prisma";
+import { requireAuth } from "../../../../../lib/auth";
+import { updateInvoiceAfterPayment } from "../../../../../lib/invoice-utils";
 
 interface MatchRequest {
   matches: Array<{
@@ -12,7 +12,7 @@ interface MatchRequest {
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const user = await requireAuth();
@@ -24,12 +24,12 @@ export async function POST(
     const payment = await prisma.payment.findUnique({
       where: { id: paymentId },
       include: {
-        paymentMatches: true
-      }
+        paymentMatches: true,
+      },
     });
 
     if (!payment) {
-      return NextResponse.json({ error: 'Payment not found' }, { status: 404 });
+      return NextResponse.json({ error: "Payment not found" }, { status: 404 });
     }
 
     // Calculate already allocated amount
@@ -38,23 +38,56 @@ export async function POST(
     }, 0);
 
     // Calculate total new allocation
-    const newAllocation = body.matches.reduce((sum, match) => sum + match.amount, 0);
+    const newAllocation = body.matches.reduce(
+      (sum, match) => sum + match.amount,
+      0,
+    );
     const totalAllocation = alreadyAllocated + newAllocation;
     const paymentAmount = payment.amount.toNumber();
 
+    let storeCreditOwnerCustomerId: number | null = null;
+    if (payment.source === "store_credit_excess") {
+      const creditTx = await (
+        prisma as any
+      ).customerCreditTransaction.findFirst({
+        where: {
+          paymentId,
+          type: "credit",
+        },
+        orderBy: { createdAt: "desc" },
+      });
+
+      if (!creditTx?.customerId) {
+        return NextResponse.json(
+          {
+            error: "Store credit owner could not be resolved for this payment",
+          },
+          { status: 400 },
+        );
+      }
+
+      storeCreditOwnerCustomerId = creditTx.customerId;
+    }
+
     // Validate: total allocation cannot exceed payment amount
     if (totalAllocation > paymentAmount) {
-      return NextResponse.json({
-        error: `Total allocation ($${totalAllocation.toFixed(2)}) exceeds payment amount ($${paymentAmount.toFixed(2)})`
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          error: `Total allocation ($${totalAllocation.toFixed(2)}) exceeds payment amount ($${paymentAmount.toFixed(2)})`,
+        },
+        { status: 400 },
+      );
     }
 
     // Validate each match
     for (const match of body.matches) {
       if (match.amount <= 0) {
-        return NextResponse.json({
-          error: 'Match amount must be positive'
-        }, { status: 400 });
+        return NextResponse.json(
+          {
+            error: "Match amount must be positive",
+          },
+          { status: 400 },
+        );
       }
 
       // Check invoice exists and get remaining balance
@@ -62,43 +95,68 @@ export async function POST(
         where: { id: match.invoiceId },
         include: {
           payments: true,
-          paymentMatches: true
-        }
+          paymentMatches: true,
+        },
       });
 
       if (!invoice) {
-        return NextResponse.json({
-          error: `Invoice ${match.invoiceId} not found`
-        }, { status: 404 });
+        return NextResponse.json(
+          {
+            error: `Invoice ${match.invoiceId} not found`,
+          },
+          { status: 404 },
+        );
+      }
+
+      if (
+        storeCreditOwnerCustomerId !== null &&
+        (!invoice.customerId ||
+          invoice.customerId !== storeCreditOwnerCustomerId)
+      ) {
+        return NextResponse.json(
+          {
+            error: `This store credit payment can only be matched to invoices for customer ${storeCreditOwnerCustomerId}`,
+          },
+          { status: 400 },
+        );
       }
 
       // Calculate invoice remaining balance
-      const directPayments = invoice.payments.reduce((sum, p) => sum + p.amount.toNumber(), 0);
-      const matchedPayments = invoice.paymentMatches.reduce((sum, m) => sum + m.amount.toNumber(), 0);
+      const directPayments = invoice.payments.reduce(
+        (sum, p) => sum + p.amount.toNumber(),
+        0,
+      );
+      const matchedPayments = invoice.paymentMatches.reduce(
+        (sum, m) => sum + m.amount.toNumber(),
+        0,
+      );
       const totalPaid = directPayments + matchedPayments;
       const invoiceAmount = invoice.amount.toNumber();
       const remaining = invoiceAmount - totalPaid;
 
       // Allow small epsilon for floating point precision (1 cent)
       const EPSILON = 0.01;
-      
+
       if (match.amount > remaining + EPSILON) {
-        return NextResponse.json({
-          error: `Match amount ($${match.amount.toFixed(2)}) exceeds invoice ${invoice.invoiceNumber} remaining balance ($${remaining.toFixed(2)}). Current status: ${invoice.status}, Total paid: $${totalPaid.toFixed(2)}, Invoice amount: $${invoiceAmount.toFixed(2)}`
-        }, { status: 400 });
+        return NextResponse.json(
+          {
+            error: `Match amount ($${match.amount.toFixed(2)}) exceeds invoice ${invoice.invoiceNumber} remaining balance ($${remaining.toFixed(2)}). Current status: ${invoice.status}, Total paid: $${totalPaid.toFixed(2)}, Invoice amount: $${invoiceAmount.toFixed(2)}`,
+          },
+          { status: 400 },
+        );
       }
     }
 
     // Create all matches in a transaction
     const createdMatches = await prisma.$transaction(async (tx) => {
       const matches = await Promise.all(
-        body.matches.map(match =>
+        body.matches.map((match) =>
           tx.paymentInvoiceMatch.create({
             data: {
               paymentId,
               invoiceId: match.invoiceId,
               amount: match.amount,
-              userId: user.id
+              userId: user.id,
             },
             include: {
               invoice: {
@@ -108,19 +166,19 @@ export async function POST(
                   clientName: true,
                   amount: true,
                   paidAmount: true,
-                  status: true
-                }
-              }
-            }
-          })
-        )
+                  status: true,
+                },
+              },
+            },
+          }),
+        ),
       );
 
       // Update payment isMatched status if fully allocated
       const isFullyMatched = totalAllocation >= paymentAmount;
       await tx.payment.update({
         where: { id: paymentId },
-        data: { isMatched: isFullyMatched }
+        data: { isMatched: isFullyMatched },
       });
 
       console.log(`Payment ${paymentId} matched:`, {
@@ -128,16 +186,20 @@ export async function POST(
         totalAllocation,
         isFullyMatched,
         matchesCreated: matches.length,
-        invoices: matches.map(m => m.invoice.invoiceNumber)
+        invoices: matches.map((m) => m.invoice.invoiceNumber),
       });
 
       return matches;
     });
 
     // Update all affected invoices (outside transaction for safety)
-    const affectedInvoiceIds = [...new Set(body.matches.map(m => m.invoiceId))];
+    const affectedInvoiceIds = [
+      ...new Set(body.matches.map((m) => m.invoiceId)),
+    ];
     await Promise.all(
-      affectedInvoiceIds.map(invoiceId => updateInvoiceAfterPayment(invoiceId))
+      affectedInvoiceIds.map((invoiceId) =>
+        updateInvoiceAfterPayment(invoiceId),
+      ),
     );
 
     // Fetch updated payment
@@ -153,37 +215,36 @@ export async function POST(
                 clientName: true,
                 amount: true,
                 paidAmount: true,
-                status: true
-              }
-            }
-          }
-        }
-      }
+                status: true,
+              },
+            },
+          },
+        },
+      },
     });
 
     // Serialize response
     const serializedPayment = {
       ...updatedPayment!,
       amount: updatedPayment!.amount.toNumber(),
-      paymentMatches: updatedPayment!.paymentMatches.map(match => ({
+      paymentMatches: updatedPayment!.paymentMatches.map((match) => ({
         ...match,
         amount: match.amount.toNumber(),
         invoice: {
           ...match.invoice,
           amount: match.invoice.amount.toNumber(),
-          paidAmount: match.invoice.paidAmount.toNumber()
-        }
-      }))
+          paidAmount: match.invoice.paidAmount.toNumber(),
+        },
+      })),
     };
 
     return NextResponse.json({
       success: true,
       payment: serializedPayment,
-      matchesCreated: createdMatches.length
+      matchesCreated: createdMatches.length,
     });
-
   } catch (error: any) {
-    console.error('Match payment error:', error);
+    console.error("Match payment error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

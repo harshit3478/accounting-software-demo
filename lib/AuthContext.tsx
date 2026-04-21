@@ -53,13 +53,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       // Fetch user data
       fetch("/api/auth-check")
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.user) {
-            setUser(data.user);
-          }
+        .then(async (res) => {
+          const data = await res.json();
+          return { ok: res.ok, data };
         })
-        .catch((err) => console.error("Error fetching user:", err));
+        .then((data) => {
+          if (data.ok && data.data?.authenticated && data.data.user) {
+            setUser(data.data.user);
+            return;
+          }
+
+          // Expired/invalid token: clear client auth state and send user to login.
+          localStorage.removeItem("token");
+          document.cookie = "token=; path=/; max-age=0";
+          setToken(null);
+          setUser(null);
+          window.location.href = "/login";
+        })
+        .catch((err) => {
+          console.error("Error fetching user:", err);
+          localStorage.removeItem("token");
+          document.cookie = "token=; path=/; max-age=0";
+          setToken(null);
+          setUser(null);
+          window.location.href = "/login";
+        });
     }
   }, []);
 

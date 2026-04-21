@@ -10,8 +10,10 @@ import RegularizationsTab from "../../components/settings/RegularizationsTab";
 import CustomersTab from "../../components/settings/CustomersTab";
 import TermsConditionsTab from "../../components/settings/TermsConditionsTab";
 import ShippingFeeRulesTab from "../../components/settings/ShippingFeeRulesTab";
+import InsuranceRulesTab from "../../components/settings/InsuranceRulesTab";
 import QuickBooksTab from "../../components/settings/QuickBooksTab";
 import LayawaySettingsTab from "../../components/settings/LayawaySettingsTab";
+import DueDateReasonsTab from "../../components/settings/DueDateReasonsTab";
 import {
   CreditCard,
   Users,
@@ -21,6 +23,8 @@ import {
   Link2,
   Layers,
   Truck,
+  CalendarClock,
+  Shield,
 } from "lucide-react";
 
 const TABS = [
@@ -30,6 +34,8 @@ const TABS = [
   { id: "customers", label: "Clients", icon: UsersRound },
   { id: "terms", label: "Terms & Conditions", icon: FileText },
   { id: "shipping-fee-rules", label: "Shipping Fee Rules", icon: Truck },
+  { id: "insurance-rules", label: "Insurance Rules", icon: Shield },
+  { id: "due-date-reasons", label: "Due Date Reasons", icon: CalendarClock },
   // { id: 'layaway', label: 'Layaway', icon: Layers },
   { id: "quickbooks", label: "QuickBooks", icon: Link2 },
 ] as const;
@@ -73,6 +79,14 @@ function SettingsContent() {
             showSuccess={showSuccess}
             showError={showError}
           />
+        );
+      case "insurance-rules":
+        return (
+          <InsuranceRulesTab showSuccess={showSuccess} showError={showError} />
+        );
+      case "due-date-reasons":
+        return (
+          <DueDateReasonsTab showSuccess={showSuccess} showError={showError} />
         );
       // case 'layaway':
       //   return <LayawaySettingsTab showSuccess={showSuccess} showError={showError} />;

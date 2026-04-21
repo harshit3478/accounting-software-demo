@@ -28,7 +28,28 @@ export async function GET(
     try {
       customer = await prisma.customer.findUnique({
         where: { id },
-        include: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone: true,
+          address: true,
+          notes: true,
+          storeCredit: true,
+          createdAt: true,
+          updatedAt: true,
+          creditTransactions: {
+            select: {
+              id: true,
+              amount: true,
+              type: true,
+              reason: true,
+              paymentId: true,
+              invoiceId: true,
+              createdAt: true,
+            },
+            orderBy: { createdAt: "desc" },
+          },
           invoices: {
             select: {
               id: true,
@@ -57,8 +78,21 @@ export async function GET(
           phone: true,
           address: true,
           notes: true,
+          storeCredit: true,
           createdAt: true,
           updatedAt: true,
+          creditTransactions: {
+            select: {
+              id: true,
+              amount: true,
+              type: true,
+              reason: true,
+              paymentId: true,
+              invoiceId: true,
+              createdAt: true,
+            },
+            orderBy: { createdAt: "desc" },
+          },
           invoices: {
             select: {
               id: true,
@@ -144,6 +178,15 @@ export async function GET(
       storeCredit: (customer as any).storeCredit?.toNumber
         ? (customer as any).storeCredit.toNumber()
         : ((customer as any).storeCredit ?? 0),
+      creditTransactions: (customer.creditTransactions || []).map(
+        (tx: any) => ({
+          ...tx,
+          amount: tx.amount?.toNumber ? tx.amount.toNumber() : tx.amount,
+          createdAt: tx.createdAt?.toISOString
+            ? tx.createdAt.toISOString()
+            : tx.createdAt,
+        }),
+      ),
       stats: {
         totalRevenue,
         totalPaid,

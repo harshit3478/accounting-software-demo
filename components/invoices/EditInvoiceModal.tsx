@@ -13,6 +13,13 @@ interface CustomerOption {
   phone: string | null;
 }
 
+interface DueDateReasonOption {
+  id: number;
+  reason: string;
+  isActive: boolean;
+  sortOrder: number;
+}
+
 interface Invoice {
   id: number;
   invoiceNumber: string;
@@ -24,6 +31,7 @@ interface Invoice {
   discount: number;
   amount: number;
   paidAmount: number;
+  invoiceDate?: string;
   dueDate: string;
   dueDateReason?: string | null;
   status: "paid" | "pending" | "overdue" | "partial" | "abandoned" | "inactive";
@@ -49,8 +57,12 @@ export default function EditInvoiceModal({
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
   const customerRef = useRef<HTMLDivElement>(null);
+  const [invoiceDate, setInvoiceDate] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [dueDateReason, setDueDateReason] = useState("");
+  const [dueDateReasons, setDueDateReasons] = useState<DueDateReasonOption[]>(
+    [],
+  );
   const [items, setItems] = useState<InvoiceItem[]>([
     { name: "", quantity: 1, price: 0 },
   ]);
@@ -62,8 +74,41 @@ export default function EditInvoiceModal({
   );
   const [isLayaway, setIsLayaway] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [invoiceDateError, setInvoiceDateError] = useState("");
   const [dateError, setDateError] = useState("");
   const [editReason, setEditReason] = useState("");
+
+  const isBackDate = (selectedDate: string) => {
+    if (!selectedDate) return false;
+
+    const parsed = new Date(selectedDate);
+    if (Number.isNaN(parsed.getTime())) return false;
+
+    const selected = new Date(parsed);
+    selected.setHours(0, 0, 0, 0);
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    return selected < today;
+  };
+
+  const isFutureDate = (selectedDate: string) => {
+    if (!selectedDate) return false;
+
+    const parsed = new Date(selectedDate);
+    if (Number.isNaN(parsed.getTime())) return false;
+
+    const selected = new Date(parsed);
+    selected.setHours(0, 0, 0, 0);
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    return selected > today;
+  };
+
+  const requiresDueDateReason = isBackDate(dueDate);
 
   // Fetch customers for autocomplete
   useEffect(() => {
@@ -72,8 +117,31 @@ export default function EditInvoiceModal({
         .then((res) => (res.ok ? res.json() : []))
         .then((data) => setCustomers(data))
         .catch(() => {});
+
+      fetch("/api/due-date-reasons?active=true")
+        .then((res) => (res.ok ? res.json() : []))
+        .then((data) => {
+          const reasons: DueDateReasonOption[] = Array.isArray(data)
+            ? data.map((r: any) => ({
+                id: r.id,
+                reason: r.reason,
+                isActive: !!r.isActive,
+                sortOrder: Number(r.sortOrder || 0),
+              }))
+            : [];
+          setDueDateReasons(reasons);
+        })
+        .catch(() => {
+          setDueDateReasons([]);
+        });
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    if (!requiresDueDateReason) {
+      setDueDateReason("");
+    }
+  }, [requiresDueDateReason]);
 
   // Close dropdown on click outside
   useEffect(() => {
@@ -97,6 +165,9 @@ export default function EditInvoiceModal({
     if (invoice && isOpen) {
       setClientName(invoice.clientName);
       setCustomerId(invoice.customerId || null);
+      setInvoiceDate(
+        (invoice.invoiceDate || invoice.createdAt || "").split("T")[0] || "",
+      );
       setDueDate(invoice.dueDate);
       setDueDateReason(invoice.dueDateReason || "");
       setItems(invoice.items || [{ name: "", quantity: 1, price: 0 }]);
@@ -106,6 +177,7 @@ export default function EditInvoiceModal({
       setDiscountType("fixed");
       setIsLayaway(invoice.isLayaway);
       setEditReason("");
+      setInvoiceDateError("");
       setDateError("");
     }
   }, [invoice, isOpen]);
@@ -147,16 +219,39 @@ export default function EditInvoiceModal({
     validateDate(newDate);
   };
 
+  const validateInvoiceDate = (selectedDate: string) => {
+    if (!selectedDate) {
+      setInvoiceDateError("Invoice date is required");
+      return false;
+    }
+    if (isFutureDate(selectedDate)) {
+      setInvoiceDateError("Invoice date cannot be in the future");
+      return false;
+    }
+    setInvoiceDateError("");
+    return true;
+  };
+
+  const handleInvoiceDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newDate = e.target.value;
+    setInvoiceDate(newDate);
+    validateInvoiceDate(newDate);
+  };
+
   const handleUpdateInvoice = async () => {
-    if (!invoice || !clientName.trim() || !dueDate) {
+    if (!invoice || !clientName.trim() || !invoiceDate || !dueDate) {
       return { success: false, error: "Please fill in all required fields" };
+    }
+
+    if (!validateInvoiceDate(invoiceDate)) {
+      return { success: false, error: "Invalid invoice date" };
     }
 
     if (!validateDate(dueDate)) {
       return { success: false, error: "Invalid due date" };
     }
 
-    if (!dueDateReason.trim()) {
+    if (requiresDueDateReason && !dueDateReason.trim()) {
       return {
         success: false,
         error: "Please provide reason for due date",
@@ -188,8 +283,9 @@ export default function EditInvoiceModal({
           subtotal,
           tax: calculateTaxAmount(),
           discount: calculateDiscountAmount(),
+          invoiceDate,
           dueDate,
-          dueDateReason: dueDateReason.trim(),
+          dueDateReason: requiresDueDateReason ? dueDateReason.trim() : null,
           isLayaway,
           editReason: editReason.trim(),
         }),
@@ -319,6 +415,21 @@ export default function EditInvoiceModal({
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
+              Invoice Date <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="date"
+              value={invoiceDate}
+              onChange={handleInvoiceDateChange}
+              className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 ${
+                invoiceDateError ? "border-red-500" : "border-gray-300"
+              }`}
+            />
+            {invoiceDateError && (
+              <p className="text-red-500 text-sm mt-1">{invoiceDateError}</p>
+            )}
+
+            <label className="block text-sm font-medium text-gray-700 mb-2">
               Due Date <span className="text-red-500">*</span>
             </label>
             <input
@@ -332,17 +443,29 @@ export default function EditInvoiceModal({
             {dateError && (
               <p className="text-red-500 text-sm mt-1">{dateError}</p>
             )}
-            <label className="block text-sm font-medium text-gray-700 mt-4 mb-2">
-              Due Date Reason <span className="text-red-500">*</span>
-            </label>
-            <textarea
-              value={dueDateReason}
-              onChange={(e) => setDueDateReason(e.target.value)}
-              rows={3}
-              className="w-full px-4 py-2 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              placeholder="Why this due date is selected"
-              required
-            />
+            {requiresDueDateReason && (
+              <>
+                <label className="block text-sm font-medium text-gray-700 mt-4 mb-2">
+                  Due Date Reason <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={dueDateReason}
+                  onChange={(e) => setDueDateReason(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  required
+                >
+                  <option value="">Select a reason</option>
+                  {dueDateReasons.map((reason) => (
+                    <option key={reason.id} value={reason.reason}>
+                      {reason.reason}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  Required only for back-dated due dates.
+                </p>
+              </>
+            )}
           </div>
         </div>
 

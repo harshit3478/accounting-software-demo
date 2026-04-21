@@ -5,8 +5,40 @@ import {
   generateInvoiceNumber,
   calculateInvoiceStatus,
 } from "../../../lib/invoice-utils";
-import { calculateInsuranceAmount } from "../../../lib/insurance";
+import {
+  calculateInsuranceAmount,
+  DEFAULT_INSURANCE_BANDS,
+  type InsuranceBand,
+} from "../../../lib/insurance";
 import { invalidateDashboard } from "../../../lib/cache-helpers";
+
+async function getConfiguredInsuranceBands(): Promise<InsuranceBand[]> {
+  const ruleModel = (prisma as any)?.insuranceRule;
+  if (!ruleModel) {
+    return DEFAULT_INSURANCE_BANDS;
+  }
+
+  try {
+    const rows = await ruleModel.findMany({
+      orderBy: [{ sortOrder: "asc" }, { maxValue: "asc" }],
+    });
+
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return DEFAULT_INSURANCE_BANDS;
+    }
+
+    return rows.map((row: any) => ({
+      maxValue: row.maxValue?.toNumber
+        ? row.maxValue.toNumber()
+        : Number(row.maxValue),
+      clientShare: row.clientShare?.toNumber
+        ? row.clientShare.toNumber()
+        : Number(row.clientShare),
+    }));
+  } catch {
+    return DEFAULT_INSURANCE_BANDS;
+  }
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -200,6 +232,9 @@ export async function GET(request: NextRequest) {
       insuranceAmount: invoice.insuranceAmount?.toNumber
         ? invoice.insuranceAmount.toNumber()
         : invoice.insuranceAmount,
+      insuranceBaseAmount: invoice.insuranceBaseAmount?.toNumber
+        ? invoice.insuranceBaseAmount.toNumber()
+        : invoice.insuranceBaseAmount,
       amount: invoice.amount?.toNumber
         ? invoice.amount.toNumber()
         : invoice.amount,
@@ -277,6 +312,7 @@ export async function POST(request: NextRequest) {
       subtotal,
       tax,
       discount,
+      invoiceDate,
       dueDate,
       dueDateReason,
       description,
@@ -288,11 +324,92 @@ export async function POST(request: NextRequest) {
       shippingFee,
       shippingFeeRuleId,
       insuranceAmount,
+      insuranceBaseAmount,
     } = await request.json();
 
+    const normalizedClientName =
+      typeof clientName === "string" ? clientName.trim() : "";
+    if (!normalizedClientName) {
+      return NextResponse.json(
+        { error: "Client name is required" },
+        { status: 400 },
+      );
+    }
+
+    let resolvedCustomerId: number | null = null;
+    if (customerId !== undefined && customerId !== null && customerId !== "") {
+      const parsedCustomerId = Number(customerId);
+      if (!Number.isFinite(parsedCustomerId)) {
+        return NextResponse.json(
+          { error: "Invalid customer id" },
+          { status: 400 },
+        );
+      }
+
+      const existingCustomer = await prisma.customer.findUnique({
+        where: { id: parsedCustomerId },
+        select: { id: true },
+      });
+
+      if (!existingCustomer) {
+        return NextResponse.json(
+          { error: "Selected customer not found" },
+          { status: 404 },
+        );
+      }
+
+      resolvedCustomerId = existingCustomer.id;
+    } else {
+      const matchedByName = await prisma.customer.findFirst({
+        where: { name: normalizedClientName },
+        select: { id: true },
+      });
+
+      if (matchedByName) {
+        resolvedCustomerId = matchedByName.id;
+      } else {
+        const createdCustomer = await prisma.customer.create({
+          data: { name: normalizedClientName },
+          select: { id: true },
+        });
+        resolvedCustomerId = createdCustomer.id;
+      }
+    }
+
+    const invoiceDateValue = invoiceDate ? new Date(invoiceDate) : new Date();
+    if (Number.isNaN(invoiceDateValue.getTime())) {
+      return NextResponse.json(
+        { error: "Invalid invoice date" },
+        { status: 400 },
+      );
+    }
+
+    const normalizedInvoiceDate = new Date(invoiceDateValue);
+    normalizedInvoiceDate.setHours(0, 0, 0, 0);
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    if (normalizedInvoiceDate > today) {
+      return NextResponse.json(
+        { error: "Invoice date cannot be in the future" },
+        { status: 400 },
+      );
+    }
+
+    const dueDateValue = new Date(dueDate);
+    if (Number.isNaN(dueDateValue.getTime())) {
+      return NextResponse.json({ error: "Invalid due date" }, { status: 400 });
+    }
+
+    const selectedDueDate = new Date(dueDateValue);
+    selectedDueDate.setHours(0, 0, 0, 0);
+
+    const requiresDueDateReason = selectedDueDate < today;
     const normalizedDueDateReason =
       typeof dueDateReason === "string" ? dueDateReason.trim() : "";
-    if (!normalizedDueDateReason) {
+
+    if (requiresDueDateReason && !normalizedDueDateReason) {
       return NextResponse.json(
         { error: "Due date reason is required" },
         { status: 400 },
@@ -308,10 +425,41 @@ export async function POST(request: NextRequest) {
     const shippingFeeAmount = shippingFee || 0;
     const preShippingTotal =
       parseFloat(subtotal) + parseFloat(taxAmount) - parseFloat(discountAmount);
+
+    let normalizedInsuranceBaseAmount: number | null = null;
+    if (
+      insuranceBaseAmount !== undefined &&
+      insuranceBaseAmount !== null &&
+      insuranceBaseAmount !== ""
+    ) {
+      const parsedBase = Number(insuranceBaseAmount);
+      if (!Number.isFinite(parsedBase) || parsedBase <= 0) {
+        return NextResponse.json(
+          { error: "Insurance applied-on amount must be greater than 0" },
+          { status: 400 },
+        );
+      }
+
+      if (parsedBase > preShippingTotal) {
+        return NextResponse.json(
+          {
+            error:
+              "Insurance applied-on amount cannot exceed invoice value before shipping",
+          },
+          { status: 400 },
+        );
+      }
+
+      normalizedInsuranceBaseAmount = parsedBase;
+    }
+
+    const insuranceCalculationBase =
+      normalizedInsuranceBaseAmount ?? preShippingTotal;
+    const insuranceBands = await getConfiguredInsuranceBands();
     const insuranceFeeAmount =
       insuranceAmount !== undefined && insuranceAmount !== null
         ? Number(insuranceAmount)
-        : calculateInsuranceAmount(preShippingTotal);
+        : calculateInsuranceAmount(insuranceCalculationBase, insuranceBands);
     const totalAmount =
       preShippingTotal + parseFloat(shippingFeeAmount) + insuranceFeeAmount;
 
@@ -350,7 +498,7 @@ export async function POST(request: NextRequest) {
       data: {
         userId: user.id,
         invoiceNumber,
-        clientName,
+        clientName: normalizedClientName,
         items: items || null,
         subtotal: parseFloat(subtotal),
         tax: parseFloat(taxAmount),
@@ -359,12 +507,13 @@ export async function POST(request: NextRequest) {
         insuranceAmount: insuranceFeeAmount,
         amount: totalAmount,
         paidAmount: 0,
-        dueDate: new Date(dueDate),
-        dueDateReason: normalizedDueDateReason,
+        invoiceDate: invoiceDateValue,
+        dueDate: dueDateValue,
+        dueDateReason: requiresDueDateReason ? normalizedDueDateReason : null,
         status: "pending",
         isLayaway: isLayaway || false,
         description,
-        customerId: customerId || null,
+        customerId: resolvedCustomerId,
         externalInvoiceNumber: externalInvoiceNumber || null,
         source: source || "manual",
         termsId: attachedTermsId,
@@ -372,6 +521,14 @@ export async function POST(request: NextRequest) {
         shippingFeeRuleId: shippingFeeRuleId || null,
       },
     });
+
+    if (normalizedInsuranceBaseAmount !== null) {
+      await prisma.$executeRaw`
+        UPDATE invoices
+        SET insuranceBaseAmount = ${normalizedInsuranceBaseAmount}
+        WHERE id = ${invoice.id}
+      `;
+    }
 
     // Create layaway plan if applicable
     if (isLayaway && layawayPlan) {
@@ -388,21 +545,21 @@ export async function POST(request: NextRequest) {
 
       const installmentAmount =
         numInstallments > 0 ? remaining / numInstallments : 0;
-      const invoiceDate = new Date(dueDate);
+      const planBaseDate = new Date(invoiceDateValue);
 
       const installments: { dueDate: Date; amount: number; label: string }[] =
         [];
 
       if (planDownPayment > 0) {
         installments.push({
-          dueDate: invoiceDate,
+          dueDate: planBaseDate,
           amount: planDownPayment,
           label: "Down Payment",
         });
       }
 
       for (let i = 1; i <= numInstallments; i++) {
-        const instDate = new Date(invoiceDate);
+        const instDate = new Date(planBaseDate);
         if (planFrequency === "monthly") {
           instDate.setMonth(instDate.getMonth() + i);
         } else if (planFrequency === "bi-weekly") {
@@ -455,6 +612,11 @@ export async function POST(request: NextRequest) {
       insuranceAmount: invAny.insuranceAmount?.toNumber
         ? invAny.insuranceAmount.toNumber()
         : invAny.insuranceAmount,
+      insuranceBaseAmount:
+        normalizedInsuranceBaseAmount ??
+        (invAny.insuranceBaseAmount?.toNumber
+          ? invAny.insuranceBaseAmount.toNumber()
+          : invAny.insuranceBaseAmount),
       amount: invAny.amount?.toNumber
         ? invAny.amount.toNumber()
         : invAny.amount,

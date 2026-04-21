@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
-import prisma from '../../../../lib/prisma';
-import { requireAuth } from '../../../../lib/auth';
-import { updateInvoiceAfterPayment } from '../../../../lib/invoice-utils';
-import { Prisma } from '@prisma/client';
+import { NextRequest, NextResponse } from "next/server";
+import prisma from "../../../../lib/prisma";
+import { requireAuth } from "../../../../lib/auth";
+import { updateInvoiceAfterPayment } from "../../../../lib/invoice-utils";
+import { Prisma } from "@prisma/client";
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,18 +12,18 @@ export async function POST(request: NextRequest) {
 
     if (!paymentId || !invoiceId || !amount) {
       return NextResponse.json(
-        { error: 'Missing required fields: paymentId, invoiceId, amount' },
-        { status: 400 }
+        { error: "Missing required fields: paymentId, invoiceId, amount" },
+        { status: 400 },
       );
     }
 
     const amountToLink = new Prisma.Decimal(amount);
 
     if (amountToLink.isNegative() || amountToLink.isZero()) {
-        return NextResponse.json(
-            { error: 'Amount must be greater than 0' },
-            { status: 400 }
-        );
+      return NextResponse.json(
+        { error: "Amount must be greater than 0" },
+        { status: 400 },
+      );
     }
 
     // Start a transaction to ensure integrity
@@ -31,36 +31,64 @@ export async function POST(request: NextRequest) {
       // 1. Fetch Payment and its current matches
       const payment = await tx.payment.findUnique({
         where: { id: paymentId },
-        include: { paymentMatches: true }
+        include: { paymentMatches: true },
       });
 
       if (!payment) {
-        throw new Error('Payment not found');
+        throw new Error("Payment not found");
       }
 
       // Safeguard: If payment is directly linked via invoiceId column, it considers fully used by that invoice
       if (payment.invoiceId) {
-          throw new Error('Payment is already directly allocated to an invoice. Cannot create additional manual links.');
+        throw new Error(
+          "Payment is already directly allocated to an invoice. Cannot create additional manual links.",
+        );
       }
 
       // Calculate available balance on payment
       const matchedAmount = payment.paymentMatches.reduce(
         (sum, match) => sum.add(match.amount),
-        new Prisma.Decimal(0)
+        new Prisma.Decimal(0),
       );
       const paymentAvailable = payment.amount.sub(matchedAmount);
 
       if (amountToLink.gt(paymentAvailable)) {
-        throw new Error(`Payment has insufficient allocation remaining. Available: ${paymentAvailable}`);
+        throw new Error(
+          `Payment has insufficient allocation remaining. Available: ${paymentAvailable}`,
+        );
       }
 
       // 2. Fetch Invoice
       const invoice = await tx.invoice.findUnique({
-        where: { id: invoiceId }
+        where: { id: invoiceId },
       });
 
       if (!invoice) {
-        throw new Error('Invoice not found');
+        throw new Error("Invoice not found");
+      }
+
+      // Store-credit excess payments are customer-scoped and must only apply
+      // to invoices belonging to the same customer.
+      if (payment.source === "store_credit_excess") {
+        const creditTx = await (tx as any).customerCreditTransaction.findFirst({
+          where: {
+            paymentId: payment.id,
+            type: "credit",
+          },
+          orderBy: { createdAt: "desc" },
+        });
+
+        if (!creditTx?.customerId) {
+          throw new Error(
+            "Store credit owner could not be resolved for this payment",
+          );
+        }
+
+        if (!invoice.customerId || invoice.customerId !== creditTx.customerId) {
+          throw new Error(
+            "This store credit can only be linked to invoices of the original customer",
+          );
+        }
       }
 
       // Calculate remaining balance on invoice
@@ -71,8 +99,10 @@ export async function POST(request: NextRequest) {
       // Allow a small epsilon for float issues? standard practice with Decimals is exact.
       // But let's check strict greater than.
       if (amountToLink.gt(invoiceRemaining)) {
-         // Optionally, we could clamp it, but for now throwing error is safer
-         throw new Error(`Amount exceeds invoice remaining balance. Remaining: ${invoiceRemaining}`);
+        // Optionally, we could clamp it, but for now throwing error is safer
+        throw new Error(
+          `Amount exceeds invoice remaining balance. Remaining: ${invoiceRemaining}`,
+        );
       }
 
       // 3. Create the Match
@@ -81,8 +111,8 @@ export async function POST(request: NextRequest) {
           paymentId,
           invoiceId,
           amount: amountToLink,
-          userId: user.id
-        }
+          userId: user.id,
+        },
       });
 
       // 4. Update Payment isMatched status
@@ -90,31 +120,30 @@ export async function POST(request: NextRequest) {
       const newMatchedTotal = matchedAmount.add(amountToLink);
       // Logic: if newMatchedTotal >= payment.amount
       const isNowFullyMatched = newMatchedTotal.gte(payment.amount);
-      
+
       if (isNowFullyMatched !== payment.isMatched) {
-          await tx.payment.update({
-              where: { id: paymentId },
-              data: { isMatched: isNowFullyMatched }
-          });
+        await tx.payment.update({
+          where: { id: paymentId },
+          data: { isMatched: isNowFullyMatched },
+        });
       }
-      
+
       return match;
     });
 
     // 5. Update Invoice Status (Outside transaction since it uses its own logic/checks)
-    // Although ideally it should be inside, updateInvoiceAfterPayment uses top-level prisma client usually, 
+    // Although ideally it should be inside, updateInvoiceAfterPayment uses top-level prisma client usually,
     // unless we pass tx. Let's see if updateInvoiceAfterPayment accepts tx.
     // It imports prisma from lib/prisma, so it uses the global one.
     // For safety, we call it after.
     await updateInvoiceAfterPayment(invoiceId);
 
     return NextResponse.json({ success: true, match: result });
-
   } catch (error: any) {
-    console.error('Error linking payment:', error);
+    console.error("Error linking payment:", error);
     return NextResponse.json(
-      { error: error.message || 'Failed to link payment' },
-      { status: 500 }
+      { error: error.message || "Failed to link payment" },
+      { status: 500 },
     );
   }
 }
