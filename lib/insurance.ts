@@ -5,7 +5,7 @@ export interface InsuranceBand {
 
 // Client insurance share slabs provided by business.
 // Amounts above the final slab use the final slope as an estimate.
-const INSURANCE_BANDS: InsuranceBand[] = [
+export const DEFAULT_INSURANCE_BANDS: InsuranceBand[] = [
   { maxValue: 200, clientShare: 2.75 },
   { maxValue: 300, clientShare: 3.85 },
   { maxValue: 400, clientShare: 4.9 },
@@ -57,20 +57,27 @@ const INSURANCE_BANDS: InsuranceBand[] = [
   { maxValue: 5000, clientShare: 55.55 },
 ];
 
-export function calculateInsuranceAmount(invoiceValue: number): number {
+export function calculateInsuranceAmount(
+  invoiceValue: number,
+  bands: InsuranceBand[] = DEFAULT_INSURANCE_BANDS,
+): number {
   if (!Number.isFinite(invoiceValue) || invoiceValue <= 0) {
     return 0;
   }
 
+  if (!Array.isArray(bands) || bands.length === 0) {
+    return 0;
+  }
+
+  const sortedBands = [...bands].sort((a, b) => a.maxValue - b.maxValue);
+
   const roundedValue = Math.ceil(invoiceValue / 100) * 100;
-  const matchedBand = INSURANCE_BANDS.find(
-    (band) => roundedValue <= band.maxValue,
-  );
+  const matchedBand = sortedBands.find((band) => roundedValue <= band.maxValue);
   if (matchedBand) {
     return Number(matchedBand.clientShare.toFixed(2));
   }
 
-  const maxBand = INSURANCE_BANDS[INSURANCE_BANDS.length - 1];
+  const maxBand = sortedBands[sortedBands.length - 1];
   const extraHundreds = Math.ceil((roundedValue - maxBand.maxValue) / 100);
   const extrapolated = maxBand.clientShare + extraHundreds * 1.15;
   return Number(extrapolated.toFixed(2));

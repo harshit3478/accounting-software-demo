@@ -19,6 +19,7 @@ export interface Invoice {
   discount: number;
   shippingFee?: number;
   insuranceAmount?: number;
+  insuranceBaseAmount?: number | null;
   amount: number;
   paidAmount: number;
   dueDate: string;

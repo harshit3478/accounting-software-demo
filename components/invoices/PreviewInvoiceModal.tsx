@@ -9,7 +9,9 @@ interface PreviewInvoiceModalProps {
   onClose: () => void;
   onConfirm: () => void;
   clientName: string;
+  invoiceDate: string;
   dueDate: string;
+  dueDateReason?: string | null;
   items: InvoiceItem[];
   subtotal: number;
   tax: number;
@@ -18,6 +20,7 @@ interface PreviewInvoiceModalProps {
   discountType: "fixed" | "percentage";
   shippingFee?: number;
   insuranceAmount?: number;
+  insuranceBaseAmount?: number | null;
   total: number;
   isLayaway: boolean;
   isSubmitting?: boolean;
@@ -30,7 +33,9 @@ export default function PreviewInvoiceModal({
   onClose,
   onConfirm,
   clientName,
+  invoiceDate,
   dueDate,
+  dueDateReason,
   items,
   subtotal,
   tax,
@@ -39,6 +44,7 @@ export default function PreviewInvoiceModal({
   discountType,
   shippingFee = 0,
   insuranceAmount = 0,
+  insuranceBaseAmount,
   total,
   isLayaway,
   isSubmitting = false,
@@ -138,13 +144,25 @@ export default function PreviewInvoiceModal({
         </div>
 
         {/* Client Info */}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
             <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
               Client Name
             </p>
             <p className="text-lg font-semibold text-gray-900 mt-1">
               {clientName}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+              Invoice Date
+            </p>
+            <p className="text-lg font-semibold text-gray-900 mt-1">
+              {new Date(invoiceDate).toLocaleDateString("en-US", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+              })}
             </p>
           </div>
           <div>
@@ -160,6 +178,15 @@ export default function PreviewInvoiceModal({
             </p>
           </div>
         </div>
+
+        {dueDateReason?.trim() && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+            <p className="text-xs font-medium text-amber-700 uppercase tracking-wide">
+              Back Due Date Reason
+            </p>
+            <p className="text-sm text-amber-900 mt-1">{dueDateReason}</p>
+          </div>
+        )}
 
         {/* Items Table */}
         <div>
@@ -245,6 +272,14 @@ export default function PreviewInvoiceModal({
               ${insuranceAmount.toFixed(2)}
             </span>
           </div>
+          {insuranceBaseAmount != null && insuranceBaseAmount > 0 && (
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-600">Insurance Applied On:</span>
+              <span className="font-medium text-gray-900">
+                ${insuranceBaseAmount.toFixed(2)}
+              </span>
+            </div>
+          )}
           <div className="border-t border-gray-300 pt-2 mt-2 flex justify-between">
             <span className="font-semibold text-gray-900">Total:</span>
             <span className="text-lg font-bold text-blue-600">

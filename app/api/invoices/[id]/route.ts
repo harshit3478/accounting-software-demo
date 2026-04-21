@@ -19,7 +19,7 @@ export async function PUT(
       tax,
       discount,
       shippingFee,
-      insuranceAmount,
+      invoiceDate,
       dueDate,
       dueDateReason,
       description,
@@ -48,9 +48,54 @@ export async function PUT(
     }
 
     const existingInvoiceAny = existingInvoice as any;
+    const normalizedClientName =
+      typeof clientName === "string"
+        ? clientName.trim()
+        : existingInvoice.clientName.trim();
+
+    if (!normalizedClientName) {
+      return NextResponse.json(
+        { error: "Client name is required" },
+        { status: 400 },
+      );
+    }
+
+    const invoiceDateValue = invoiceDate
+      ? new Date(invoiceDate)
+      : existingInvoice.createdAt;
+    if (Number.isNaN(invoiceDateValue.getTime())) {
+      return NextResponse.json(
+        { error: "Invalid invoice date" },
+        { status: 400 },
+      );
+    }
+
+    const normalizedInvoiceDate = new Date(invoiceDateValue);
+    normalizedInvoiceDate.setHours(0, 0, 0, 0);
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    if (normalizedInvoiceDate > today) {
+      return NextResponse.json(
+        { error: "Invoice date cannot be in the future" },
+        { status: 400 },
+      );
+    }
+
+    const dueDateValue = new Date(dueDate);
+    if (Number.isNaN(dueDateValue.getTime())) {
+      return NextResponse.json({ error: "Invalid due date" }, { status: 400 });
+    }
+
+    const selectedDueDate = new Date(dueDateValue);
+    selectedDueDate.setHours(0, 0, 0, 0);
+
+    const requiresDueDateReason = selectedDueDate < today;
+
     const normalizedDueDateReason =
       typeof dueDateReason === "string" ? dueDateReason.trim() : "";
-    if (!normalizedDueDateReason) {
+    if (requiresDueDateReason && !normalizedDueDateReason) {
       return NextResponse.json(
         { error: "Due date reason is required" },
         { status: 400 },
@@ -64,10 +109,11 @@ export async function PUT(
       shippingFee !== undefined
         ? parseFloat(shippingFee)
         : existingInvoice.shippingFee.toNumber();
-    const insuranceFeeAmount =
-      insuranceAmount !== undefined
-        ? parseFloat(insuranceAmount)
-        : Number(existingInvoiceAny.insuranceAmount?.toNumber?.() ?? 0);
+    // Insurance amount is locked after invoice creation.
+    // Rule changes should affect only newly created invoices.
+    const insuranceFeeAmount = Number(
+      existingInvoiceAny.insuranceAmount?.toNumber?.() ?? 0,
+    );
     const totalAmount =
       parseFloat(subtotal) +
       parseFloat(taxAmount) -
@@ -75,8 +121,51 @@ export async function PUT(
       shippingFeeAmount +
       insuranceFeeAmount;
 
+    let resolvedCustomerId: number | null =
+      customerId !== undefined
+        ? customerId || null
+        : existingInvoice.customerId || null;
+
+    if (
+      resolvedCustomerId !== null &&
+      resolvedCustomerId !== undefined &&
+      Number.isFinite(Number(resolvedCustomerId))
+    ) {
+      const parsedCustomerId = Number(resolvedCustomerId);
+      const existingCustomer = await prisma.customer.findUnique({
+        where: { id: parsedCustomerId },
+        select: { id: true },
+      });
+
+      if (!existingCustomer) {
+        return NextResponse.json(
+          { error: "Selected customer not found" },
+          { status: 404 },
+        );
+      }
+
+      resolvedCustomerId = parsedCustomerId;
+    }
+
+    if (resolvedCustomerId === null) {
+      const matchedByName = await prisma.customer.findFirst({
+        where: { name: normalizedClientName },
+        select: { id: true },
+      });
+
+      if (matchedByName) {
+        resolvedCustomerId = matchedByName.id;
+      } else {
+        const createdCustomer = await prisma.customer.create({
+          data: { name: normalizedClientName },
+          select: { id: true },
+        });
+        resolvedCustomerId = createdCustomer.id;
+      }
+    }
+
     const nextData = {
-      clientName,
+      clientName: normalizedClientName,
       items: items as any,
       subtotal: parseFloat(subtotal),
       tax: parseFloat(taxAmount),
@@ -84,11 +173,12 @@ export async function PUT(
       shippingFee: shippingFeeAmount,
       insuranceAmount: insuranceFeeAmount,
       amount: totalAmount,
-      dueDate: new Date(dueDate),
-      dueDateReason: normalizedDueDateReason,
+      invoiceDate: invoiceDateValue,
+      dueDate: dueDateValue,
+      dueDateReason: requiresDueDateReason ? normalizedDueDateReason : null,
       description,
       isLayaway: isLayaway || false,
-      customerId: customerId !== undefined ? customerId || null : undefined,
+      customerId: resolvedCustomerId,
     };
 
     const changes: Record<string, { from: any; to: any }> = {};
@@ -126,6 +216,12 @@ export async function PUT(
       nextData.insuranceAmount,
     );
     trackChange("amount", existingInvoice.amount.toNumber(), nextData.amount);
+    trackChange(
+      "invoiceDate",
+      (existingInvoiceAny.invoiceDate as Date | null) ||
+        existingInvoice.createdAt,
+      nextData.invoiceDate,
+    );
     trackChange("dueDate", existingInvoice.dueDate, nextData.dueDate);
     trackChange(
       "dueDateReason",
