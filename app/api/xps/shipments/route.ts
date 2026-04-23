@@ -74,7 +74,24 @@ export async function GET(req: Request) {
       );
     }
 
-    const data = await getShipmentFromXps(invoiceId);
+    const invoice = await prisma.invoice.findUnique({
+      where: { id: Number(invoiceId) },
+      select: {
+        id: true,
+        invoiceNumber: true,
+        externalInvoiceNumber: true,
+      },
+    });
+
+    if (!invoice) {
+      return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
+    }
+
+    const data = await getShipmentFromXps({
+      id: invoice.id,
+      invoiceNumber: invoice.invoiceNumber,
+      externalInvoiceNumber: invoice.externalInvoiceNumber,
+    });
     return NextResponse.json(normalizeShipment(data));
   } catch (err: any) {
     console.error("Get shipment error", err);

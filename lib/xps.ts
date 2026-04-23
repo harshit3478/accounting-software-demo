@@ -222,8 +222,49 @@ export async function cancelShipmentWithXps(shipmentId: string) {
   }
 }
 
+export type XpsInvoiceContext = {
+  id: number;
+  invoiceNumber: string;
+  externalInvoiceNumber?: string | null;
+};
+
 function xpsIdsMatch(a: unknown, b: string): boolean {
   return a != null && String(a) === String(b);
+}
+
+function normRef(s: unknown): string {
+  return String(s ?? "").trim().toLowerCase();
+}
+
+function collectSearchKeywords(ctx: XpsInvoiceContext): string[] {
+  const out: string[] = [];
+  const add = (s: string | null | undefined) => {
+    const t = String(s ?? "").trim();
+    if (t && !out.includes(t)) out.push(t);
+  };
+  add(String(ctx.id));
+  add(ctx.invoiceNumber);
+  if (ctx.externalInvoiceNumber) add(ctx.externalInvoiceNumber);
+  return out;
+}
+
+function refFieldsMatchInvoice(
+  shipment: any,
+  idStr: string,
+  invoiceNumber: string,
+  externalInvoiceNumber: string | null | undefined,
+): boolean {
+  const refs = [
+    shipment?.shipmentReference,
+    shipment?.shipperReference,
+    shipment?.shipperReference2,
+  ]
+    .map(normRef)
+    .filter(Boolean);
+  if (refs.length === 0) return false;
+  const candidates = [normRef(idStr), normRef(invoiceNumber)];
+  if (externalInvoiceNumber) candidates.push(normRef(externalInvoiceNumber));
+  return refs.some((r) => candidates.some((c) => c.length > 0 && r === c));
 }
 
 function shipmentBelongsToOrder(shipment: any, invoiceId: string): boolean {
@@ -235,71 +276,154 @@ function shipmentBelongsToOrder(shipment: any, invoiceId: string): boolean {
   return false;
 }
 
-/** Prefer a non-voided shipment with a tracking number when multiple match. */
-function pickShipmentForInvoice(shipments: any[], invoiceId: string): any | null {
-  const matched = shipments.filter((s) => shipmentBelongsToOrder(s, invoiceId));
-  if (matched.length === 0) return null;
-  const score = (s: any) =>
+function shipmentBelongsToInvoice(shipment: any, ctx: XpsInvoiceContext): boolean {
+  const idStr = String(ctx.id);
+  if (shipmentBelongsToOrder(shipment, idStr)) return true;
+  if (xpsIdsMatch(shipment?.fulfillment?.orderId, ctx.invoiceNumber)) return true;
+  if (
+    refFieldsMatchInvoice(
+      shipment,
+      idStr,
+      ctx.invoiceNumber,
+      ctx.externalInvoiceNumber,
+    )
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function scoreShipment(s: any): number {
+  return (
     (s?.voided ? 0 : 4) +
     (s?.trackingNumber || s?.trackingNumbers?.[0] ? 2 : 0) +
-    (s?.bookNumber ? 1 : 0);
-  return [...matched].sort((a, b) => score(b) - score(a))[0];
+    (s?.bookNumber ? 1 : 0)
+  );
+}
+
+/** Strict: linkage via fulfillment / orderIds / references / invoice # as order id. */
+function pickShipmentStrict(shipments: any[], ctx: XpsInvoiceContext): any | null {
+  const matched = shipments.filter((s) => shipmentBelongsToInvoice(s, ctx));
+  if (matched.length === 0) return null;
+  return [...matched].sort((a, b) => scoreShipment(b) - scoreShipment(a))[0];
 }
 
 /**
- * Booked labels and tracking live on *shipments*, not on order records.
- * POST searchShipments accepts order id as keyword and returns trackingNumber, etc.
- * @see https://xpsshipper.com/restapi/docs/v1-ecommerce/endpoints/search-shipments/
+ * When XPS returns booked rows with fulfillment:null (common for UI-created labels),
+ * accept a small result set with a single plausible tracking row.
  */
-async function searchBookedShipmentsForOrder(
-  invoiceId: string,
+function pickShipmentLenient(shipments: any[], ctx: XpsInvoiceContext): any | null {
+  const idStr = String(ctx.id);
+  const nonVoid = shipments.filter((s) => !s?.voided);
+  const withTrack = nonVoid.filter(
+    (s) => s?.trackingNumber || s?.trackingNumbers?.[0],
+  );
+  if (shipments.length <= 3 && withTrack.length === 1) return withTrack[0];
+  const refMatched = withTrack.filter((s) =>
+    refFieldsMatchInvoice(s, idStr, ctx.invoiceNumber, ctx.externalInvoiceNumber),
+  );
+  if (refMatched.length === 1) return refMatched[0];
+  if (shipments.length <= 5 && refMatched.length > 0) {
+    return [...refMatched].sort((a, b) => scoreShipment(b) - scoreShipment(a))[0];
+  }
+  return null;
+}
+
+async function fetchSearchShipmentsForKeyword(
+  keyword: string,
   base: string,
   key: string,
   customerId: string,
-): Promise<any | null> {
+): Promise<any[]> {
   const url = `${base.replace(/\/+$/, "")}/customers/${customerId}/searchShipments`;
-  console.log(`[XPS] searchShipments for order: ${invoiceId}`);
-
   const res = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `RSIS ${key}`,
     },
-    body: JSON.stringify({ keyword: String(invoiceId) }),
+    body: JSON.stringify({ keyword: String(keyword) }),
   });
 
   if (!res.ok) {
-    console.error(`[XPS] searchShipments failed: ${res.status} ${res.statusText}`);
+    console.error(
+      `[XPS] searchShipments failed for keyword "${keyword}": ${res.status} ${res.statusText}`,
+    );
     try {
       console.error(`[XPS] Error body:`, await res.text());
     } catch {
       /* ignore */
     }
-    return null;
+    return [];
   }
 
   const data = await res.json();
   const list = data?.shipments;
-  if (!Array.isArray(list) || list.length === 0) return null;
+  return Array.isArray(list) ? list : [];
+}
 
-  return pickShipmentForInvoice(list, String(invoiceId));
+/** Dedupe by bookNumber across multiple keyword searches. */
+async function searchBookedShipmentsMerged(
+  ctx: XpsInvoiceContext,
+  base: string,
+  key: string,
+  customerId: string,
+): Promise<any[]> {
+  const byBook = new Map<string, any>();
+  const keywords = collectSearchKeywords(ctx);
+  console.log(`[XPS] searchShipments keywords: ${keywords.join(", ")}`);
+
+  let fallbackKey = 0;
+  for (const kw of keywords) {
+    const list = await fetchSearchShipmentsForKeyword(kw, base, key, customerId);
+    for (const s of list) {
+      const bn =
+        s?.bookNumber != null && String(s.bookNumber).length > 0
+          ? String(s.bookNumber)
+          : `_row_${fallbackKey++}`;
+      if (!byBook.has(bn)) byBook.set(bn, s);
+    }
+  }
+
+  return [...byBook.values()];
+}
+
+function mergeOrderAndShipment(order: any | null, shipment: any | null): any | null {
+  if (!order && !shipment) return null;
+  if (!order) return shipment;
+  if (!shipment) return order;
+
+  const st =
+    shipment.trackingNumber ||
+    shipment.trackingNumbers?.[0] ||
+    null;
+  const ordRec = order.receiver || order.destination;
+  const shipRec = shipment.receiver || shipment.destination;
+
+  return {
+    ...order,
+    ...shipment,
+    trackingNumber: st || order.trackingNumber,
+    trackingNumbers: shipment.trackingNumbers || order.trackingNumbers,
+    receiver: shipRec || ordRec,
+    destination: order.destination || ordRec || shipRec,
+    items: order.items ?? shipment.items,
+    packages: order.packages?.length ? order.packages : shipment.packages,
+    pieces: shipment.pieces || order.pieces,
+  };
 }
 
 /**
  * Order search — useful for pending orders (address / items) before a label exists.
- * Direct GET /orders/{id} may be forbidden; keyword list is used instead.
  */
 async function searchOrderByKeyword(
-  invoiceId: string,
+  keyword: string,
   base: string,
   key: string,
   customerId: string,
   integrationId: string,
 ): Promise<any | null> {
-  const url = `${base.replace(/\/+$/, "")}/customers/${customerId}/integrations/${integrationId}/orders?keyword=${encodeURIComponent(String(invoiceId))}`;
-
-  console.log(`[XPS] Fetching order via keyword search: ${url}`);
+  const url = `${base.replace(/\/+$/, "")}/customers/${customerId}/integrations/${integrationId}/orders?keyword=${encodeURIComponent(String(keyword))}`;
 
   const res = await fetch(url, {
     method: "GET",
@@ -319,15 +443,56 @@ async function searchOrderByKeyword(
 
   const data = await res.json();
   if (data && Array.isArray(data.orders)) {
-    const match = data.orders.find((order: any) => xpsIdsMatch(order.orderId, String(invoiceId)));
+    const k = String(keyword);
+    const match = data.orders.find(
+      (order: any) =>
+        xpsIdsMatch(order.orderId, k) ||
+        (order.orderNumber && xpsIdsMatch(order.orderNumber, k)),
+    );
     if (match) return match;
   }
 
-  console.log(`[XPS] Order ${invoiceId} not found in order search results`);
   return null;
 }
 
-export async function getShipmentFromXps(invoiceId: string) {
+async function searchOrderForContext(
+  ctx: XpsInvoiceContext,
+  base: string,
+  key: string,
+  customerId: string,
+  integrationId: string,
+): Promise<any | null> {
+  for (const kw of collectSearchKeywords(ctx)) {
+    const order = await searchOrderByKeyword(
+      kw,
+      base,
+      key,
+      customerId,
+      integrationId,
+    );
+    if (order) return order;
+  }
+  console.log(`[XPS] No order match for invoice ${ctx.id}`);
+  return null;
+}
+
+function normalizeToContext(invoiceIdOrCtx: string | XpsInvoiceContext): XpsInvoiceContext {
+  if (typeof invoiceIdOrCtx === "object" && invoiceIdOrCtx !== null) {
+    return invoiceIdOrCtx;
+  }
+  const n = Number(invoiceIdOrCtx);
+  return {
+    id: Number.isFinite(n) ? n : 0,
+    invoiceNumber: "",
+    externalInvoiceNumber: null,
+  };
+}
+
+/**
+ * Resolves booked shipment (tracking) and/or pending order from XPS.
+ * Pass full {@link XpsInvoiceContext} from DB so invoice # / external # can be searched.
+ */
+export async function getShipmentFromXps(invoiceIdOrCtx: string | XpsInvoiceContext) {
   const base = process.env.XPS_API_BASE || process.env.NEXT_PUBLIC_XPS_API_BASE;
   const key = process.env.XPS_API_KEY || process.env.NEXT_PUBLIC_XPS_API_KEY;
   const customerId = process.env.XPS_CUSTOMER_ID;
@@ -339,19 +504,24 @@ export async function getShipmentFromXps(invoiceId: string) {
   }
 
   const baseNorm = base.replace(/\/+$/, "");
+  const ctx = normalizeToContext(invoiceIdOrCtx);
 
-  const booked = await searchBookedShipmentsForOrder(
-    invoiceId,
-    baseNorm,
-    key,
-    customerId,
-  );
-  if (booked) return booked;
+  const merged = await searchBookedShipmentsMerged(ctx, baseNorm, key, customerId);
+  let booked =
+    pickShipmentStrict(merged, ctx) || pickShipmentLenient(merged, ctx);
 
   if (!integrationId) {
     console.error("[XPS] Missing integration id for order fallback");
-    return null;
+    return booked;
   }
 
-  return searchOrderByKeyword(invoiceId, baseNorm, key, customerId, integrationId);
+  const order = await searchOrderForContext(
+    ctx,
+    baseNorm,
+    key,
+    customerId,
+    integrationId,
+  );
+
+  return mergeOrderAndShipment(order, booked);
 }

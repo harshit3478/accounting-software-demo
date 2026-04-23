@@ -82,6 +82,11 @@ export type InvoiceStatusFilter =
   | "abandoned"
   | "inactive";
 export type InvoiceTypeFilter = "all" | "cash" | "layaway";
+export type InvoiceShipmentFilter =
+  | "all"
+  | "none"
+  | "awaiting_tracking"
+  | "tracked";
 export type InvoiceFilter = InvoiceStatusFilter | "layaway";
 
 interface UseInvoicesReturn {
@@ -97,6 +102,8 @@ interface UseInvoicesReturn {
   setStatusFilter: (filter: InvoiceStatusFilter) => void;
   typeFilter: InvoiceTypeFilter;
   setTypeFilter: (filter: InvoiceTypeFilter) => void;
+  shipmentFilter: InvoiceShipmentFilter;
+  setShipmentFilter: (filter: InvoiceShipmentFilter) => void;
   layawayOverdue: boolean;
   setLayawayOverdue: (overdue: boolean) => void;
 
@@ -201,6 +208,10 @@ export function useInvoices(
   const [typeFilter, setTypeFilterState] = useState<InvoiceTypeFilter>(
     (searchParams.get("type") as InvoiceTypeFilter) || "all",
   );
+  const [shipmentFilter, setShipmentFilterState] =
+    useState<InvoiceShipmentFilter>(
+      (searchParams.get("shipment") as InvoiceShipmentFilter) || "all",
+    );
   const [layawayOverdue, setLayawayOverdueState] = useState(
     searchParams.get("overdueDates") === "2",
   );
@@ -284,6 +295,12 @@ export function useInvoices(
     setTypeFilterState(type);
     setCurrentPage(1);
     updateUrl({ type, page: "1" });
+  };
+
+  const setShipmentFilter = (shipment: InvoiceShipmentFilter) => {
+    setShipmentFilterState(shipment);
+    setCurrentPage(1);
+    updateUrl({ shipment, page: "1" });
   };
 
   const setLayawayOverdue = (overdue: boolean) => {
@@ -395,6 +412,7 @@ export function useInvoices(
   }, [
     statusFilter,
     typeFilter,
+    shipmentFilter,
     layawayOverdue,
     debouncedSearchTerm,
     sortBy,
@@ -413,6 +431,7 @@ export function useInvoices(
       params.set("limit", itemsPerPage.toString());
       if (statusFilter !== "all") params.set("status", statusFilter);
       if (typeFilter !== "all") params.set("type", typeFilter);
+      if (shipmentFilter !== "all") params.set("shipment", shipmentFilter);
       if (layawayOverdue) params.set("overdueDates", "2");
       if (debouncedSearchTerm) params.set("search", debouncedSearchTerm);
       if (dateRange) {
@@ -652,6 +671,8 @@ export function useInvoices(
     setStatusFilter,
     typeFilter,
     setTypeFilter,
+    shipmentFilter,
+    setShipmentFilter,
     searchTerm,
     setSearchTerm,
     sortBy,

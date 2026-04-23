@@ -36,6 +36,8 @@ function InvoicesPageContent() {
     setStatusFilter,
     typeFilter,
     setTypeFilter,
+    shipmentFilter,
+    setShipmentFilter,
     searchTerm,
     setSearchTerm,
     sortBy,
@@ -153,6 +155,8 @@ function InvoicesPageContent() {
           onStatusFilterChange={setStatusFilter}
           typeFilter={typeFilter}
           onTypeFilterChange={setTypeFilter}
+          shipmentFilter={shipmentFilter}
+          onShipmentFilterChange={setShipmentFilter}
           layawayOverdue={layawayOverdue}
           onLayawayOverdueChange={setLayawayOverdue}
           searchTerm={searchTerm}
@@ -168,6 +172,7 @@ function InvoicesPageContent() {
           showFiltered={
             statusFilter !== "all" ||
             typeFilter !== "all" ||
+            shipmentFilter !== "all" ||
             !!searchTerm ||
             !!dateRange
           }
@@ -219,6 +224,7 @@ function InvoicesPageContent() {
             searchTerm={searchTerm}
             statusFilter={statusFilter}
             typeFilter={typeFilter}
+            shipmentFilter={shipmentFilter}
             sortBy={sortBy}
             sortDirection={sortDirection}
             onSortChange={setSortBy}

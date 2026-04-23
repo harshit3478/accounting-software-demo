@@ -120,7 +120,6 @@ export async function GET(request: NextRequest) {
     };
 
     // Generate payment methods breakdown over time (dynamic)
-    const methodMap = new Map(allMethods.map(m => [m.id, m]));
     const paymentMethodData: { [methodId: number]: { [date: string]: number } } = {};
 
     for (const m of allMethods) {
@@ -137,15 +136,52 @@ export async function GET(request: NextRequest) {
       }
     });
 
-    // Build dynamic chart data keyed by method name
-    const paymentMethodsChartData: any = {
-      dates: dates.map(d => formatDate(d)),
-      methods: allMethods.map(m => ({
+    const dateKeys = dates.map((d) => d.toISOString().split('T')[0]);
+    const enrichedMethods = allMethods.map((m) => {
+      const values = dateKeys.map(
+        (ds) => paymentMethodData[m.id]?.[ds] ?? 0,
+      );
+      const total = values.reduce((s, v) => s + v, 0);
+      return {
         id: m.id,
         name: m.name,
         color: m.color,
-        values: Object.values(paymentMethodData[m.id] || {}),
-      })),
+        values,
+        total,
+      };
+    });
+    enrichedMethods.sort((a, b) => b.total - a.total);
+
+    const MAX_SERIES = 8;
+    let chartMethods: {
+      id: number;
+      name: string;
+      color: string | null;
+      values: number[];
+    }[];
+
+    if (enrichedMethods.length <= MAX_SERIES) {
+      chartMethods = enrichedMethods.map(({ total: _t, ...r }) => r);
+    } else {
+      const keep = enrichedMethods.slice(0, MAX_SERIES - 1);
+      const drop = enrichedMethods.slice(MAX_SERIES - 1);
+      const otherValues = dateKeys.map((_, i) =>
+        drop.reduce((s, m) => s + m.values[i], 0),
+      );
+      chartMethods = [
+        ...keep.map(({ total: _t, ...r }) => r),
+        {
+          id: -1,
+          name: "Other",
+          color: "#9CA3AF",
+          values: otherValues,
+        },
+      ];
+    }
+
+    const paymentMethodsChartData: any = {
+      dates: dates.map((d) => formatDate(d)),
+      methods: chartMethods,
     };
 
     // Calculate totals for summary

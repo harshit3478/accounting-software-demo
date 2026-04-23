@@ -12,6 +12,7 @@
     "lint": "biome check",
     "format": "biome format --write",
     "db:seed": "tsx prisma/seed.ts",
+    "db:seed:payment-methods": "tsx prisma/seed-payment-methods.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {

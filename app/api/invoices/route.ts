@@ -59,6 +59,7 @@ export async function GET(request: NextRequest) {
     const endDate = searchParams.get("endDate");
     const showInactive = searchParams.get("showInactive") === "true";
     const customerId = searchParams.get("customerId");
+    const shipment = searchParams.get("shipment") || "all";
 
     // Sort params
     const sortBy = searchParams.get("sortBy") || "date";
@@ -155,6 +156,42 @@ export async function GET(request: NextRequest) {
         gte: new Date(startDate),
         lte: new Date(new Date(endDate).setHours(23, 59, 59, 999)),
       };
+    }
+
+    // Shipment filter (local shipmentId / trackingNumber)
+    if (shipment === "none") {
+      where.AND = [
+        ...(where.AND || []),
+        {
+          AND: [
+            { OR: [{ shipmentId: null }, { shipmentId: "" }] },
+            { OR: [{ trackingNumber: null }, { trackingNumber: "" }] },
+          ],
+        },
+      ];
+    } else if (shipment === "awaiting_tracking") {
+      where.AND = [
+        ...(where.AND || []),
+        {
+          AND: [
+            { shipmentId: { not: null } },
+            { NOT: { shipmentId: "" } },
+            {
+              OR: [{ trackingNumber: null }, { trackingNumber: "" }],
+            },
+          ],
+        },
+      ];
+    } else if (shipment === "tracked") {
+      where.AND = [
+        ...(where.AND || []),
+        {
+          AND: [
+            { trackingNumber: { not: null } },
+            { NOT: { trackingNumber: "" } },
+          ],
+        },
+      ];
     }
 
     // Get total count for pagination

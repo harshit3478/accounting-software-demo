@@ -279,13 +279,19 @@ function DashboardContent() {
       }
     },
     legend: {
+      type: 'scroll',
       data: chartData.paymentMethodsChart.methods?.map((m: any) => m.name) || [],
-      bottom: 0
+      bottom: 0,
+      itemGap: 10,
+      pageButtonItemGap: 6,
+      pageIconSize: 11,
+      textStyle: { fontSize: 11, color: '#4b5563' },
     },
     grid: {
       left: '3%',
       right: '4%',
-      bottom: '15%',
+      bottom:
+        (chartData.paymentMethodsChart.methods?.length || 0) > 5 ? '24%' : '18%',
       containLabel: true
     },
     xAxis: {

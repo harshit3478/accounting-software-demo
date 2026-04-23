@@ -20,6 +20,7 @@ interface InvoiceTableProps {
   searchTerm: string;
   statusFilter: string;
   typeFilter: string;
+  shipmentFilter: string;
   sortBy: string;
   sortDirection: "asc" | "desc";
   onSortChange: (sort: string) => void;
@@ -42,6 +43,7 @@ export default function InvoiceTable({
   searchTerm,
   statusFilter,
   typeFilter,
+  shipmentFilter,
   sortBy,
   sortDirection,
   onSortChange,
@@ -86,11 +88,17 @@ export default function InvoiceTable({
             No invoices found
           </h3>
           <p className="text-gray-500 mb-4">
-            {searchTerm || statusFilter !== "all" || typeFilter !== "all"
+            {searchTerm ||
+            statusFilter !== "all" ||
+            typeFilter !== "all" ||
+            shipmentFilter !== "all"
               ? "Try adjusting your search or filter to find what you're looking for."
               : "Get started by creating your first invoice."}
           </p>
-          {!searchTerm && statusFilter === "all" && typeFilter === "all" && (
+          {!searchTerm &&
+            statusFilter === "all" &&
+            typeFilter === "all" &&
+            shipmentFilter === "all" && (
             <button
               onClick={onCreateFirst}
               className="px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
@@ -163,6 +171,13 @@ export default function InvoiceTable({
               </th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">
                 Status
+              </th>
+              <th
+                className="px-2 sm:px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 w-14 sm:w-[118px]"
+                title="Shipping"
+              >
+                <span className="sm:hidden">Shp</span>
+                <span className="hidden sm:inline">Ship</span>
               </th>
               <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 w-[60px]">
                 Actions

@@ -10,6 +10,7 @@ import {
   Plus,
   Download,
   Upload,
+  Package,
 } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -19,6 +20,7 @@ import { format } from "date-fns";
 import type {
   InvoiceStatusFilter,
   InvoiceTypeFilter,
+  InvoiceShipmentFilter,
 } from "../../hooks/useInvoices";
 
 interface InvoiceToolbarProps {
@@ -26,6 +28,8 @@ interface InvoiceToolbarProps {
   onStatusFilterChange: (filter: InvoiceStatusFilter) => void;
   typeFilter: InvoiceTypeFilter;
   onTypeFilterChange: (filter: InvoiceTypeFilter) => void;
+  shipmentFilter: InvoiceShipmentFilter;
+  onShipmentFilterChange: (filter: InvoiceShipmentFilter) => void;
   layawayOverdue: boolean;
   onLayawayOverdueChange: (overdue: boolean) => void;
   searchTerm: string;
@@ -42,6 +46,8 @@ export default function InvoiceToolbar({
   onStatusFilterChange,
   typeFilter,
   onTypeFilterChange,
+  shipmentFilter,
+  onShipmentFilterChange,
   layawayOverdue,
   onLayawayOverdueChange,
   searchTerm,
@@ -168,6 +174,54 @@ export default function InvoiceToolbar({
                     }
                   >
                     {type}
+                  </div>
+                ))}
+              </div>
+            </PopoverContent>
+          </Popover>
+
+          {/* Shipment filter */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className="h-9 border-dashed">
+                <Package className="mr-2 h-4 w-4" />
+                Shipment
+                {shipmentFilter !== "all" && (
+                  <>
+                    <span className="mx-2 h-4 w-[1px] bg-gray-200" />
+                    <span className="text-blue-600 max-w-[100px] truncate">
+                      {shipmentFilter === "none"
+                        ? "None"
+                        : shipmentFilter === "awaiting_tracking"
+                          ? "Awaiting track"
+                          : "Tracked"}
+                    </span>
+                  </>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[220px] p-0" align="start">
+              <div className="p-2">
+                {(
+                  [
+                    ["all", "All"],
+                    ["none", "No shipment"],
+                    ["awaiting_tracking", "Queued (no tracking #)"],
+                    ["tracked", "Has tracking #"],
+                  ] as const
+                ).map(([value, label]) => (
+                  <div
+                    key={value}
+                    className={`px-3 py-2 text-sm rounded-md cursor-pointer hover:bg-gray-100 ${
+                      shipmentFilter === value
+                        ? "bg-blue-50 text-blue-700 font-medium"
+                        : "text-gray-700"
+                    }`}
+                    onClick={() =>
+                      onShipmentFilterChange(value as InvoiceShipmentFilter)
+                    }
+                  >
+                    {label}
                   </div>
                 ))}
               </div>

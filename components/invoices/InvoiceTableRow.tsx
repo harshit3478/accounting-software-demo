@@ -68,6 +68,21 @@ export default function InvoiceTableRow({
     invoice.status !== "inactive" &&
     invoice.status !== "abandoned";
 
+  const trk = invoice.trackingNumber?.trim();
+  const sid = invoice.shipmentId?.trim();
+  const shipTitle = trk
+    ? `Tracking: ${trk}`
+    : sid
+      ? `Queued (shipment ${sid})`
+      : "No shipment";
+  const shipLabel = trk
+    ? trk.length > 11
+      ? `${trk.slice(0, 9)}…`
+      : trk
+    : sid
+      ? "Queued"
+      : "—";
+
   return (
     <tr
       className={`hover:bg-gray-50 transition-colors animate-fade-in-left stagger-fast-${Math.min(
@@ -138,6 +153,20 @@ export default function InvoiceTableRow({
         <span className={getStatusBadge(invoice.status)}>
           {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}
         </span>
+      </td>
+      <td
+        className="px-2 sm:px-3 py-3 text-xs text-gray-700 max-w-[3rem] sm:max-w-[130px]"
+        title={shipTitle}
+      >
+        <div className="flex items-center justify-center sm:justify-start min-w-0">
+          <Package
+            className={`h-4 w-4 sm:hidden ${
+              trk ? "text-emerald-600" : sid ? "text-amber-600" : "text-gray-300"
+            }`}
+            aria-hidden
+          />
+          <span className="hidden sm:inline truncate tabular-nums">{shipLabel}</span>
+        </div>
       </td>
       <td className="px-3 py-3 text-right text-sm font-medium">
         <Popover open={showActionsMenu} onOpenChange={setShowActionsMenu}>

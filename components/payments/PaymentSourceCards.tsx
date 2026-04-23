@@ -32,45 +32,64 @@ export default function PaymentSourceCards({
         </div>
       )}
 
-      <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
-        {paymentMethods.map((method) => {
-          const methodId = String(method.id);
-          const methodStats = displayStats.byMethod[method.id];
-          const amount = methodStats?.amount || 0;
-          const count = methodStats?.count || 0;
+      <div
+        className="relative rounded-lg border border-gray-100 bg-gray-50/50 -mx-1 px-1"
+        aria-label="Payment methods — scroll horizontally to see all"
+      >
+        <div
+          className="flex gap-2 overflow-x-auto pb-1 pt-0.5 snap-x snap-mandatory scroll-px-2 [-ms-overflow-style:none] [scrollbar-width:thin] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-gray-300"
+          tabIndex={0}
+        >
+          {paymentMethods.map((method) => {
+            const methodId = String(method.id);
+            const methodStats = displayStats.byMethod[method.id];
+            const amount = methodStats?.amount || 0;
+            const count = methodStats?.count || 0;
 
-          return (
-            <div
-              key={method.id}
-              onClick={() => onFilterChange(methodId === filterMethod ? 'all' : methodId)}
-              className={`flex items-center p-3 bg-white border rounded-lg shadow-sm cursor-pointer transition-all ${
-                filterMethod === methodId
-                  ? 'ring-2 ring-blue-500 border-blue-500'
-                  : 'border-gray-200 hover:border-gray-300'
-              }`}
-            >
+            return (
               <div
-                className="p-2 rounded-md mr-3 text-lg flex items-center justify-center"
-                style={{ backgroundColor: `${method.color}20`, color: method.color }}
+                key={method.id}
+                role="button"
+                tabIndex={-1}
+                onClick={() => onFilterChange(methodId === filterMethod ? 'all' : methodId)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onFilterChange(methodId === filterMethod ? 'all' : methodId);
+                  }
+                }}
+                className={`flex-shrink-0 snap-start w-[118px] sm:w-[128px] flex items-stretch p-2 bg-white border rounded-md shadow-sm cursor-pointer transition-all ${
+                  filterMethod === methodId
+                    ? 'ring-2 ring-blue-500 border-blue-500'
+                    : 'border-gray-200 hover:border-gray-300'
+                }`}
               >
-                <LucideIcon name={method.icon} fallback={method.name} size={20} />
-              </div>
-              <div>
-                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                  {method.name}
-                </p>
-                <div className="flex items-baseline gap-2">
-                  <p className="text-lg font-bold text-gray-900 leading-tight">
-                    ${amount.toFixed(2)}
+                <div
+                  className="p-1.5 rounded-md mr-2 text-base flex items-center justify-center flex-shrink-0 self-start"
+                  style={{ backgroundColor: `${method.color}20`, color: method.color }}
+                >
+                  <LucideIcon name={method.icon} fallback={method.name} size={18} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p
+                    className="text-[10px] font-medium text-gray-500 uppercase tracking-wide leading-tight line-clamp-2"
+                    title={method.name}
+                  >
+                    {method.name}
                   </p>
-                  <span className="text-xs text-gray-400">
-                    ({count})
-                  </span>
+                  <div className="flex items-baseline gap-1 mt-0.5">
+                    <p className="text-sm font-bold text-gray-900 leading-tight tabular-nums truncate" title={`$${amount.toFixed(2)}`}>
+                      ${amount.toFixed(2)}
+                    </p>
+                    <span className="text-[10px] text-gray-400 flex-shrink-0">
+                      ({count})
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     </div>
   );
