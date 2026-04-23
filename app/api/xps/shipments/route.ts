@@ -24,7 +24,13 @@ function normalizeShipment(data: any) {
     shipment.status ||
     shipment.fulfillmentStatus ||
     shipment.shippingStatus ||
-    "Pending";
+    (shipment.voided
+      ? "Voided"
+      : trackingNumber
+        ? "Shipped"
+        : shipment.bookNumber
+          ? "Booked"
+          : "Pending");
 
   const carrier =
     shipment.carrierCode ||
@@ -36,12 +42,23 @@ function normalizeShipment(data: any) {
     ? `https://tools.usps.com/go/TrackConfirmAction?tLabels=${encodeURIComponent(trackingNumber)}`
     : null;
 
+  const destination = shipment.destination || shipment.receiver || null;
+  const packages =
+    shipment.packages?.length > 0
+      ? shipment.packages
+      : shipment.pieces?.length > 0
+        ? shipment.pieces
+        : shipment.items;
+
   return {
     ...shipment,
     trackingNumber,
     orderStatus,
     carrier,
+    shippingService: shipment.shippingService || shipment.serviceCode || null,
     liveTrackingUrl,
+    destination,
+    packages: packages ?? shipment.packages,
   };
 }
 

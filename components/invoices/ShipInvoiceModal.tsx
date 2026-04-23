@@ -90,17 +90,18 @@ export default function ShipInvoiceModal({
         // Based on our getShipmentFromXps, it targets /orders/{id}, which usually returns the single order object directly
         // But the previous curl showed a list when querying the integrations list.
         // Let's assume the getShipmentFromXps returns the single order object.
-        const order = data; // or data.orders?.[0] if specific list endpoint used
-        
-        if (order && order.destination) {
-          setName(order.destination.name || "");
-          setStreet(order.destination.address1 || "");
-          setAddressQuery(order.destination.address1 || "");
-          setCity(order.destination.city || "");
-          setState(order.destination.state || "");
-          setPostalCode(order.destination.zip || "");
-          setCountry(order.destination.country || "US");
-          setPhone(order.destination.phone || "");
+        const order = data;
+        const dest = order?.destination || order?.receiver;
+
+        if (order && dest) {
+          setName(dest.name || "");
+          setStreet(dest.address1 || "");
+          setAddressQuery(dest.address1 || "");
+          setCity(dest.city || "");
+          setState(dest.state || "");
+          setPostalCode(dest.zip || "");
+          setCountry(dest.country || "US");
+          setPhone(dest.phone || "");
         }
         
         // XPS items/packages structure can be complex.
