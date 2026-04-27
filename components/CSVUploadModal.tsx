@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { useState, useRef } from 'react';
+import { useState, useRef } from "react";
 
 interface ValidationResult {
   valid: boolean;
@@ -21,10 +21,41 @@ interface CSVUploadModalProps {
   onClose: () => void;
   onSuccess: () => void;
   title: string;
-  type: 'invoices' | 'payments';
+  type: "invoices" | "payments";
   templateUrl: string;
   validateUrl: string;
   uploadUrl: string;
+}
+
+const INVOICE_ACCEPTED_EXTENSIONS = [".xlsx", ".xls", ".csv"];
+
+function isSupportedFile(
+  type: "invoices" | "payments",
+  selectedFile: File,
+): boolean {
+  const fileName = selectedFile.name.toLowerCase();
+
+  if (type === "payments") {
+    return fileName.endsWith(".csv") || selectedFile.type === "text/csv";
+  }
+
+  return INVOICE_ACCEPTED_EXTENSIONS.some((ext) => fileName.endsWith(ext));
+}
+
+function getTemplateFileName(
+  contentDisposition: string | null,
+  type: "invoices" | "payments",
+) {
+  if (contentDisposition) {
+    const match = contentDisposition.match(/filename="?([^\";]+)"?/i);
+    if (match?.[1]) {
+      return match[1];
+    }
+  }
+
+  return type === "invoices"
+    ? "invoices-template.xlsx"
+    : "payments-template.csv";
 }
 
 export default function CSVUploadModal({
@@ -35,14 +66,15 @@ export default function CSVUploadModal({
   type,
   templateUrl,
   validateUrl,
-  uploadUrl
+  uploadUrl,
 }: CSVUploadModalProps) {
   const [file, setFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
-  const [error, setError] = useState('');
+  const [validationResult, setValidationResult] =
+    useState<ValidationResult | null>(null);
+  const [error, setError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
@@ -50,7 +82,7 @@ export default function CSVUploadModal({
   const handleClose = () => {
     setFile(null);
     setValidationResult(null);
-    setError('');
+    setError("");
     onClose();
   };
 
@@ -68,23 +100,36 @@ export default function CSVUploadModal({
     setIsDragging(false);
 
     const droppedFile = e.dataTransfer.files[0];
-    if (droppedFile && droppedFile.type === 'text/csv') {
+    if (droppedFile && isSupportedFile(type, droppedFile)) {
       handleFileSelect(droppedFile);
     } else {
-      setError('Please upload a valid CSV file');
+      setError(
+        type === "invoices"
+          ? "Please upload a valid XLSX/XLS/CSV file"
+          : "Please upload a valid CSV file",
+      );
     }
   };
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (selectedFile) {
+      if (!isSupportedFile(type, selectedFile)) {
+        setError(
+          type === "invoices"
+            ? "Please upload a valid XLSX/XLS/CSV file"
+            : "Please upload a valid CSV file",
+        );
+        return;
+      }
+
       handleFileSelect(selectedFile);
     }
   };
 
   const handleFileSelect = async (selectedFile: File) => {
     setFile(selectedFile);
-    setError('');
+    setError("");
     setValidationResult(null);
 
     // Auto-validate
@@ -93,15 +138,15 @@ export default function CSVUploadModal({
 
   const validateFile = async (fileToValidate: File) => {
     setIsValidating(true);
-    setError('');
+    setError("");
 
     try {
       const formData = new FormData();
-      formData.append('file', fileToValidate);
+      formData.append("file", fileToValidate);
 
       const res = await fetch(validateUrl, {
-        method: 'POST',
-        body: formData
+        method: "POST",
+        body: formData,
       });
 
       if (res.ok) {
@@ -109,11 +154,11 @@ export default function CSVUploadModal({
         setValidationResult(result);
       } else {
         const errorData = await res.json();
-        setError(errorData.error || 'Validation failed');
+        setError(errorData.error || "Validation failed");
       }
     } catch (err) {
-      setError('Failed to validate file');
-      console.error('Validation error:', err);
+      setError("Failed to validate file");
+      console.error("Validation error:", err);
     } finally {
       setIsValidating(false);
     }
@@ -123,15 +168,15 @@ export default function CSVUploadModal({
     if (!file || !validationResult?.valid) return;
 
     setIsUploading(true);
-    setError('');
+    setError("");
 
     try {
       const formData = new FormData();
-      formData.append('file', file);
+      formData.append("file", file);
 
       const res = await fetch(uploadUrl, {
-        method: 'POST',
-        body: formData
+        method: "POST",
+        body: formData,
       });
 
       if (res.ok) {
@@ -140,11 +185,11 @@ export default function CSVUploadModal({
         handleClose();
       } else {
         const errorData = await res.json();
-        setError(errorData.error || 'Upload failed');
+        setError(errorData.error || "Upload failed");
       }
     } catch (err) {
-      setError('Failed to upload file');
-      console.error('Upload error:', err);
+      setError("Failed to upload file");
+      console.error("Upload error:", err);
     } finally {
       setIsUploading(false);
     }
@@ -155,16 +200,19 @@ export default function CSVUploadModal({
       const res = await fetch(templateUrl);
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
+      const a = document.createElement("a");
       a.href = url;
-      a.download = `${type}-template.csv`;
+      a.download = getTemplateFileName(
+        res.headers.get("content-disposition"),
+        type,
+      );
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
     } catch (err) {
-      console.error('Failed to download template:', err);
-      setError('Failed to download template');
+      console.error("Failed to download template:", err);
+      setError("Failed to download template");
     }
   };
 
@@ -178,8 +226,18 @@ export default function CSVUploadModal({
             onClick={handleClose}
             className="text-gray-400 hover:text-gray-600 transition-colors"
           >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+            <svg
+              className="w-6 h-6"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M6 18L18 6M6 6l12 12"
+              ></path>
             </svg>
           </button>
         </div>
@@ -188,22 +246,40 @@ export default function CSVUploadModal({
         <div className="p-6 space-y-6">
           {/* Step 1: Download Template */}
           <div>
-            <h3 className="text-sm font-semibold text-gray-700 mb-2">Step 1: Download Template</h3>
+            <h3 className="text-sm font-semibold text-gray-700 mb-2">
+              Step 1: Download Template
+            </h3>
             <button
               onClick={downloadTemplate}
               className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                ></path>
               </svg>
-              Download CSV Template
+              {type === "invoices"
+                ? "Download XLSX Template"
+                : "Download CSV Template"}
             </button>
           </div>
 
           {/* Step 2: Upload File */}
           <div>
-            <h3 className="text-sm font-semibold text-gray-700 mb-2">Step 2: Upload Filled CSV</h3>
-            
+            <h3 className="text-sm font-semibold text-gray-700 mb-2">
+              {type === "invoices"
+                ? "Step 2: Upload Filled Sheet"
+                : "Step 2: Upload Filled CSV"}
+            </h3>
+
             {!file ? (
               <div
                 onDragOver={handleDragOver}
@@ -212,19 +288,37 @@ export default function CSVUploadModal({
                 onClick={() => fileInputRef.current?.click()}
                 className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
                   isDragging
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-300 hover:border-gray-400'
+                    ? "border-blue-500 bg-blue-50"
+                    : "border-gray-300 hover:border-gray-400"
                 }`}
               >
-                <svg className="w-12 h-12 text-gray-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                <svg
+                  className="w-12 h-12 text-gray-400 mx-auto mb-3"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                  ></path>
                 </svg>
-                <p className="text-gray-600 font-medium mb-1">Drag & drop CSV file here</p>
+                <p className="text-gray-600 font-medium mb-1">
+                  {type === "invoices"
+                    ? "Drag & drop XLSX/XLS/CSV file here"
+                    : "Drag & drop CSV file here"}
+                </p>
                 <p className="text-sm text-gray-500">or click to browse</p>
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".csv"
+                  accept={
+                    type === "invoices"
+                      ? ".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
+                      : ".csv,text/csv"
+                  }
                   onChange={handleFileInputChange}
                   className="hidden"
                 />
@@ -233,11 +327,25 @@ export default function CSVUploadModal({
               <div className="border border-gray-200 rounded-lg p-4">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
-                    <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                    <svg
+                      className="w-5 h-5 text-green-600"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                      ></path>
                     </svg>
-                    <span className="font-medium text-gray-900">{file.name}</span>
-                    <span className="text-sm text-gray-500">({(file.size / 1024).toFixed(1)} KB)</span>
+                    <span className="font-medium text-gray-900">
+                      {file.name}
+                    </span>
+                    <span className="text-sm text-gray-500">
+                      ({(file.size / 1024).toFixed(1)} KB)
+                    </span>
                   </div>
                   <button
                     onClick={() => {
@@ -254,7 +362,12 @@ export default function CSVUploadModal({
                 {isValidating && (
                   <div className="flex items-center gap-2 text-blue-600">
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
-                    <span className="text-sm">Validating {validationResult ? `${validationResult.validRows}/${validationResult.totalRows}` : '...'}</span>
+                    <span className="text-sm">
+                      Validating{" "}
+                      {validationResult
+                        ? `${validationResult.validRows}/${validationResult.totalRows}`
+                        : "..."}
+                    </span>
                   </div>
                 )}
 
@@ -263,25 +376,52 @@ export default function CSVUploadModal({
                   <div className="mt-3 space-y-3">
                     {validationResult.valid ? (
                       <div className="flex items-start gap-2 p-3 bg-green-50 border border-green-200 rounded-lg">
-                        <svg className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        <svg
+                          className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="2"
+                            d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                          ></path>
                         </svg>
                         <div className="flex-1">
-                          <p className="text-sm font-medium text-green-900">All rows valid!</p>
+                          <p className="text-sm font-medium text-green-900">
+                            All rows valid!
+                          </p>
                           <p className="text-xs text-green-700 mt-1">
-                            {validationResult.totalRows} row{validationResult.totalRows !== 1 ? 's' : ''} ready to upload
+                            {validationResult.totalRows} row
+                            {validationResult.totalRows !== 1 ? "s" : ""} ready
+                            to upload
                           </p>
                         </div>
                       </div>
                     ) : (
                       <div className="space-y-2">
                         <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
-                          <svg className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                          <svg
+                            className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="2"
+                              d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                            ></path>
                           </svg>
                           <div className="flex-1">
                             <p className="text-sm font-medium text-red-900">
-                              {validationResult.invalidRows.length} invalid row{validationResult.invalidRows.length !== 1 ? 's' : ''}
+                              {validationResult.invalidRows.length} invalid row
+                              {validationResult.invalidRows.length !== 1
+                                ? "s"
+                                : ""}
                             </p>
                             <p className="text-xs text-red-700 mt-1">
                               Fix errors before uploading
@@ -292,11 +432,18 @@ export default function CSVUploadModal({
                         {/* Error List */}
                         <div className="max-h-48 overflow-y-auto space-y-1">
                           {validationResult.invalidRows.map((item) => (
-                            <div key={item.row} className="text-xs p-2 bg-red-50 rounded border border-red-100">
-                              <span className="font-semibold text-red-900">Row {item.row}:</span>
+                            <div
+                              key={item.row}
+                              className="text-xs p-2 bg-red-50 rounded border border-red-100"
+                            >
+                              <span className="font-semibold text-red-900">
+                                Row {item.row}:
+                              </span>
                               <ul className="mt-1 space-y-0.5 ml-2">
                                 {item.errors.map((err, idx) => (
-                                  <li key={idx} className="text-red-700">• {err}</li>
+                                  <li key={idx} className="text-red-700">
+                                    • {err}
+                                  </li>
                                 ))}
                               </ul>
                             </div>
@@ -306,10 +453,12 @@ export default function CSVUploadModal({
                         {/* Duplicates */}
                         {validationResult.duplicates.length > 0 && (
                           <div className="text-xs p-2 bg-yellow-50 rounded border border-yellow-200">
-                            <p className="font-semibold text-yellow-900 mb-1">Duplicate entries detected:</p>
+                            <p className="font-semibold text-yellow-900 mb-1">
+                              Duplicate entries detected:
+                            </p>
                             {validationResult.duplicates.map((dup, idx) => (
                               <p key={idx} className="text-yellow-700">
-                                • Rows {dup.rows.join(', ')}: {dup.reason}
+                                • Rows {dup.rows.join(", ")}: {dup.reason}
                               </p>
                             ))}
                           </div>
@@ -325,22 +474,47 @@ export default function CSVUploadModal({
           {/* Error Message */}
           {error && (
             <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
-              <svg className="w-5 h-5 text-red-500 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+              <svg
+                className="w-5 h-5 text-red-500 mt-0.5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                ></path>
               </svg>
               <p className="text-sm text-red-700">{error}</p>
             </div>
           )}
 
           {/* Info Banner for Payments */}
-          {type === 'payments' && file && (
+          {type === "payments" && file && (
             <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg flex items-start gap-2">
-              <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+              <svg
+                className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                ></path>
               </svg>
               <div className="flex-1 text-sm text-blue-800">
-                <p className="font-medium">All uploaded payments will be unmatched.</p>
-                <p className="mt-1">Use <span className="font-semibold">Payment Matching</span> to link them to invoices after upload.</p>
+                <p className="font-medium">
+                  All uploaded payments will be unmatched.
+                </p>
+                <p className="mt-1">
+                  Use <span className="font-semibold">Payment Matching</span> to
+                  link them to invoices after upload.
+                </p>
               </div>
             </div>
           )}
@@ -357,13 +531,15 @@ export default function CSVUploadModal({
           </button>
           <button
             onClick={handleUpload}
-            disabled={!file || !validationResult?.valid || isValidating || isUploading}
+            disabled={
+              !file || !validationResult?.valid || isValidating || isUploading
+            }
             className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
           >
             {isUploading && (
               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
             )}
-            {isUploading ? 'Uploading...' : 'Upload'}
+            {isUploading ? "Uploading..." : "Upload"}
           </button>
         </div>
       </div>

@@ -24,6 +24,9 @@ interface InvoiceTableProps {
   sortBy: string;
   sortDirection: "asc" | "desc";
   onSortChange: (sort: string) => void;
+  selectedInvoiceIds: number[];
+  onToggleSelection: (invoiceId: number) => void;
+  onToggleSelectAllVisible: () => void;
   children?: React.ReactNode;
 }
 
@@ -47,12 +50,20 @@ export default function InvoiceTable({
   sortBy,
   sortDirection,
   onSortChange,
-  children
+  selectedInvoiceIds,
+  onToggleSelection,
+  onToggleSelectAllVisible,
+  children,
 }: InvoiceTableProps) {
   const getSortIcon = (column: string) => {
     if (sortBy !== column) return "↕";
     return sortDirection === "desc" ? "↓" : "↑";
   };
+
+  const visibleIds = paginatedInvoices.map((invoice) => invoice.id);
+  const allVisibleSelected =
+    visibleIds.length > 0 &&
+    visibleIds.every((id) => selectedInvoiceIds.includes(id));
   if (isLoading) {
     return (
       <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
@@ -99,13 +110,13 @@ export default function InvoiceTable({
             statusFilter === "all" &&
             typeFilter === "all" &&
             shipmentFilter === "all" && (
-            <button
-              onClick={onCreateFirst}
-              className="px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
-            >
-              Create Your First Invoice
-            </button>
-          )}
+              <button
+                onClick={onCreateFirst}
+                className="px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
+              >
+                Create Your First Invoice
+              </button>
+            )}
         </div>
       </div>
     );
@@ -128,6 +139,14 @@ export default function InvoiceTable({
         <table className="min-w-full divide-y divide-gray-200 relative">
           <thead className="bg-gray-50 sticky top-0 z-10 shadow-sm">
             <tr>
+              <th className="px-3 py-3 text-left bg-gray-50 w-10">
+                <input
+                  type="checkbox"
+                  checked={allVisibleSelected}
+                  onChange={onToggleSelectAllVisible}
+                  title="Select all visible invoices"
+                />
+              </th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 w-[130px]">
                 Invoice #
               </th>
@@ -198,6 +217,8 @@ export default function InvoiceTable({
                 onShip={onShip}
                 onFilterByClient={onFilterByClient}
                 onPrintPDF={onPrintPDF}
+                isSelected={selectedInvoiceIds.includes(invoice.id)}
+                onToggleSelect={onToggleSelection}
               />
             ))}
           </tbody>

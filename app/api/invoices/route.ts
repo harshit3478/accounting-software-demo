@@ -202,7 +202,15 @@ export async function GET(request: NextRequest) {
       paymentMatches: true,
       terms: true,
       shippingFeeRule: true,
-      customer: true,
+      customer: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone: true,
+          address: true,
+        },
+      },
       editHistory: {
         orderBy: { createdAt: "desc" },
         include: {
@@ -343,6 +351,7 @@ export async function POST(request: NextRequest) {
     const {
       clientName,
       customerId,
+      customerAddress,
       externalInvoiceNumber,
       source,
       items,
@@ -366,6 +375,8 @@ export async function POST(request: NextRequest) {
 
     const normalizedClientName =
       typeof clientName === "string" ? clientName.trim() : "";
+    const normalizedCustomerAddress =
+      typeof customerAddress === "string" ? customerAddress.trim() : "";
     if (!normalizedClientName) {
       return NextResponse.json(
         { error: "Client name is required" },
@@ -385,7 +396,7 @@ export async function POST(request: NextRequest) {
 
       const existingCustomer = await prisma.customer.findUnique({
         where: { id: parsedCustomerId },
-        select: { id: true },
+        select: { id: true, address: true },
       });
 
       if (!existingCustomer) {
@@ -396,17 +407,47 @@ export async function POST(request: NextRequest) {
       }
 
       resolvedCustomerId = existingCustomer.id;
+
+      if (!existingCustomer.address?.trim()) {
+        if (!normalizedCustomerAddress) {
+          return NextResponse.json(
+            { error: "Customer address is required" },
+            { status: 400 },
+          );
+        }
+
+        await prisma.customer.update({
+          where: { id: resolvedCustomerId },
+          data: { address: normalizedCustomerAddress },
+        });
+      }
     } else {
       const matchedByName = await prisma.customer.findFirst({
         where: { name: normalizedClientName },
-        select: { id: true },
+        select: { id: true, address: true },
       });
 
       if (matchedByName) {
         resolvedCustomerId = matchedByName.id;
+        if (!matchedByName.address?.trim()) {
+          if (!normalizedCustomerAddress) {
+            return NextResponse.json(
+              { error: "Customer address is required" },
+              { status: 400 },
+            );
+          }
+
+          await prisma.customer.update({
+            where: { id: resolvedCustomerId },
+            data: { address: normalizedCustomerAddress },
+          });
+        }
       } else {
         const createdCustomer = await prisma.customer.create({
-          data: { name: normalizedClientName },
+          data: {
+            name: normalizedClientName,
+            address: normalizedCustomerAddress || null,
+          },
           select: { id: true },
         });
         resolvedCustomerId = createdCustomer.id;

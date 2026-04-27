@@ -14,11 +14,13 @@ export async function PUT(
     const {
       clientName,
       customerId,
+      customerAddress,
       items,
       subtotal,
       tax,
       discount,
       shippingFee,
+      insuranceAmount,
       invoiceDate,
       dueDate,
       dueDateReason,
@@ -52,12 +54,50 @@ export async function PUT(
       typeof clientName === "string"
         ? clientName.trim()
         : existingInvoice.clientName.trim();
+    const normalizedCustomerAddress =
+      typeof customerAddress === "string" ? customerAddress.trim() : "";
 
     if (!normalizedClientName) {
       return NextResponse.json(
         { error: "Client name is required" },
         { status: 400 },
       );
+    }
+
+    if (customerId !== undefined && customerId !== null) {
+      const parsedCustomerId = Number(customerId);
+      if (!Number.isFinite(parsedCustomerId)) {
+        return NextResponse.json(
+          { error: "Invalid customer id" },
+          { status: 400 },
+        );
+      }
+
+      const existingCustomer = await prisma.customer.findUnique({
+        where: { id: parsedCustomerId },
+        select: { id: true, address: true },
+      });
+
+      if (!existingCustomer) {
+        return NextResponse.json(
+          { error: "Selected customer not found" },
+          { status: 404 },
+        );
+      }
+
+      if (!existingCustomer.address?.trim()) {
+        if (!normalizedCustomerAddress) {
+          return NextResponse.json(
+            { error: "Customer address is required" },
+            { status: 400 },
+          );
+        }
+
+        await prisma.customer.update({
+          where: { id: existingCustomer.id },
+          data: { address: normalizedCustomerAddress },
+        });
+      }
     }
 
     const invoiceDateValue = invoiceDate
@@ -109,11 +149,10 @@ export async function PUT(
       shippingFee !== undefined
         ? parseFloat(shippingFee)
         : existingInvoice.shippingFee.toNumber();
-    // Insurance amount is locked after invoice creation.
-    // Rule changes should affect only newly created invoices.
-    const insuranceFeeAmount = Number(
-      existingInvoiceAny.insuranceAmount?.toNumber?.() ?? 0,
-    );
+    const insuranceFeeAmount =
+      insuranceAmount !== undefined && insuranceAmount !== null
+        ? Number(insuranceAmount)
+        : Number(existingInvoiceAny.insuranceAmount?.toNumber?.() ?? 0);
     const totalAmount =
       parseFloat(subtotal) +
       parseFloat(taxAmount) -

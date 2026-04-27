@@ -44,6 +44,7 @@ export async function GET(request: NextRequest) {
             name: true,
             email: true,
             phone: true,
+            address: true,
             storeCredit: true,
           },
         });
@@ -59,6 +60,7 @@ export async function GET(request: NextRequest) {
             name: true,
             email: true,
             phone: true,
+            address: true,
           },
         });
       }

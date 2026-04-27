@@ -1,117 +1,101 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '../../../../../lib/auth';
-import Papa from 'papaparse';
-import prisma from '../../../../../lib/prisma';
+import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "../../../../../lib/auth";
+import prisma from "../../../../../lib/prisma";
 import {
-  validateInvoiceRow,
-  detectInvoiceDuplicates,
-  parseItemsToJSON,
-  InvoiceRow
-} from '../../../../../lib/csv-validation';
-import { generateInvoiceNumber, calculateInvoiceStatus } from '../../../../../lib/invoice-utils';
+  parseInvoiceSpreadsheet,
+  validateInvoiceSheetRows,
+} from "../../../../../lib/invoice-bulk-sheet";
+import {
+  generateInvoiceNumber,
+  calculateInvoiceStatus,
+} from "../../../../../lib/invoice-utils";
 
 export async function POST(request: NextRequest) {
   try {
     const user = await requireAuth();
 
     const formData = await request.formData();
-    const file = formData.get('file') as File;
+    const file = formData.get("file") as File;
 
     if (!file) {
-      return NextResponse.json({ error: 'No file provided' }, { status: 400 });
+      return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
-    // Read file content
-    const text = await file.text();
+    const rows = await parseInvoiceSpreadsheet(file);
 
-    // Parse CSV
-    const parseResult = Papa.parse<InvoiceRow>(text, {
-      header: true,
-      skipEmptyLines: true,
-      transformHeader: (header: string) => header.trim(),
-      transform: (value: string) => value.trim()
-    });
-
-    if (parseResult.errors.length > 0) {
-      return NextResponse.json({
-        error: 'CSV parsing error',
-        details: parseResult.errors
-      }, { status: 400 });
-    }
-
-    const rows = parseResult.data;
-    
     if (rows.length === 0) {
-      return NextResponse.json({
-        error: 'CSV file is empty'
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          error: "Spreadsheet has no invoice rows",
+        },
+        { status: 400 },
+      );
     }
 
-    // Validate all rows first
-    const validationErrors: any[] = [];
-    rows.forEach((row, index) => {
-      const rowErrors = validateInvoiceRow(row, index + 2);
-      validationErrors.push(...rowErrors);
-    });
+    const { invalidRows, duplicates } = validateInvoiceSheetRows(rows);
 
-    // Check for duplicates
-    const duplicates = detectInvoiceDuplicates(rows);
-
-    if (validationErrors.length > 0 || duplicates.length > 0) {
-      return NextResponse.json({
-        error: 'Validation failed. All rows must be valid before upload.',
-        validationErrors,
-        duplicates
-      }, { status: 400 });
+    if (invalidRows.length > 0 || duplicates.length > 0) {
+      return NextResponse.json(
+        {
+          error: "Validation failed. All rows must be valid before upload.",
+          validationErrors: invalidRows,
+          duplicates,
+        },
+        { status: 400 },
+      );
     }
 
     // Create all invoices in a transaction
     const createdInvoices = await prisma.$transaction(async (tx) => {
       const invoices = [];
-      
+
       // Get starting invoice number
       const year = new Date().getFullYear();
       const lastInvoice = await tx.invoice.findFirst({
         where: {
           invoiceNumber: {
-            startsWith: `INV-${year}-`
-          }
+            startsWith: `INV-${year}-`,
+          },
         },
         orderBy: {
-          invoiceNumber: 'desc'
-        }
+          invoiceNumber: "desc",
+        },
       });
-      
+
       let nextNumber = 1;
       if (lastInvoice) {
-        const lastNumber = parseInt(lastInvoice.invoiceNumber.split('-')[2]);
+        const lastNumber = parseInt(lastInvoice.invoiceNumber.split("-")[2]);
         nextNumber = lastNumber + 1;
       }
 
       for (const row of rows) {
-        const subtotal = parseFloat(row.subtotal);
-        const tax = parseFloat(row.tax);
-        const discount = parseFloat(row.discount);
-        const amount = subtotal + tax - discount;
-        const dueDate = new Date(row.dueDate);
-        const isLayaway = row.isLayaway.toLowerCase() === 'true';
+        const subtotal = Number(row.amount);
+        const insuranceAmount = Number(row.insurance || 0);
+        const shippingFee = Number(row.shipping || 0);
+        const tax = 0;
+        const discount = 0;
+        const amount = subtotal + insuranceAmount + shippingFee;
+        const dueDate = row.dueDate
+          ? new Date(row.dueDate)
+          : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+        const isLayaway = row.isLayaway === true;
         const externalInvoiceNumber = row.externalInvoiceNumber?.trim() || null;
 
         // Generate sequential invoice number
-        const invoiceNumber = `INV-${year}-${nextNumber.toString().padStart(4, '0')}`;
+        const invoiceNumber = `INV-${year}-${nextNumber.toString().padStart(4, "0")}`;
         nextNumber++;
 
-        // Parse items - distribute subtotal across items
-        const items = parseItemsToJSON(row.items);
-        
-        // Calculate price per item based on total subtotal
-        if (items.length > 0) {
-          const totalQuantity = items.reduce((sum: number, item: any) => sum + item.quantity, 0);
-          const pricePerUnit = subtotal / totalQuantity;
-          items.forEach((item: any) => {
-            item.price = pricePerUnit;
-          });
-        }
+        const description = row.description?.trim() || "Bulk imported item";
+        const items = [
+          {
+            name: description,
+            quantity: 1,
+            price: subtotal,
+            vca116g: Number(row.vca116g || 0),
+            k18_121g: Number(row.k18_121g || 0),
+            vca118g: Number(row.vca118g || 0),
+          },
+        ];
 
         // Calculate initial status
         const status = calculateInvoiceStatus(amount, 0, dueDate);
@@ -120,11 +104,13 @@ export async function POST(request: NextRequest) {
         const invoice = await tx.invoice.create({
           data: {
             invoiceNumber,
-            clientName: row.clientName,
+            clientName: row.name,
             items,
             subtotal,
             tax,
             discount,
+            shippingFee,
+            insuranceAmount,
             amount,
             paidAmount: 0,
             dueDate,
@@ -133,8 +119,8 @@ export async function POST(request: NextRequest) {
             description: null,
             userId: user.id,
             externalInvoiceNumber,
-            source: 'csv'
-          }
+            source: "xlsx_upload",
+          },
         });
 
         invoices.push(invoice);
@@ -147,11 +133,10 @@ export async function POST(request: NextRequest) {
       success: true,
       message: `Successfully created ${createdInvoices.length} invoice(s)`,
       count: createdInvoices.length,
-      invoiceIds: createdInvoices.map(inv => inv.id)
+      invoiceIds: createdInvoices.map((inv) => inv.id),
     });
-
   } catch (error: any) {
-    console.error('Bulk upload invoices error:', error);
+    console.error("Bulk upload spreadsheet invoices error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

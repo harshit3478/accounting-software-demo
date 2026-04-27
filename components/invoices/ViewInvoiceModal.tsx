@@ -27,6 +27,24 @@ interface Payment {
   matchId?: number;
 }
 
+interface PaymentMethodOption {
+  id: number;
+  name: string;
+  icon: string | null;
+  color: string;
+  isActive: boolean;
+}
+
+interface UnmatchedPayment {
+  id: number;
+  amount: number;
+  paymentDate: string;
+  notes?: string | null;
+  method?: string | { name: string };
+  allocatedAmount?: number;
+  remainingAmount?: number;
+}
+
 interface LayawayInstallment {
   id: number;
   dueDate: string;
@@ -55,6 +73,8 @@ interface Invoice {
   subtotal: number;
   tax: number;
   discount: number;
+  shippingFee?: number;
+  insuranceAmount?: number;
   amount: number;
   paidAmount: number;
   dueDate: string;
@@ -71,6 +91,7 @@ interface Invoice {
     name: string;
     email?: string | null;
     phone?: string | null;
+    address?: string | null;
   } | null;
   layawayPlan?: LayawayPlan | null;
   editHistory?: Array<{
@@ -121,6 +142,28 @@ export default function ViewInvoiceModal({
     useState<ShipmentDetails | null>(null);
   const [shipmentLoading, setShipmentLoading] = useState(false);
   const [shipmentError, setShipmentError] = useState<string | null>(null);
+  const [localPaidAmount, setLocalPaidAmount] = useState(0);
+  const [markPaidModalOpen, setMarkPaidModalOpen] = useState(false);
+  const [selectedInstallment, setSelectedInstallment] =
+    useState<LayawayInstallment | null>(null);
+  const [markPaidMode, setMarkPaidMode] = useState<"create" | "link">("create");
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>(
+    [],
+  );
+  const [selectedMethodId, setSelectedMethodId] = useState<number | null>(null);
+  const [paymentAmount, setPaymentAmount] = useState(0);
+  const [paymentDate, setPaymentDate] = useState("");
+  const [paymentNotes, setPaymentNotes] = useState("");
+  const [unmatchedPayments, setUnmatchedPayments] = useState<
+    UnmatchedPayment[]
+  >([]);
+  const [selectedUnmatchedPaymentId, setSelectedUnmatchedPaymentId] = useState<
+    number | null
+  >(null);
+  const [linkAmount, setLinkAmount] = useState(0);
+  const [isSavingInstallmentPayment, setIsSavingInstallmentPayment] =
+    useState(false);
+  const [markPaidError, setMarkPaidError] = useState<string | null>(null);
   const invoiceRef = useRef<HTMLDivElement>(null);
   const imageTemplateRef = useRef<HTMLDivElement>(null);
 
@@ -168,6 +211,7 @@ export default function ViewInvoiceModal({
   useEffect(() => {
     if (isOpen && invoice) {
       fetchPayments();
+      setLocalPaidAmount(Number(invoice.paidAmount || 0));
       if (invoice.layawayPlan?.installments) {
         setLocalInstallments(invoice.layawayPlan.installments);
       }
@@ -195,6 +239,157 @@ export default function ViewInvoiceModal({
       }
     }
   }, [isOpen, invoice]);
+
+  const fetchLayawayPlan = async () => {
+    if (!invoice || !invoice.isLayaway) return;
+
+    try {
+      const res = await fetch(`/api/invoices/${invoice.id}/layaway-plan`);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.installments)) {
+          setLocalInstallments(data.installments);
+        }
+      }
+    } catch (error) {
+      console.error("Failed to fetch layaway plan:", error);
+    }
+  };
+
+  const openMarkPaidModal = async (installment: LayawayInstallment) => {
+    if (!invoice) return;
+
+    setSelectedInstallment(installment);
+    setMarkPaidMode("create");
+    setPaymentAmount(installment.amount);
+    setLinkAmount(installment.amount);
+    setPaymentDate(new Date().toISOString().split("T")[0]);
+    setPaymentNotes(`Layaway installment payment: ${installment.label}`);
+    setSelectedUnmatchedPaymentId(null);
+    setMarkPaidError(null);
+    setMarkPaidModalOpen(true);
+
+    try {
+      const [methodRes, unmatchedRes] = await Promise.all([
+        fetch("/api/payment-methods"),
+        fetch("/api/payments/unmatched"),
+      ]);
+
+      if (methodRes.ok) {
+        const methods: PaymentMethodOption[] = await methodRes.json();
+        const activeMethods = methods.filter((method) => method.isActive);
+        setPaymentMethods(activeMethods);
+        if (activeMethods.length > 0) {
+          setSelectedMethodId(activeMethods[0].id);
+        }
+      }
+
+      if (unmatchedRes.ok) {
+        const payload = await unmatchedRes.json();
+        const list: UnmatchedPayment[] = Array.isArray(payload)
+          ? payload
+          : Array.isArray(payload.payments)
+            ? payload.payments
+            : [];
+        setUnmatchedPayments(list);
+      }
+    } catch (error) {
+      console.error("Failed to fetch mark-paid modal data:", error);
+    }
+  };
+
+  const confirmInstallmentPaid = async () => {
+    if (!invoice || !selectedInstallment) return;
+
+    setIsSavingInstallmentPayment(true);
+    setMarkPaidError(null);
+
+    try {
+      if (markPaidMode === "create") {
+        if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) {
+          setMarkPaidError("Please enter a valid payment amount.");
+          return;
+        }
+
+        if (!selectedMethodId) {
+          setMarkPaidError("Payment method is required.");
+          return;
+        }
+
+        const createRes = await fetch("/api/payments", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            invoiceId: invoice.id,
+            amount: paymentAmount,
+            methodId: selectedMethodId,
+            paymentDate,
+            notes: paymentNotes || null,
+          }),
+        });
+
+        if (!createRes.ok) {
+          const data = await createRes.json();
+          setMarkPaidError(data.error || "Failed to create payment.");
+          return;
+        }
+      } else {
+        if (!Number.isFinite(linkAmount) || linkAmount <= 0) {
+          setMarkPaidError("Please enter a valid link amount.");
+          return;
+        }
+
+        if (!selectedUnmatchedPaymentId) {
+          setMarkPaidError("Please select a payment to link.");
+          return;
+        }
+
+        const linkRes = await fetch("/api/payments/link", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            paymentId: selectedUnmatchedPaymentId,
+            invoiceId: invoice.id,
+            amount: linkAmount,
+          }),
+        });
+
+        if (!linkRes.ok) {
+          const data = await linkRes.json();
+          setMarkPaidError(data.error || "Failed to link payment.");
+          return;
+        }
+      }
+
+      await fetch(`/api/invoices/${invoice.id}/layaway-plan`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          installments: [
+            {
+              id: selectedInstallment.id,
+              isPaid: true,
+              paidDate: new Date().toISOString(),
+              paidAmount:
+                markPaidMode === "create"
+                  ? paymentAmount
+                  : Math.min(linkAmount, selectedInstallment.amount),
+            },
+          ],
+        }),
+      });
+
+      await Promise.all([fetchPayments(), fetchLayawayPlan()]);
+      setMarkPaidModalOpen(false);
+      setSelectedInstallment(null);
+      setMarkPaidError(null);
+    } catch (error) {
+      console.error("Failed to mark installment paid:", error);
+      setMarkPaidError("Failed to process installment payment.");
+    } finally {
+      setIsSavingInstallmentPayment(false);
+    }
+  };
 
   const toggleInstallmentPaid = async (installment: LayawayInstallment) => {
     if (!invoice) return;
@@ -245,6 +440,14 @@ export default function ViewInvoiceModal({
       if (res.ok) {
         const data = await res.json();
         setPayments(data);
+        const totalPaid = Array.isArray(data)
+          ? data.reduce(
+              (sum: number, payment: Payment) =>
+                sum + Number(payment.amount || 0),
+              0,
+            )
+          : 0;
+        setLocalPaidAmount(totalPaid);
       }
     } catch (error) {
       console.error("Failed to fetch payments:", error);
@@ -327,6 +530,19 @@ export default function ViewInvoiceModal({
     (trackedNumber
       ? `https://tools.usps.com/go/TrackConfirmAction?tLabels=${encodeURIComponent(trackedNumber)}`
       : null);
+  const shippingFee = Number(invoice.shippingFee || 0);
+  const insuranceAmount = Number(invoice.insuranceAmount || 0);
+  const amountDue = Math.max(Number(invoice.amount || 0) - localPaidAmount, 0);
+  const localStatus =
+    invoice.status === "inactive" || invoice.status === "abandoned"
+      ? invoice.status
+      : amountDue <= 0
+        ? "paid"
+        : localPaidAmount > 0
+          ? "partial"
+          : new Date(invoice.dueDate) < new Date()
+            ? "overdue"
+            : "pending";
 
   return (
     <Modal
@@ -409,16 +625,30 @@ export default function ViewInvoiceModal({
                 <p className="text-lg font-semibold text-gray-900">
                   {invoice.clientName}
                 </p>
+                {invoice.customer?.address && (
+                  <p className="text-sm text-gray-600 mt-2 whitespace-pre-line">
+                    {invoice.customer.address}
+                  </p>
+                )}
+                {invoice.customer?.email && (
+                  <p className="text-sm text-gray-600 mt-1">
+                    {invoice.customer.email}
+                  </p>
+                )}
+                {invoice.customer?.phone && (
+                  <p className="text-sm text-gray-600 mt-1">
+                    {invoice.customer.phone}
+                  </p>
+                )}
               </div>
               <div>
                 <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
                   Status
                 </p>
                 <span
-                  className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${getStatusBadgeClass(invoice.status)}`}
+                  className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${getStatusBadgeClass(localStatus)}`}
                 >
-                  {invoice.status.charAt(0).toUpperCase() +
-                    invoice.status.slice(1)}
+                  {localStatus.charAt(0).toUpperCase() + localStatus.slice(1)}
                 </span>
                 {invoice.isLayaway && (
                   <span className="ml-2 inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-purple-100 text-purple-800">
@@ -439,7 +669,7 @@ export default function ViewInvoiceModal({
                   </p>
                 )}
                 {new Date(invoice.dueDate) < new Date() &&
-                  invoice.status !== "paid" && (
+                  localStatus !== "paid" && (
                     <p className="text-xs text-red-600 mt-1">Overdue</p>
                   )}
               </div>
@@ -460,16 +690,6 @@ export default function ViewInvoiceModal({
                   </p>
                   <p className="text-sm font-mono text-gray-700">
                     {invoice.externalInvoiceNumber}
-                  </p>
-                </div>
-              )}
-              {invoice.customer?.phone && (
-                <div>
-                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
-                    Phone
-                  </p>
-                  <p className="text-sm text-gray-700">
-                    {invoice.customer.phone}
                   </p>
                 </div>
               )}
@@ -629,6 +849,22 @@ export default function ViewInvoiceModal({
                   -{formatCurrency(invoice.discount)}
                 </span>
               </div>
+              {shippingFee > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Shipping Fee:</span>
+                  <span className="font-medium text-gray-900">
+                    {formatCurrency(shippingFee)}
+                  </span>
+                </div>
+              )}
+              {insuranceAmount > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Insurance:</span>
+                  <span className="font-medium text-gray-900">
+                    {formatCurrency(insuranceAmount)}
+                  </span>
+                </div>
+              )}
               <div className="border-t border-blue-300 pt-3 flex justify-between">
                 <span className="text-lg font-semibold text-gray-900">
                   Total Amount:
@@ -640,16 +876,16 @@ export default function ViewInvoiceModal({
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">Amount Paid:</span>
                 <span className="font-medium text-green-600">
-                  {formatCurrency(invoice.paidAmount)}
+                  {formatCurrency(localPaidAmount)}
                 </span>
               </div>
-              {invoice.amount - invoice.paidAmount > 0 && (
+              {amountDue > 0 && (
                 <div className="flex justify-between pt-2 border-t border-blue-200">
                   <span className="text-base font-semibold text-gray-900">
                     Remaining Balance:
                   </span>
                   <span className="text-base font-bold text-red-600">
-                    {formatCurrency(invoice.amount - invoice.paidAmount)}
+                    {formatCurrency(amountDue)}
                   </span>
                 </div>
               )}
@@ -757,7 +993,13 @@ export default function ViewInvoiceModal({
                           </td>
                           <td className="px-4 py-2 text-center">
                             <button
-                              onClick={() => toggleInstallmentPaid(inst)}
+                              onClick={() => {
+                                if (inst.isPaid) {
+                                  toggleInstallmentPaid(inst);
+                                } else {
+                                  openMarkPaidModal(inst);
+                                }
+                              }}
                               disabled={
                                 updatingInstallment === inst.id ||
                                 invoice.layawayPlan!.isCancelled
@@ -941,6 +1183,200 @@ export default function ViewInvoiceModal({
         </div>
         {/* end invoiceRef */}
       </div>
+
+      <Modal
+        isOpen={markPaidModalOpen}
+        onClose={() => {
+          if (!isSavingInstallmentPayment) {
+            setMarkPaidModalOpen(false);
+            setSelectedInstallment(null);
+            setMarkPaidError(null);
+          }
+        }}
+        title={
+          selectedInstallment
+            ? `Mark Paid: ${selectedInstallment.label}`
+            : "Mark Installment Paid"
+        }
+        maxWidth="2xl"
+        footer={
+          <div className="flex justify-end gap-3">
+            <button
+              onClick={() => {
+                setMarkPaidModalOpen(false);
+                setSelectedInstallment(null);
+                setMarkPaidError(null);
+              }}
+              className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100"
+              disabled={isSavingInstallmentPayment}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={confirmInstallmentPaid}
+              disabled={isSavingInstallmentPayment}
+              className="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-60"
+            >
+              {isSavingInstallmentPayment ? "Saving..." : "Confirm"}
+            </button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          {selectedInstallment && (
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm">
+              <p className="font-medium text-gray-800">
+                Installment: {selectedInstallment.label}
+              </p>
+              <p className="text-gray-600 mt-1">
+                Amount: {formatCurrency(selectedInstallment.amount)}
+              </p>
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setMarkPaidMode("create")}
+              className={`px-3 py-1.5 rounded text-sm font-medium ${
+                markPaidMode === "create"
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-200 text-gray-700"
+              }`}
+            >
+              Create Payment
+            </button>
+            <button
+              type="button"
+              onClick={() => setMarkPaidMode("link")}
+              className={`px-3 py-1.5 rounded text-sm font-medium ${
+                markPaidMode === "link"
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-200 text-gray-700"
+              }`}
+            >
+              Link Existing Payment
+            </button>
+          </div>
+
+          {markPaidMode === "create" ? (
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Amount
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={paymentAmount || ""}
+                  onChange={(e) =>
+                    setPaymentAmount(Number(e.target.value) || 0)
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Payment Date
+                </label>
+                <input
+                  type="date"
+                  value={paymentDate}
+                  onChange={(e) => setPaymentDate(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Method
+                </label>
+                <select
+                  value={selectedMethodId || ""}
+                  onChange={(e) =>
+                    setSelectedMethodId(Number(e.target.value) || null)
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900"
+                >
+                  <option value="">Select method</option>
+                  {paymentMethods.map((method) => (
+                    <option key={method.id} value={method.id}>
+                      {method.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Notes
+                </label>
+                <textarea
+                  rows={2}
+                  value={paymentNotes}
+                  onChange={(e) => setPaymentNotes(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900"
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Select Payment
+                </label>
+                <select
+                  value={selectedUnmatchedPaymentId || ""}
+                  onChange={(e) => {
+                    const paymentId = Number(e.target.value) || null;
+                    setSelectedUnmatchedPaymentId(paymentId);
+                    const selected = unmatchedPayments.find(
+                      (payment) => payment.id === paymentId,
+                    );
+                    if (selected && selectedInstallment) {
+                      const available = Number(
+                        selected.remainingAmount ?? selected.amount,
+                      );
+                      setLinkAmount(
+                        Math.min(selectedInstallment.amount, available),
+                      );
+                    }
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900"
+                >
+                  <option value="">Select unmatched payment</option>
+                  {unmatchedPayments.map((payment) => (
+                    <option key={payment.id} value={payment.id}>
+                      #{payment.id} - $
+                      {Number(
+                        payment.remainingAmount ?? payment.amount,
+                      ).toFixed(2)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Link Amount
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={linkAmount || ""}
+                  onChange={(e) => setLinkAmount(Number(e.target.value) || 0)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900"
+                />
+              </div>
+            </div>
+          )}
+
+          {markPaidError && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {markPaidError}
+            </div>
+          )}
+        </div>
+      </Modal>
 
       {/* Hidden invoice image template — rendered off-screen for JPG export */}
       <div

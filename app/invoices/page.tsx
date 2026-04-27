@@ -90,6 +90,10 @@ function InvoicesPageContent() {
     customerIdFilter,
     customerNameFilter,
     setCustomerIdFilter,
+    selectedInvoiceIds,
+    toggleInvoiceSelection,
+    selectAllVisibleInvoices,
+    clearSelectedInvoices,
   } = useInvoices(showSuccess, showError, showInfo);
 
   // Shipment Details Modal State
@@ -166,6 +170,8 @@ function InvoicesPageContent() {
           onCreateClick={() => setShowCreateModal(true)}
           onExportClick={handleExportCSV}
           onImportClick={() => setShowCSVUploadModal(true)}
+          selectedCount={selectedInvoiceIds.length}
+          onClearSelection={clearSelectedInvoices}
         />
         <InvoiceStats
           stats={stats}
@@ -228,6 +234,9 @@ function InvoicesPageContent() {
             sortBy={sortBy}
             sortDirection={sortDirection}
             onSortChange={setSortBy}
+            selectedInvoiceIds={selectedInvoiceIds}
+            onToggleSelection={toggleInvoiceSelection}
+            onToggleSelectAllVisible={selectAllVisibleInvoices}
           >
             {/* Pagination */}
             {!isLoading && (

@@ -162,7 +162,9 @@ export function generatePaymentReceiptPDF(payment: PaymentReceipt) {
   doc.setFontSize(8);
   doc.setFont("helvetica", "normal");
   doc.setTextColor(...colors.goldRGB);
-  doc.text("Thank you for choosing Barley Lux!", centerX, y, { align: "center" });
+  doc.text("Thank you for choosing Gold Connections by Apple!", centerX, y, {
+    align: "center",
+  });
   y += 4;
 
   doc.setFontSize(7);

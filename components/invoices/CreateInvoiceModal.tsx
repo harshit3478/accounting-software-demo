@@ -17,6 +17,7 @@ interface CustomerOption {
   name: string;
   email: string | null;
   phone: string | null;
+  address: string | null;
 }
 
 interface TermOption {
@@ -73,7 +74,9 @@ export default function CreateInvoiceModal({
     name: "",
     email: "",
     phone: "",
+    address: "",
   });
+  const [customerAddress, setCustomerAddress] = useState("");
   const [creatingCustomer, setCreatingCustomer] = useState(false);
   const [invoiceDate, setInvoiceDate] = useState(getTodayDateString());
   const [dueDate, setDueDate] = useState("");
@@ -137,6 +140,14 @@ export default function CreateInvoiceModal({
       .then((data) => setCustomers(data))
       .catch(() => {});
   }, []);
+
+  const selectedCustomer = customerId
+    ? customers.find((customer) => customer.id === customerId) || null
+    : customers.find(
+        (customer) =>
+          customer.name.trim().toLowerCase() ===
+          clientName.trim().toLowerCase(),
+      ) || null;
 
   useEffect(() => {
     if (!isOpen) return;
@@ -462,8 +473,9 @@ export default function CreateInvoiceModal({
         ]);
         setClientName(created.name);
         setCustomerId(created.id);
+        setCustomerAddress(created.address || "");
         setShowNewCustomerForm(false);
-        setNewCustomerData({ name: "", email: "", phone: "" });
+        setNewCustomerData({ name: "", email: "", phone: "", address: "" });
       } else {
         const err = await res.json();
         onError?.(err.error || "Failed to create customer");
@@ -478,6 +490,7 @@ export default function CreateInvoiceModal({
   const resetForm = () => {
     setClientName("");
     setCustomerId(null);
+    setCustomerAddress("");
     setInvoiceDate(getTodayDateString());
     setDueDate("");
     setDueDateReason("");
@@ -507,12 +520,21 @@ export default function CreateInvoiceModal({
     setInvoiceDateError("");
     setDateError("");
     setShowNewCustomerForm(false);
-    setNewCustomerData({ name: "", email: "", phone: "" });
+    setNewCustomerData({ name: "", email: "", phone: "", address: "" });
   };
 
   const handleCreateInvoice = async () => {
     if (!clientName.trim() || !invoiceDate || !dueDate) {
       onError?.("Please fill in all required fields");
+      return;
+    }
+
+    if (
+      selectedCustomer &&
+      !selectedCustomer.address?.trim() &&
+      !customerAddress.trim()
+    ) {
+      onError?.("Customer address is required for this client");
       return;
     }
 
@@ -569,6 +591,7 @@ export default function CreateInvoiceModal({
       const payload: any = {
         clientName,
         customerId: customerId || undefined,
+        customerAddress: customerAddress.trim() || undefined,
         invoiceDate,
         dueDate,
         dueDateReason: requiresDueDateReason ? dueDateReason.trim() : null,
@@ -703,6 +726,7 @@ export default function CreateInvoiceModal({
                 onChange={(e) => {
                   setClientName(e.target.value);
                   setCustomerId(null);
+                  setCustomerAddress("");
                   setShowCustomerDropdown(true);
                 }}
                 onFocus={() => setShowCustomerDropdown(true)}
@@ -720,14 +744,15 @@ export default function CreateInvoiceModal({
                         onClick={() => {
                           setClientName(c.name);
                           setCustomerId(c.id);
+                          setCustomerAddress(c.address || "");
                           setShowCustomerDropdown(false);
                         }}
                         className="w-full text-left px-4 py-2 hover:bg-blue-50 text-sm text-gray-900 border-b border-gray-50 last:border-0"
                       >
                         <span className="font-medium">{c.name}</span>
-                        {c.phone && (
-                          <span className="text-gray-400 ml-2">{c.phone}</span>
-                        )}
+                        <div className="text-xs text-gray-500 mt-0.5">
+                          {c.address ? c.address : "Address missing"}
+                        </div>
                       </button>
                     ))}
                   </div>
@@ -736,6 +761,23 @@ export default function CreateInvoiceModal({
                 <p className="text-xs text-green-600 mt-1">
                   Linked to existing customer
                 </p>
+              )}
+              {selectedCustomer && !selectedCustomer.address?.trim() && (
+                <div className="mt-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Customer Address <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={customerAddress}
+                    onChange={(e) => setCustomerAddress(e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Enter customer address"
+                  />
+                  <p className="text-xs text-amber-600 mt-1">
+                    This customer record does not have an address yet.
+                  </p>
+                </div>
               )}
               {!customerId && !showNewCustomerForm && (
                 <button
@@ -746,6 +788,7 @@ export default function CreateInvoiceModal({
                       name: clientName,
                       email: "",
                       phone: "",
+                      address: "",
                     });
                   }}
                   className="text-xs text-blue-600 hover:text-blue-700 mt-1 font-medium"
@@ -793,6 +836,18 @@ export default function CreateInvoiceModal({
                         })
                       }
                       placeholder="Phone (optional)"
+                      className="w-full px-3 py-1.5 border border-gray-300 rounded text-sm text-gray-900"
+                    />
+                    <input
+                      type="text"
+                      value={newCustomerData.address}
+                      onChange={(e) =>
+                        setNewCustomerData({
+                          ...newCustomerData,
+                          address: e.target.value,
+                        })
+                      }
+                      placeholder="Address"
                       className="w-full px-3 py-1.5 border border-gray-300 rounded text-sm text-gray-900"
                     />
                   </div>

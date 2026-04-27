@@ -39,6 +39,8 @@ interface InvoiceToolbarProps {
   onCreateClick: () => void;
   onExportClick: () => void;
   onImportClick: () => void;
+  selectedCount?: number;
+  onClearSelection?: () => void;
 }
 
 export default function InvoiceToolbar({
@@ -57,6 +59,8 @@ export default function InvoiceToolbar({
   onCreateClick,
   onExportClick,
   onImportClick,
+  selectedCount = 0,
+  onClearSelection,
 }: InvoiceToolbarProps) {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [dateFrom, setDateFrom] = useState<Date | undefined>(
@@ -314,6 +318,20 @@ export default function InvoiceToolbar({
 
       {/* Right Side: Actions */}
       <div className="flex items-center gap-2 w-full sm:w-auto">
+        {selectedCount > 0 && (
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 text-blue-700 rounded-md text-xs font-medium">
+            <span>{selectedCount} selected</span>
+            {onClearSelection && (
+              <button
+                type="button"
+                onClick={onClearSelection}
+                className="text-blue-700 hover:text-blue-900"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        )}
         <Button
           variant="outline"
           size="sm"
@@ -328,9 +346,10 @@ export default function InvoiceToolbar({
           size="sm"
           className="h-9"
           onClick={onExportClick}
+          disabled={selectedCount === 0}
         >
           <Download className="mr-2 h-4 w-4" />
-          Export
+          Export XLSX
         </Button>
         <Button
           size="sm"

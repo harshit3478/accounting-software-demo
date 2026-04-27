@@ -1,7 +1,8 @@
 export const BUSINESS_CONFIG = {
-  name: process.env.NEXT_PUBLIC_BUSINESS_NAME || "BARLEY LUX",
+  name: process.env.NEXT_PUBLIC_BUSINESS_NAME || "Gold Connections by Apple",
   tagline: process.env.NEXT_PUBLIC_BUSINESS_TAGLINE || "18K Saudi Gold Jewelry",
-  website: process.env.NEXT_PUBLIC_BUSINESS_WEBSITE || "https://barleylux.com/en",
+  website:
+    process.env.NEXT_PUBLIC_BUSINESS_WEBSITE || "https://barleylux.com/en",
   phone: process.env.NEXT_PUBLIC_BUSINESS_PHONE || "",
   email: process.env.NEXT_PUBLIC_BUSINESS_EMAIL || "",
   address: process.env.NEXT_PUBLIC_BUSINESS_ADDRESS || "",

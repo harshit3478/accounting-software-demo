@@ -11,6 +11,7 @@ interface CustomerOption {
   name: string;
   email: string | null;
   phone: string | null;
+  address: string | null;
 }
 
 interface DueDateReasonOption {
@@ -25,10 +26,19 @@ interface Invoice {
   invoiceNumber: string;
   clientName: string;
   customerId?: number | null;
+  customer?: {
+    id: number;
+    name: string;
+    email?: string | null;
+    phone?: string | null;
+    address?: string | null;
+  } | null;
   items: InvoiceItem[] | null;
   subtotal: number;
   tax: number;
   discount: number;
+  shippingFee?: number;
+  insuranceAmount?: number;
   amount: number;
   paidAmount: number;
   invoiceDate?: string;
@@ -57,6 +67,7 @@ export default function EditInvoiceModal({
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
   const customerRef = useRef<HTMLDivElement>(null);
+  const [customerAddress, setCustomerAddress] = useState("");
   const [invoiceDate, setInvoiceDate] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [dueDateReason, setDueDateReason] = useState("");
@@ -72,6 +83,8 @@ export default function EditInvoiceModal({
   const [discountType, setDiscountType] = useState<"fixed" | "percentage">(
     "fixed",
   );
+  const [shippingFee, setShippingFee] = useState(0);
+  const [insuranceAmount, setInsuranceAmount] = useState(0);
   const [isLayaway, setIsLayaway] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [invoiceDateError, setInvoiceDateError] = useState("");
@@ -161,10 +174,19 @@ export default function EditInvoiceModal({
     .filter((c) => c.name.toLowerCase().includes(clientName.toLowerCase()))
     .slice(0, 8);
 
+  const selectedCustomer = customerId
+    ? customers.find((customer) => customer.id === customerId) || null
+    : customers.find(
+        (customer) =>
+          customer.name.trim().toLowerCase() ===
+          clientName.trim().toLowerCase(),
+      ) || null;
+
   useEffect(() => {
     if (invoice && isOpen) {
       setClientName(invoice.clientName);
       setCustomerId(invoice.customerId || null);
+      setCustomerAddress(invoice.customer?.address || "");
       setInvoiceDate(
         (invoice.invoiceDate || invoice.createdAt || "").split("T")[0] || "",
       );
@@ -175,6 +197,8 @@ export default function EditInvoiceModal({
       setTaxType("fixed"); // Default to fixed, adjust based on your needs
       setDiscount(invoice.discount);
       setDiscountType("fixed");
+      setShippingFee(Number(invoice.shippingFee || 0));
+      setInsuranceAmount(Number(invoice.insuranceAmount || 0));
       setIsLayaway(invoice.isLayaway);
       setEditReason("");
       setInvoiceDateError("");
@@ -200,7 +224,11 @@ export default function EditInvoiceModal({
 
   const calculateTotal = () => {
     return (
-      calculateSubtotal() + calculateTaxAmount() - calculateDiscountAmount()
+      calculateSubtotal() +
+      calculateTaxAmount() -
+      calculateDiscountAmount() +
+      shippingFee +
+      insuranceAmount
     );
   };
 
@@ -269,6 +297,17 @@ export default function EditInvoiceModal({
       return { success: false, error: "Please provide a reason for this edit" };
     }
 
+    if (
+      selectedCustomer &&
+      !selectedCustomer.address?.trim() &&
+      !customerAddress.trim()
+    ) {
+      return {
+        success: false,
+        error: "Customer address is required for this client",
+      };
+    }
+
     setIsUpdating(true);
     try {
       const subtotal = calculateSubtotal();
@@ -279,10 +318,13 @@ export default function EditInvoiceModal({
         body: JSON.stringify({
           clientName,
           customerId: customerId || null,
+          customerAddress: customerAddress.trim() || undefined,
           items,
           subtotal,
           tax: calculateTaxAmount(),
           discount: calculateDiscountAmount(),
+          shippingFee,
+          insuranceAmount,
           invoiceDate,
           dueDate,
           dueDateReason: requiresDueDateReason ? dueDateReason.trim() : null,
@@ -378,6 +420,7 @@ export default function EditInvoiceModal({
               onChange={(e) => {
                 setClientName(e.target.value);
                 setCustomerId(null);
+                setCustomerAddress("");
                 setShowCustomerDropdown(true);
               }}
               onFocus={() => setShowCustomerDropdown(true)}
@@ -395,14 +438,15 @@ export default function EditInvoiceModal({
                       onClick={() => {
                         setClientName(c.name);
                         setCustomerId(c.id);
+                        setCustomerAddress(c.address || "");
                         setShowCustomerDropdown(false);
                       }}
                       className="w-full text-left px-4 py-2 hover:bg-blue-50 text-sm text-gray-900 border-b border-gray-50 last:border-0"
                     >
                       <span className="font-medium">{c.name}</span>
-                      {c.phone && (
-                        <span className="text-gray-400 ml-2">{c.phone}</span>
-                      )}
+                      <div className="text-xs text-gray-500 mt-0.5">
+                        {c.address ? c.address : "Address missing"}
+                      </div>
                     </button>
                   ))}
                 </div>
@@ -411,6 +455,23 @@ export default function EditInvoiceModal({
               <p className="text-xs text-green-600 mt-1">
                 Linked to existing customer
               </p>
+            )}
+            {selectedCustomer && !selectedCustomer.address?.trim() && (
+              <div className="mt-2">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Customer Address <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={customerAddress}
+                  onChange={(e) => setCustomerAddress(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Enter customer address"
+                />
+                <p className="text-xs text-amber-600 mt-1">
+                  This customer record does not have an address yet.
+                </p>
+              </div>
             )}
           </div>
           <div>
@@ -572,6 +633,52 @@ export default function EditInvoiceModal({
                 />
               </div>
 
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Shipping Fee
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={shippingFee || ""}
+                  onChange={(e) =>
+                    setShippingFee(parseFloat(e.target.value) || 0)
+                  }
+                  onBlur={(e) => {
+                    const val = parseFloat(e.target.value);
+                    if (!isNaN(val)) {
+                      setShippingFee(parseFloat(val.toFixed(2)));
+                    }
+                  }}
+                  className="w-full px-4 py-2 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="0.00"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Insurance
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={insuranceAmount || ""}
+                  onChange={(e) =>
+                    setInsuranceAmount(parseFloat(e.target.value) || 0)
+                  }
+                  onBlur={(e) => {
+                    const val = parseFloat(e.target.value);
+                    if (!isNaN(val)) {
+                      setInsuranceAmount(parseFloat(val.toFixed(2)));
+                    }
+                  }}
+                  className="w-full px-4 py-2 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="0.00"
+                />
+              </div>
+
               {/* Layaway Checkbox */}
               <div className="flex items-center">
                 <input
@@ -596,6 +703,8 @@ export default function EditInvoiceModal({
               taxType={taxType}
               discount={discount}
               discountType={discountType}
+              shippingFee={shippingFee}
+              insuranceAmount={insuranceAmount}
               total={calculateTotal()}
             />
           </div>

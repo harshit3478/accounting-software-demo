@@ -28,6 +28,8 @@ interface Invoice {
   subtotal?: number;
   tax?: number;
   discount?: number;
+  shippingFee?: number;
+  insuranceAmount?: number;
   isLayaway?: boolean;
   layawayPlan?: {
     months: number;
@@ -96,7 +98,7 @@ export function generateInvoicesPDF(
     dateRange?: { start: string; end: string } | null;
     statusFilter?: string;
     searchTerm?: string;
-  }
+  },
 ) {
   const doc = new jsPDF();
 
@@ -126,7 +128,7 @@ export function generateInvoicesPDF(
       `Period: ${new Date(filters.dateRange.start).toLocaleDateString()} - ${new Date(filters.dateRange.end).toLocaleDateString()}`,
       105,
       yPos,
-      { align: "center" }
+      { align: "center" },
     );
     yPos += 8;
   }
@@ -153,10 +155,22 @@ export function generateInvoicesPDF(
   const totalOutstanding = totalAmount - totalPaid;
 
   doc.text(`Total Invoices: ${invoices.length}`, 20, yPos);
-  doc.text(`Total Amount: $${totalAmount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 90, yPos);
+  doc.text(
+    `Total Amount: $${totalAmount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+    90,
+    yPos,
+  );
   yPos += 6;
-  doc.text(`Total Paid: $${totalPaid.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 20, yPos);
-  doc.text(`Outstanding: $${totalOutstanding.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 90, yPos);
+  doc.text(
+    `Total Paid: $${totalPaid.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+    20,
+    yPos,
+  );
+  doc.text(
+    `Outstanding: $${totalOutstanding.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+    90,
+    yPos,
+  );
 
   yPos += 12;
 
@@ -173,7 +187,17 @@ export function generateInvoicesPDF(
 
   autoTable(doc, {
     startY: yPos,
-    head: [["Invoice #", "Client Name", "Date", "Amount", "Paid", "Balance", "Status"]],
+    head: [
+      [
+        "Invoice #",
+        "Client Name",
+        "Date",
+        "Amount",
+        "Paid",
+        "Balance",
+        "Status",
+      ],
+    ],
     body: tableData,
     theme: "striped",
     headStyles: {
@@ -220,8 +244,15 @@ export function generateInvoicesPDF(
     doc.line(15, 280, doc.internal.pageSize.getWidth() - 15, 280);
     doc.setFontSize(7);
     doc.setTextColor(150);
-    doc.text(`${BUSINESS_CONFIG.name} - ${BUSINESS_CONFIG.tagline}`, 105, 284, { align: "center" });
-    doc.text(`Generated on ${new Date().toLocaleString()} - Page ${i} of ${pageCount}`, 105, 288, { align: "center" });
+    doc.text(`${BUSINESS_CONFIG.name} - ${BUSINESS_CONFIG.tagline}`, 105, 284, {
+      align: "center",
+    });
+    doc.text(
+      `Generated on ${new Date().toLocaleString()} - Page ${i} of ${pageCount}`,
+      105,
+      288,
+      { align: "center" },
+    );
   }
 
   const timestamp = new Date().toISOString().split("T")[0];
@@ -235,7 +266,7 @@ export function generateInvoicesPDF(
 export async function generateSingleInvoicePDF(
   invoice: Invoice,
   mode: "download" | "print" = "print",
-  printWindow?: Window | null
+  printWindow?: Window | null,
 ): Promise<void> {
   const doc = new jsPDF();
   const pageW = doc.internal.pageSize.getWidth(); // 210mm
@@ -271,7 +302,8 @@ export async function generateSingleInvoicePDF(
     const data = await res.json();
     if (Array.isArray(data)) {
       const def = data.find((t: any) => t.isDefault);
-      if (def?.lines && Array.isArray(def.lines)) defaultTermLines = def.lines as string[];
+      if (def?.lines && Array.isArray(def.lines))
+        defaultTermLines = def.lines as string[];
     }
   } catch {}
 
@@ -301,15 +333,24 @@ export async function generateSingleInvoicePDF(
   doc.setTextColor(60, 60, 60);
   let bizY = y + 27;
   if (biz.address) {
-    const parts = biz.address.split(",").map((s) => s.trim()).filter(Boolean);
+    const parts = biz.address
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
     parts.forEach((part) => {
       doc.text(part, R, bizY, { align: "right" });
       bizY += 5;
     });
     bizY += 2;
   }
-  if (biz.phone) { doc.text(biz.phone, R, bizY, { align: "right" }); bizY += 5; }
-  if (biz.email) { doc.text(biz.email, R, bizY, { align: "right" }); bizY += 5; }
+  if (biz.phone) {
+    doc.text(biz.phone, R, bizY, { align: "right" });
+    bizY += 5;
+  }
+  if (biz.email) {
+    doc.text(biz.email, R, bizY, { align: "right" });
+    bizY += 5;
+  }
 
   y = Math.max(y + logoH + 4, bizY + 4);
 
@@ -346,8 +387,14 @@ export async function generateSingleInvoicePDF(
     doc.text(addrLines, L, y);
     y += addrLines.length * 5;
   }
-  if (invoice.customer?.phone) { doc.text(invoice.customer.phone, L, y); y += 5; }
-  if (invoice.customer?.email) { doc.text(invoice.customer.email, L, y); y += 5; }
+  if (invoice.customer?.phone) {
+    doc.text(invoice.customer.phone, L, y);
+    y += 5;
+  }
+  if (invoice.customer?.email) {
+    doc.text(invoice.customer.email, L, y);
+    y += 5;
+  }
 
   // Right column: invoice metadata
   const metaLabelX = rightColX + 55; // right-aligned labels end here
@@ -357,13 +404,17 @@ export async function generateSingleInvoicePDF(
     {
       label: "Invoice Date:",
       value: new Date(invoice.createdAt).toLocaleDateString("en-US", {
-        month: "long", day: "numeric", year: "numeric",
+        month: "long",
+        day: "numeric",
+        year: "numeric",
       }),
     },
     {
       label: "Payment Due:",
       value: new Date(invoice.dueDate).toLocaleDateString("en-US", {
-        month: "long", day: "numeric", year: "numeric",
+        month: "long",
+        day: "numeric",
+        year: "numeric",
       }),
     },
   ];
@@ -377,6 +428,27 @@ export async function generateSingleInvoicePDF(
     doc.text(row.value, R, metaY, { align: "right" });
     metaY += 6;
   });
+
+  // const summaryRows = [
+  //   { label: "Subtotal:", value: Number(invoice.subtotal || 0) },
+  //   { label: "Tax:", value: Number(invoice.tax || 0) },
+  //   { label: "Discount:", value: -Number(invoice.discount || 0) },
+  //   { label: "Shipping Fee:", value: Number(invoice.shippingFee || 0) },
+  //   { label: "Insurance:", value: Number(invoice.insuranceAmount || 0) },
+  // ].filter((row) => row.value !== 0);
+
+  // summaryRows.forEach((row) => {
+  //   doc.setFontSize(9);
+  //   doc.setFont("helvetica", "normal");
+  //   doc.setTextColor(60, 60, 60);
+  //   doc.text(row.label, rightColX, metaY, { align: "left" });
+  //   const valueText =
+  //     row.label === "Discount:"
+  //       ? `-$${Math.abs(row.value).toFixed(2)}`
+  //       : `$${row.value.toFixed(2)}`;
+  //   doc.text(valueText, R, metaY, { align: "right" });
+  //   metaY += 5;
+  // });
 
   // Amount Due row with grey highlight
   const amtDue = Number(invoice.amount) - Number(invoice.paidAmount);
@@ -409,7 +481,12 @@ export async function generateSingleInvoicePDF(
     autoTable(doc, {
       startY: y,
       head: [["Items", "Quantity", "Price", "Amount"]],
-      body: bodyData.map((r) => [r.displayName, r.qty.toString(), `$${r.price.toFixed(2)}`, `$${r.amount.toFixed(2)}`]),
+      body: bodyData.map((r) => [
+        r.displayName,
+        r.qty.toString(),
+        `$${r.price.toFixed(2)}`,
+        `$${r.amount.toFixed(2)}`,
+      ]),
       theme: "plain",
       headStyles: {
         fillColor: [245, 200, 66],
@@ -441,7 +518,11 @@ export async function generateSingleInvoicePDF(
             doc.setFont("helvetica", "normal");
             doc.setFontSize(8);
             doc.setTextColor(120, 120, 120);
-            doc.text(row.subtitle, data.cell.x + 2, data.cell.y + data.cell.padding("top") + 6);
+            doc.text(
+              row.subtitle,
+              data.cell.x + 2,
+              data.cell.y + data.cell.padding("top") + 6,
+            );
           }
         }
       },
@@ -458,15 +539,17 @@ export async function generateSingleInvoicePDF(
   doc.setTextColor(26, 26, 26);
 
   // Total
-  doc.text("Total:", totalsLabelX, y, { align: "right" });
-  doc.text(`$${Number(invoice.amount).toFixed(2)}`, R, y, { align: "right" });
-  y += 6;
+  // doc.text("Total:", totalsLabelX, y, { align: "right" });
+  // doc.text(`$${Number(invoice.amount).toFixed(2)}`, R, y, { align: "right" });
+  // y += 6;
 
   // Each recorded payment
   if (invoice.payments && invoice.payments.length > 0) {
     invoice.payments.forEach((p) => {
       const dateStr = new Date(p.paymentDate).toLocaleDateString("en-US", {
-        month: "long", day: "numeric", year: "numeric",
+        month: "long",
+        day: "numeric",
+        year: "numeric",
       });
       const methodName = p.method?.name || "payment";
       const label = `Payment on ${dateStr} using ${methodName.toLowerCase()}:`;
@@ -484,11 +567,38 @@ export async function generateSingleInvoicePDF(
   doc.line(totalsLabelX - 20, y, R, y);
   y += 6;
 
-  // Amount Due (bold)
+  // ── 7A. SUMMARY (AFTER TABLE) ─────────────────────────────
+
+  const summaryRows = [
+    { label: "Subtotal:", value: Number(invoice.subtotal || 0) },
+    { label: "Shipping Fee:", value: Number(invoice.shippingFee || 0) },
+    { label: "Insurance:", value: Number(invoice.insuranceAmount || 0) },
+  ].filter((row) => row.value !== 0);
+
+  const summaryLabelX = 130;
+
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(26, 26, 26);
+
+  summaryRows.forEach((row) => {
+    doc.text(row.label, summaryLabelX, y, { align: "right" });
+    doc.text(`$${row.value.toFixed(2)}`, R, y, { align: "right" });
+    y += 6;
+  });
+
+  // Separator line
+  doc.setDrawColor(180, 180, 180);
+  doc.line(summaryLabelX - 20, y, R, y);
+  y += 6;
+
+  // Amount Due (FINAL)
+  // const amtDue = Number(invoice.amount) - Number(invoice.paidAmount);
+
   doc.setFont("helvetica", "bold");
-  doc.text("Amount Due (USD):", totalsLabelX, y, { align: "right" });
+  doc.text("Total:", summaryLabelX, y, { align: "right" });
   doc.text(`$${amtDue.toFixed(2)}`, R, y, { align: "right" });
-  y += 14;
+  y += 10;
 
   // ── 8. NOTES / TERMS ──────────────────────────────────────────────────────
   const hasDescription = !!invoice.description;
@@ -496,7 +606,10 @@ export async function generateSingleInvoicePDF(
   const hasTerms = defaultTermLines.length > 0;
 
   if (hasDescription || hasLayaway || hasTerms) {
-    if (y > 230) { doc.addPage(); y = 20; }
+    if (y > 230) {
+      doc.addPage();
+      y = 20;
+    }
 
     // "Notes / Terms" heading
     doc.setFontSize(9);
@@ -521,14 +634,22 @@ export async function generateSingleInvoicePDF(
       doc.setFont("helvetica", "normal");
       doc.setFontSize(9);
       doc.setTextColor(60, 60, 60);
-      doc.text("TERMS: LAY-AWAY", L, y); y += 5;
-      doc.text(`Month(s): ${plan.months}`, L, y); y += 5;
-      doc.text(`Payment Type: ${plan.paymentFrequency}`, L, y); y += 5;
+      doc.text("TERMS: LAY-AWAY", L, y);
+      y += 5;
+      doc.text(`Month(s): ${plan.months}`, L, y);
+      y += 5;
+      doc.text(`Payment Type: ${plan.paymentFrequency}`, L, y);
+      y += 5;
 
       plan.installments.forEach((inst) => {
-        if (y > 272) { doc.addPage(); y = 20; }
+        if (y > 272) {
+          doc.addPage();
+          y = 20;
+        }
         const d = new Date(inst.dueDate).toLocaleDateString("en-US", {
-          month: "2-digit", day: "2-digit", year: "2-digit",
+          month: "2-digit",
+          day: "2-digit",
+          year: "2-digit",
         });
         const line = `${d} - ${inst.label} - $${Number(inst.amount).toFixed(2)}`;
         doc.text(line, L, y);
@@ -539,13 +660,19 @@ export async function generateSingleInvoicePDF(
 
     // Standard terms from DB (each line is a separate block)
     if (hasTerms) {
-      if (y > 240) { doc.addPage(); y = 20; }
+      if (y > 240) {
+        doc.addPage();
+        y = 20;
+      }
       defaultTermLines.forEach((termLine) => {
         doc.setFontSize(8);
         doc.setFont("helvetica", "normal");
         doc.setTextColor(60, 60, 60);
         const wrapped = doc.splitTextToSize(String(termLine), R - L);
-        if (y + wrapped.length * 4 > 275) { doc.addPage(); y = 20; }
+        if (y + wrapped.length * 4 > 275) {
+          doc.addPage();
+          y = 20;
+        }
         doc.text(wrapped, L, y);
         y += wrapped.length * 4 + 3;
       });
@@ -563,7 +690,7 @@ export async function generateSingleInvoicePDF(
       `Page ${i} of ${pageCount} for Invoice #${invoice.invoiceNumber}`,
       pageW / 2,
       291,
-      { align: "center" }
+      { align: "center" },
     );
   }
 

@@ -39,6 +39,8 @@ interface Invoice {
   subtotal: number;
   tax: number;
   discount: number;
+  shippingFee?: number;
+  insuranceAmount?: number;
   amount: number;
   paidAmount: number;
   dueDate: string;
@@ -51,6 +53,7 @@ interface Invoice {
     name: string;
     email?: string | null;
     phone?: string | null;
+    address?: string | null;
   } | null;
   layawayPlan?: LayawayPlan | null;
 }
@@ -91,6 +94,8 @@ export default function InvoiceImageTemplate({
 }: InvoiceImageTemplateProps) {
   const amtDue = invoice.amount - invoice.paidAmount;
   const biz = BUSINESS_CONFIG;
+  const shippingFee = Number(invoice.shippingFee || 0);
+  const insuranceAmount = Number(invoice.insuranceAmount || 0);
 
   const hasDescription = !!invoice.description;
   const hasLayaway = !!(invoice.isLayaway && invoice.layawayPlan);
@@ -209,6 +214,18 @@ export default function InvoiceImageTemplate({
           <div style={{ fontSize: "18px", fontWeight: 700, color: "#1a1a1a" }}>
             {invoice.clientName}
           </div>
+          {invoice.customer?.address && (
+            <div
+              style={{
+                fontSize: "12px",
+                color: "#555555",
+                marginTop: "4px",
+                whiteSpace: "pre-line",
+              }}
+            >
+              {invoice.customer.address}
+            </div>
+          )}
           {invoice.customer?.email && (
             <div
               style={{ fontSize: "12px", color: "#555555", marginTop: "4px" }}
@@ -418,6 +435,74 @@ export default function InvoiceImageTemplate({
         }}
       >
         <div style={{ width: "320px" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              padding: "5px 0",
+              fontSize: "13px",
+            }}
+          >
+            <span style={{ color: "#333333" }}>Subtotal:</span>
+            <span style={{ fontWeight: 600 }}>{fmt(invoice.subtotal)}</span>
+          </div>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              padding: "5px 0",
+              fontSize: "13px",
+            }}
+          >
+            <span style={{ color: "#333333" }}>Tax:</span>
+            <span style={{ fontWeight: 600 }}>{fmt(invoice.tax)}</span>
+          </div>
+          {invoice.discount > 0 && (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                padding: "5px 0",
+                fontSize: "13px",
+              }}
+            >
+              <span style={{ color: "#333333" }}>Discount:</span>
+              <span style={{ fontWeight: 600 }}>-{fmt(invoice.discount)}</span>
+            </div>
+          )}
+          {shippingFee > 0 && (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                padding: "5px 0",
+                fontSize: "13px",
+              }}
+            >
+              <span style={{ color: "#333333" }}>Shipping Fee:</span>
+              <span style={{ fontWeight: 600 }}>{fmt(shippingFee)}</span>
+            </div>
+          )}
+          {insuranceAmount > 0 && (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                padding: "5px 0",
+                fontSize: "13px",
+              }}
+            >
+              <span style={{ color: "#333333" }}>Insurance:</span>
+              <span style={{ fontWeight: 600 }}>{fmt(insuranceAmount)}</span>
+            </div>
+          )}
+          <div
+            style={{
+              height: "1px",
+              backgroundColor: "#cccccc",
+              margin: "8px 0",
+            }}
+          />
           {/* Total */}
           <div
             style={{

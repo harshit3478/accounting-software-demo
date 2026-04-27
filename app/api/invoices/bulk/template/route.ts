@@ -1,23 +1,51 @@
-import { NextResponse } from 'next/server';
-import { requireAuth } from '../../../../../lib/auth';
+import { NextResponse } from "next/server";
+import { requireAuth } from "../../../../../lib/auth";
+import {
+  buildInvoiceSheetWorkbook,
+  workbookToBuffer,
+} from "../../../../../lib/invoice-bulk-sheet";
 
 export async function GET() {
   try {
     await requireAuth();
 
-    // Create CSV template content
-    const headers = 'clientName,items,subtotal,tax,discount,dueDate,isLayaway,externalInvoiceNumber';
-    const exampleRow1 = 'John Doe,"Widget x2 @ 250.00;Service x1 @ 0.00",500.00,50.00,25.00,2026-03-15,false,EXT-001';
-    const exampleRow2 = 'Jane Smith,"Laptop x1 @ 1000.00;Mouse x2 @ 100.00",1200.00,120.00,0.00,2026-04-01,false,';
-    const comment = '# Format: items should be "ItemName x Quantity @ UnitPrice" separated by semicolons. externalInvoiceNumber is optional.';
-    const csvContent = `${headers}\n${exampleRow1}\n${exampleRow2}\n${comment}`;
+    const workbook = buildInvoiceSheetWorkbook(
+      [
+        {
+          name: "AELI TIU",
+          description: "CC RING",
+          vca116g: 0,
+          k18_121g: 3.36,
+          vca118g: 0,
+          amount: 407,
+          insurance: 0,
+          shipping: 0,
+        },
+        {
+          name: "BELLE EBREO",
+          description: "DIOR STUD LOOP E",
+          vca116g: 0,
+          k18_121g: 6.81,
+          vca118g: 0,
+          amount: 824,
+          insurance: 10,
+          shipping: 15,
+        },
+      ],
+      {
+        title: "GOLD CONECTION BY APPLE",
+        subtitle: "SAMPLE BULK INVOICE SHEET",
+      },
+    );
+    const fileBuffer = workbookToBuffer(workbook);
 
     // Return as downloadable file
-    return new NextResponse(csvContent, {
+    return new NextResponse(fileBuffer, {
       headers: {
-        'Content-Type': 'text/csv',
-        'Content-Disposition': 'attachment; filename="invoices-template.csv"'
-      }
+        "Content-Type":
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition": 'attachment; filename="invoices-template.xlsx"',
+      },
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 403 });

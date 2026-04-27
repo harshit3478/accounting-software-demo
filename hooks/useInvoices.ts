@@ -147,6 +147,12 @@ interface UseInvoicesReturn {
   showShipModal: boolean;
   setShowShipModal: (show: boolean) => void;
 
+  selectedInvoiceIds: number[];
+  toggleInvoiceSelection: (invoiceId: number) => void;
+  selectAllVisibleInvoices: () => void;
+  clearSelectedInvoices: () => void;
+  isInvoiceSelected: (invoiceId: number) => boolean;
+
   // Selected invoices
   editingInvoice: Invoice | null;
   setEditingInvoice: (invoice: Invoice | null) => void;
@@ -383,6 +389,7 @@ export function useInvoices(
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showCSVUploadModal, setShowCSVUploadModal] = useState(false);
   const [showShipModal, setShowShipModal] = useState(false);
+  const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<number[]>([]);
 
   // Selected invoice states
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
@@ -393,6 +400,39 @@ export function useInvoices(
 
   const [isDeleting, setIsDeleting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+
+  const toggleInvoiceSelection = (invoiceId: number) => {
+    setSelectedInvoiceIds((prev) =>
+      prev.includes(invoiceId)
+        ? prev.filter((id) => id !== invoiceId)
+        : [...prev, invoiceId],
+    );
+  };
+
+  const selectAllVisibleInvoices = () => {
+    const visibleIds = paginatedInvoices.map((invoice) => invoice.id);
+    const hasUnselected = visibleIds.some(
+      (id) => !selectedInvoiceIds.includes(id),
+    );
+
+    if (hasUnselected) {
+      setSelectedInvoiceIds((prev) =>
+        Array.from(new Set([...prev, ...visibleIds])),
+      );
+      return;
+    }
+
+    setSelectedInvoiceIds((prev) =>
+      prev.filter((id) => !visibleIds.includes(id)),
+    );
+  };
+
+  const clearSelectedInvoices = () => {
+    setSelectedInvoiceIds([]);
+  };
+
+  const isInvoiceSelected = (invoiceId: number) =>
+    selectedInvoiceIds.includes(invoiceId);
 
   // Debounce search term
   useEffect(() => {
@@ -547,40 +587,48 @@ export function useInvoices(
   };
 
   const handleExportCSV = () => {
-    if (filteredInvoices.length === 0) {
-      showInfo("No invoices to export");
+    if (selectedInvoiceIds.length === 0) {
+      showInfo("Select at least one invoice to export");
       return;
     }
 
-    try {
-      // Dynamic import to avoid build issues
-      import("../lib/csv-export").then(({ invoicesToCSV, downloadCSV }) => {
-        const csvData = filteredInvoices.map((inv) => ({
-          invoiceNumber: inv.invoiceNumber,
-          clientName: inv.clientName,
-          amount: inv.amount,
-          paidAmount: inv.paidAmount,
-          status: inv.status,
-          dueDate: inv.dueDate,
-          createdAt: inv.createdAt,
-          items: inv.items
-            ? inv.items
-                .map((item) => `${item.name} (${item.quantity}x$${item.price})`)
-                .join("; ")
-            : "",
-          tax: inv.tax,
-          discount: inv.discount,
-        }));
+    void (async () => {
+      try {
+        const response = await fetch("/api/invoices/bulk/export", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ invoiceIds: selectedInvoiceIds }),
+        });
 
-        const csv = invoicesToCSV(csvData);
-        const timestamp = new Date().toISOString().split("T")[0];
-        downloadCSV(csv, `invoices-${timestamp}.csv`);
-        showSuccess(`Exported ${filteredInvoices.length} invoices to CSV`);
-      });
-    } catch (error) {
-      console.error("Failed to export CSV:", error);
-      showError("Failed to export CSV");
-    }
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          throw new Error(data?.error || "Failed to export selected invoices");
+        }
+
+        const blob = await response.blob();
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = downloadUrl;
+
+        const disposition = response.headers.get("content-disposition");
+        const fileNameMatch = disposition?.match(/filename="?([^\";]+)"?/i);
+        anchor.download =
+          fileNameMatch?.[1] ||
+          `invoices-export-${new Date().toISOString().split("T")[0]}.xlsx`;
+
+        document.body.appendChild(anchor);
+        anchor.click();
+        document.body.removeChild(anchor);
+        window.URL.revokeObjectURL(downloadUrl);
+
+        showSuccess(
+          `Exported ${selectedInvoiceIds.length} selected invoice(s)`,
+        );
+      } catch (error) {
+        console.error("Failed to export selected invoices:", error);
+        showError("Failed to export selected invoices");
+      }
+    })();
   };
 
   const handleExportPDF = () => {
@@ -699,6 +747,11 @@ export function useInvoices(
     setShowCSVUploadModal,
     showShipModal,
     setShowShipModal,
+    selectedInvoiceIds,
+    toggleInvoiceSelection,
+    selectAllVisibleInvoices,
+    clearSelectedInvoices,
+    isInvoiceSelected,
     editingInvoice,
     setEditingInvoice,
     viewingInvoice,

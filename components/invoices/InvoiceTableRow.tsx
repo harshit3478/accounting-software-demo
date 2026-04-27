@@ -27,6 +27,8 @@ interface InvoiceTableRowProps {
   onShip?: (invoice: Invoice) => void;
   onFilterByClient?: (customerId: number, clientName: string) => void;
   onPrintPDF?: (invoice: Invoice) => void;
+  isSelected?: boolean;
+  onToggleSelect?: (invoiceId: number) => void;
 }
 
 export default function InvoiceTableRow({
@@ -40,6 +42,8 @@ export default function InvoiceTableRow({
   onShip,
   onFilterByClient,
   onPrintPDF,
+  isSelected,
+  onToggleSelect,
 }: InvoiceTableRowProps) {
   const [showActionsMenu, setShowActionsMenu] = useState(false);
 
@@ -91,6 +95,15 @@ export default function InvoiceTableRow({
       )}`}
       onDoubleClick={() => onView(invoice)}
     >
+      <td className="px-3 py-3 whitespace-nowrap text-sm">
+        <input
+          type="checkbox"
+          checked={!!isSelected}
+          onChange={() => onToggleSelect?.(invoice.id)}
+          onClick={(e) => e.stopPropagation()}
+          aria-label={`Select invoice ${invoice.invoiceNumber}`}
+        />
+      </td>
       <td className="px-4 py-3 whitespace-nowrap text-sm font-medium">
         <button
           onClick={() => onView(invoice)}
@@ -161,11 +174,17 @@ export default function InvoiceTableRow({
         <div className="flex items-center justify-center sm:justify-start min-w-0">
           <Package
             className={`h-4 w-4 sm:hidden ${
-              trk ? "text-emerald-600" : sid ? "text-amber-600" : "text-gray-300"
+              trk
+                ? "text-emerald-600"
+                : sid
+                  ? "text-amber-600"
+                  : "text-gray-300"
             }`}
             aria-hidden
           />
-          <span className="hidden sm:inline truncate tabular-nums">{shipLabel}</span>
+          <span className="hidden sm:inline truncate tabular-nums">
+            {shipLabel}
+          </span>
         </div>
       </td>
       <td className="px-3 py-3 text-right text-sm font-medium">
