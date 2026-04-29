@@ -100,9 +100,9 @@ export default function LinkPaymentModal({
         const amount = payment.amount?.toString();
 
         return (
-          notes.includes(searchLower) ||
-          method.includes(searchLower) ||
-          amount.includes(searchLower)
+          // notes?.includes(searchLower) ||
+          // method?.includes(searchLower) ||
+          amount?.includes(searchLower)
         );
       })
       .sort((a, b) => {
@@ -242,7 +242,12 @@ export default function LinkPaymentModal({
             placeholder="Search payments..."
             className="w-full pl-9 pr-4 py-2 bg-gray-50 border-none rounded-lg text-sm focus:ring-1 focus:ring-blue-500 placeholder-gray-400 transition-all font-medium"
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) => {
+              const value = e.target.value;
+              if (/^\d*$/.test(value)) {
+                setSearchTerm(value);
+              }
+            }}
           />
         </div>
 
