@@ -13,6 +13,7 @@ export async function GET() {
       [
         {
           name: "AELI TIU",
+          email: "aeli.tiu@example.com",
           description: "CC RING",
           vca116g: 0,
           k18_121g: 3.36,
@@ -23,6 +24,7 @@ export async function GET() {
         },
         {
           name: "BELLE EBREO",
+          email: "",
           description: "DIOR STUD LOOP E",
           vca116g: 0,
           k18_121g: 6.81,
@@ -37,7 +39,7 @@ export async function GET() {
         subtitle: "SAMPLE BULK INVOICE SHEET",
       },
     );
-    const fileBuffer = workbookToBuffer(workbook);
+    const fileBuffer: any = workbookToBuffer(workbook);
 
     // Return as downloadable file
     return new NextResponse(fileBuffer, {

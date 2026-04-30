@@ -5,6 +5,8 @@ import Modal from "./Modal";
 import PreviewInvoiceModal from "./PreviewInvoiceModal";
 import InvoiceItemsEditor from "./InvoiceItemsEditor";
 import InvoiceSummary from "./InvoiceSummary";
+import AddCustomerModal from "./AddCustomerModal";
+import UpdateCustomerFieldsModal from "./UpdateCustomerFieldsModal";
 import { InvoiceItem } from "./types";
 import {
   calculateInsuranceAmount,
@@ -78,6 +80,10 @@ export default function CreateInvoiceModal({
   });
   const [customerAddress, setCustomerAddress] = useState("");
   const [creatingCustomer, setCreatingCustomer] = useState(false);
+  const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
+  const [showUpdateCustomerFieldsModal, setShowUpdateCustomerFieldsModal] =
+    useState(false);
+  const [pendingNewCustomerName, setPendingNewCustomerName] = useState("");
   const [invoiceDate, setInvoiceDate] = useState(getTodayDateString());
   const [dueDate, setDueDate] = useState("");
   const [dueDateReason, setDueDateReason] = useState("");
@@ -462,7 +468,7 @@ export default function CreateInvoiceModal({
       });
       if (res.ok) {
         const created = await res.json();
-        setCustomers((prev) => [
+        setCustomers((prev:any) => [
           ...prev,
           {
             id: created.id,
@@ -485,6 +491,33 @@ export default function CreateInvoiceModal({
     } finally {
       setCreatingCustomer(false);
     }
+  };
+
+  const handleAddCustomerSuccess = (customer: CustomerOption) => {
+    // Add the new customer to the list
+    setCustomers((prev) => [...prev, customer]);
+    setClientName(customer.name);
+    setCustomerId(customer.id);
+    setCustomerAddress(customer.address || "");
+    setShowAddCustomerModal(false);
+    setPendingNewCustomerName("");
+    // Continue with invoice creation
+    setTimeout(() => {
+      setShowPreview(true);
+    }, 100);
+  };
+
+  const handleUpdateCustomerFieldsSuccess = (customer: CustomerOption) => {
+    // Update the customer in the list
+    setCustomers((prev) =>
+      prev.map((c) => (c.id === customer.id ? customer : c)),
+    );
+    setCustomerAddress(customer.address || "");
+    setShowUpdateCustomerFieldsModal(false);
+    // Continue with invoice creation
+    setTimeout(() => {
+      setShowPreview(true);
+    }, 100);
   };
 
   const resetForm = () => {
@@ -527,6 +560,46 @@ export default function CreateInvoiceModal({
     if (!clientName.trim() || !invoiceDate || !dueDate) {
       onError?.("Please fill in all required fields");
       return;
+    }
+
+    // Check if customer exists or needs to be created
+    if (!customerId) {
+      // Customer not selected - check if name matches an existing customer
+      const existingCustomer = customers.find(
+        (c) => c.name.toLowerCase() === clientName.toLowerCase(),
+      );
+
+      if (!existingCustomer) {
+        // Customer doesn't exist - force user to create with mandatory email and address
+        setPendingNewCustomerName(clientName);
+        setShowAddCustomerModal(true);
+        return;
+      }
+
+      // Customer exists but not selected - check for missing fields
+      const missingFields: ("email" | "address")[] = [];
+      if (!existingCustomer.email) missingFields.push("email");
+      if (!existingCustomer.address) missingFields.push("address");
+
+      if (missingFields.length > 0) {
+        setCustomerId(existingCustomer.id);
+        setCustomerAddress(existingCustomer.address || "");
+        setShowUpdateCustomerFieldsModal(true);
+        return;
+      }
+    } else {
+      // Customer is selected - verify they have required fields
+      const selectedCust = customers.find((c) => c.id === customerId);
+      const missingFields: ("email" | "address")[] = [];
+      if (selectedCust) {
+        if (!selectedCust.email) missingFields.push("email");
+        if (!selectedCust.address) missingFields.push("address");
+
+        if (missingFields.length > 0) {
+          setShowUpdateCustomerFieldsModal(true);
+          return;
+        }
+      }
     }
 
     if (
@@ -742,10 +815,19 @@ export default function CreateInvoiceModal({
                         key={c.id}
                         type="button"
                         onClick={() => {
+                          const missingFields: ("email" | "address")[] = [];
+                          if (!c.email) missingFields.push("email");
+                          if (!c.address) missingFields.push("address");
+
                           setClientName(c.name);
                           setCustomerId(c.id);
                           setCustomerAddress(c.address || "");
                           setShowCustomerDropdown(false);
+
+                          // If customer is missing required fields, show update modal
+                          if (missingFields.length > 0) {
+                            setShowUpdateCustomerFieldsModal(true);
+                          }
                         }}
                         className="w-full text-left px-4 py-2 hover:bg-blue-50 text-sm text-gray-900 border-b border-gray-50 last:border-0"
                       >
@@ -1552,6 +1634,39 @@ export default function CreateInvoiceModal({
             : selectedTermsId !== "none"
               ? termsOptions.find((t) => t.id === selectedTermsId)?.lines || []
               : []
+        }
+      />
+
+      <AddCustomerModal
+        isOpen={showAddCustomerModal}
+        onClose={() => {
+          setShowAddCustomerModal(false);
+          setPendingNewCustomerName("");
+        }}
+        onSuccess={handleAddCustomerSuccess}
+        forceEmailAndAddress={true}
+        defaultName={pendingNewCustomerName}
+      />
+
+      <UpdateCustomerFieldsModal
+        isOpen={showUpdateCustomerFieldsModal}
+        onClose={() => setShowUpdateCustomerFieldsModal(false)}
+        onSuccess={handleUpdateCustomerFieldsSuccess}
+        customer={
+          customerId ? customers.find((c) => c.id === customerId) || null : null
+        }
+        missingFields={
+          customerId
+            ? (() => {
+                const cust = customers.find((c) => c.id === customerId);
+                const missing: ("email" | "address")[] = [];
+                if (cust) {
+                  if (!cust.email) missing.push("email");
+                  if (!cust.address) missing.push("address");
+                }
+                return missing;
+              })()
+            : []
         }
       />
     </>

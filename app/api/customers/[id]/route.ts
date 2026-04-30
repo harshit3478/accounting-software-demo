@@ -266,6 +266,67 @@ export async function PUT(
   }
 }
 
+// PATCH /api/customers/[id] — partial update of customer fields
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    await requireAuth();
+    const { id: idParam } = await params;
+    const id = parseInt(idParam);
+    if (isNaN(id)) {
+      return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
+    }
+
+    const body = await request.json();
+    const { email, phone, address } = body;
+
+    // Validate customer exists
+    const existingCustomer = await prisma.customer.findUnique({
+      where: { id },
+    });
+
+    if (!existingCustomer) {
+      return NextResponse.json(
+        { error: "Customer not found" },
+        { status: 404 },
+      );
+    }
+
+    // Build update data with only provided fields
+    const updateData: any = {};
+    if (email !== undefined) updateData.email = email || null;
+    if (phone !== undefined) updateData.phone = phone || null;
+    if (address !== undefined) updateData.address = address || null;
+
+    const customer = await prisma.customer.update({
+      where: { id },
+      data: updateData,
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        address: true,
+        notes: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    return NextResponse.json(customer);
+  } catch (error: any) {
+    if (error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    return NextResponse.json(
+      { error: "Failed to update customer" },
+      { status: 500 },
+    );
+  }
+}
+
 // DELETE /api/customers/[id] — delete customer (nullify invoice FKs)
 export async function DELETE(
   request: NextRequest,

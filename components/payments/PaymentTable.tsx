@@ -132,6 +132,9 @@ export default function PaymentTable({
         <table className="min-w-full divide-y divide-gray-200 relative table-fixed">
           <thead className="bg-gray-50 sticky top-0 z-10 shadow-sm">
             <tr>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 w-[12%]">
+                Payment Id
+              </th>
               <SortableHeader field="date" className="w-[10%]">
                 Date
               </SortableHeader>

@@ -69,6 +69,37 @@ export async function POST(request: NextRequest) {
       }
 
       for (const row of rows) {
+        const email = row.email?.trim() || null;
+        let customerId: number | null = null;
+
+        if (email) {
+          const existingCustomer = await tx.customer.findFirst({
+            where: { email },
+            select: { id: true },
+          });
+
+          if (existingCustomer) {
+            customerId = existingCustomer.id;
+          } else {
+            const createdCustomer = await tx.customer.create({
+              data: {
+                name: row.name,
+                email,
+              },
+              select: { id: true },
+            });
+            customerId = createdCustomer.id;
+          }
+        } else {
+          const createdCustomer = await tx.customer.create({
+            data: {
+              name: row.name,
+            },
+            select: { id: true },
+          });
+          customerId = createdCustomer.id;
+        }
+
         const subtotal = Number(row.amount);
         const insuranceAmount = Number(row.insurance || 0);
         const shippingFee = Number(row.shipping || 0);
@@ -105,6 +136,7 @@ export async function POST(request: NextRequest) {
           data: {
             invoiceNumber,
             clientName: row.name,
+            customerId,
             items,
             subtotal,
             tax,

@@ -23,6 +23,8 @@ export interface Payment {
   notes: string | null;
   createdAt: string;
   source?: string;
+  paymentCode?: string;
+
   invoice: {
     id: number;
     invoiceNumber: string;

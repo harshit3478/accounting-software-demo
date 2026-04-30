@@ -80,6 +80,9 @@ export default function PaymentTableRow({
       onDoubleClick={handleDoubleClick}
     >
       <td className="px-4 py-3 text-sm text-gray-600">
+        {payment?.paymentCode || `PAY-${String(payment.id).padStart(6, "0")}`}
+      </td>
+      <td className="px-4 py-3 text-sm text-gray-600">
         {formatDate(payment.paymentDate)}
       </td>
       <td className="px-4 py-3 text-sm font-medium text-gray-900">

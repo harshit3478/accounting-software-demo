@@ -1,22 +1,23 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '../../../../../lib/auth';
-import Papa from 'papaparse';
-import prisma from '../../../../../lib/prisma';
+import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "../../../../../lib/auth";
+import Papa from "papaparse";
+import prisma from "../../../../../lib/prisma";
+import { stampPaymentCode } from "../../../../../lib/payment-code";
 import {
   validatePaymentRow,
   detectPaymentDuplicates,
-  PaymentRow
-} from '../../../../../lib/csv-validation';
+  PaymentRow,
+} from "../../../../../lib/csv-validation";
 
 export async function POST(request: NextRequest) {
   try {
     const user = await requireAuth();
 
     const formData = await request.formData();
-    const file = formData.get('file') as File;
+    const file = formData.get("file") as File;
 
     if (!file) {
-      return NextResponse.json({ error: 'No file provided' }, { status: 400 });
+      return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
     // Read file content
@@ -27,22 +28,28 @@ export async function POST(request: NextRequest) {
       header: true,
       skipEmptyLines: true,
       transformHeader: (header: string) => header.trim(),
-      transform: (value: string) => value.trim()
+      transform: (value: string) => value.trim(),
     });
 
     if (parseResult.errors.length > 0) {
-      return NextResponse.json({
-        error: 'CSV parsing error',
-        details: parseResult.errors
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          error: "CSV parsing error",
+          details: parseResult.errors,
+        },
+        { status: 400 },
+      );
     }
 
     const rows = parseResult.data;
-    
+
     if (rows.length === 0) {
-      return NextResponse.json({
-        error: 'CSV file is empty'
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          error: "CSV file is empty",
+        },
+        { status: 400 },
+      );
     }
 
     // Validate all rows first
@@ -56,16 +63,21 @@ export async function POST(request: NextRequest) {
     const duplicates = detectPaymentDuplicates(rows);
 
     if (validationErrors.length > 0 || duplicates.length > 0) {
-      return NextResponse.json({
-        error: 'Validation failed. All rows must be valid before upload.',
-        validationErrors,
-        duplicates
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          error: "Validation failed. All rows must be valid before upload.",
+          validationErrors,
+          duplicates,
+        },
+        { status: 400 },
+      );
     }
 
     // Look up all payment methods by name for mapping
     const allMethods = await prisma.paymentMethodEntry.findMany();
-    const methodMap = new Map(allMethods.map(m => [m.name.toLowerCase(), m.id]));
+    const methodMap = new Map(
+      allMethods.map((m) => [m.name.toLowerCase(), m.id]),
+    );
 
     // Create all payments in a transaction
     const createdPayments = await prisma.$transaction(async (tx) => {
@@ -92,9 +104,9 @@ export async function POST(request: NextRequest) {
               invoiceNumber: row.invoiceNumber.trim(),
               clientName: {
                 contains: row.clientName.trim(),
-                mode: 'insensitive'
-              }
-            }
+                mode: "insensitive",
+              },
+            },
           });
 
           if (invoice) {
@@ -114,8 +126,10 @@ export async function POST(request: NextRequest) {
             invoiceId,
             isMatched,
             source: "csv_upload",
-          }
+          },
         });
+
+        await stampPaymentCode(tx, payment.id);
 
         // Create PaymentInvoiceMatch if invoice was found
         if (invoiceId) {
@@ -123,20 +137,20 @@ export async function POST(request: NextRequest) {
             data: {
               paymentId: payment.id,
               invoiceId,
-              amount: payment.amount
-            }
+              amount: payment.amount,
+            },
           });
-          
+
           // Update invoice paid amount
           await tx.invoice.update({
             where: { id: invoiceId },
             data: {
               paidAmount: {
-                increment: payment.amount
-              }
-            }
+                increment: payment.amount,
+              },
+            },
           });
-          
+
           matchedCount++;
         } else {
           unmatchedCount++;
@@ -149,9 +163,10 @@ export async function POST(request: NextRequest) {
     });
 
     const totalCount = createdPayments.payments.length;
-    const message = createdPayments.matchedCount > 0
-      ? `Successfully created ${totalCount} payment(s): ${createdPayments.matchedCount} matched, ${createdPayments.unmatchedCount} unmatched`
-      : `Successfully created ${totalCount} unmatched payment(s)`;
+    const message =
+      createdPayments.matchedCount > 0
+        ? `Successfully created ${totalCount} payment(s): ${createdPayments.matchedCount} matched, ${createdPayments.unmatchedCount} unmatched`
+        : `Successfully created ${totalCount} unmatched payment(s)`;
 
     return NextResponse.json({
       success: true,
@@ -159,14 +174,14 @@ export async function POST(request: NextRequest) {
       count: totalCount,
       matchedCount: createdPayments.matchedCount,
       unmatchedCount: createdPayments.unmatchedCount,
-      paymentIds: createdPayments.payments.map(p => p.id),
-      notice: createdPayments.unmatchedCount > 0 
-        ? 'Use Payment Matching to link unmatched payments to invoices.' 
-        : null
+      paymentIds: createdPayments.payments.map((p) => p.id),
+      notice:
+        createdPayments.unmatchedCount > 0
+          ? "Use Payment Matching to link unmatched payments to invoices."
+          : null,
     });
-
   } catch (error: any) {
-    console.error('Bulk upload payments error:', error);
+    console.error("Bulk upload payments error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

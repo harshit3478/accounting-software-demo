@@ -9,6 +9,7 @@ interface ViewPaymentModalProps {
   onClose: () => void;
   payment: {
     id: number;
+    paymentCode?: string | null;
     amount: number;
     method: {
       id: number;
@@ -228,8 +229,10 @@ export default function ViewPaymentModal({
           {/* Metadata */}
           <div className="pt-4 border-t border-gray-200">
             <p className="text-xs text-gray-500">
-              Payment ID: #{payment.id} • Recorded on{" "}
-              {formatDate(payment.createdAt)}
+              Payment ID: #
+              {payment.paymentCode ||
+                `PAY-${String(payment.id).padStart(6, "0")}`}{" "}
+              • Recorded on {formatDate(payment.createdAt)}
             </p>
           </div>
 

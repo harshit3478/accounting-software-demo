@@ -76,7 +76,11 @@ export async function GET(request: NextRequest) {
     }
 
     const sortBy = searchParams.get("sortBy") || "revenue";
+    const sortDirection = (searchParams.get("sortDirection") || "desc") as
+      | "asc"
+      | "desc";
     const top = searchParams.get("top"); // e.g. "10" for top 10
+    const pastDue = searchParams.get("pastDue") === "true";
 
     // Fetch customers with their invoices for stats calculation
     let customersRaw: any[] = [];
@@ -172,6 +176,9 @@ export async function GET(request: NextRequest) {
         healthScore = "yellow";
       }
 
+      // Determine if customer has past due invoices
+      const hasPastDue = overdueCount > 0 || totalOutstanding > 0;
+
       // Remove raw invoices from response (keep only stats)
       const { invoices: _, ...customerData } = c;
       return {
@@ -185,32 +192,41 @@ export async function GET(request: NextRequest) {
           totalOutstanding,
           lastActivityDate,
           healthScore,
+          hasPastDue,
         },
       };
     });
 
+    // Filter by past due if requested
+    let filtered = customers;
+    if (pastDue) {
+      filtered = filtered.filter((c) => c.stats.hasPastDue);
+    }
+
     // Sort
-    customers.sort((a, b) => {
+    filtered.sort((a, b) => {
+      const dir = sortDirection === "asc" ? 1 : -1;
       switch (sortBy) {
         case "name":
-          return a.name.localeCompare(b.name);
+          return dir * a.name.localeCompare(b.name);
         case "outstanding":
-          return b.stats.totalOutstanding - a.stats.totalOutstanding;
+          return dir * (a.stats.totalOutstanding - b.stats.totalOutstanding);
         case "invoiceCount":
-          return b._count.invoices - a._count.invoices;
+          return dir * (a._count.invoices - b._count.invoices);
         case "lastActivity":
           return (
-            (b.stats.lastActivityDate?.getTime() || 0) -
-            (a.stats.lastActivityDate?.getTime() || 0)
+            dir *
+            ((a.stats.lastActivityDate?.getTime() || 0) -
+              (b.stats.lastActivityDate?.getTime() || 0))
           );
         case "revenue":
         default:
-          return b.stats.totalRevenue - a.stats.totalRevenue;
+          return dir * (a.stats.totalRevenue - b.stats.totalRevenue);
       }
     });
 
     return NextResponse.json({
-      customers,
+      customers: filtered,
       pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
     });
   } catch (error: any) {

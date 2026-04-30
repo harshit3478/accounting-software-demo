@@ -3,6 +3,7 @@ import * as XLSX from "xlsx";
 
 export interface SpreadsheetInvoiceRow {
   name: string;
+  email?: string;
   description: string;
   vca116g: number;
   k18_121g: number;
@@ -29,6 +30,7 @@ export interface InvoiceSheetDuplicate {
 const HEADER_ALIASES: Record<string, string[]> = {
   index: ["#", "NO", "NUMBER", "SR", "SRNO", "SERIAL"],
   name: ["NAME", "CLIENT", "CLIENTNAME", "CUSTOMER", "CUSTOMERNAME"],
+  email: ["EMAIL", "E-MAIL", "CLIENTEMAIL", "CUSTOMEREMAIL"],
   description: ["DESCRIPTION", "DESC", "ITEM", "ITEMS"],
   vca116g: ["VCA116G", "VCA116/G"],
   k18_121g: ["18K121/G", "18K121G"],
@@ -161,6 +163,7 @@ export async function parseInvoiceSpreadsheet(
 
   const columnMap = {
     name: findColumnIndex(normalizedHeaders, HEADER_ALIASES.name),
+    email: findColumnIndex(normalizedHeaders, HEADER_ALIASES.email),
     description: findColumnIndex(normalizedHeaders, HEADER_ALIASES.description),
     vca116g: findColumnIndex(normalizedHeaders, HEADER_ALIASES.vca116g),
     k18_121g: findColumnIndex(normalizedHeaders, HEADER_ALIASES.k18_121g),
@@ -186,6 +189,10 @@ export async function parseInvoiceSpreadsheet(
     const row = rows[i] || [];
 
     const nameValue = String(row[columnMap.name] ?? "").trim();
+    const emailValue =
+      columnMap.email >= 0
+        ? String(row[columnMap.email] ?? "").trim() || undefined
+        : undefined;
     const descriptionValue =
       columnMap.description >= 0
         ? String(row[columnMap.description] ?? "").trim()
@@ -218,6 +225,7 @@ export async function parseInvoiceSpreadsheet(
 
     parsedRows.push({
       name: nameValue,
+      email: emailValue,
       description: descriptionValue,
       vca116g: Number.isFinite(vca116g) ? vca116g : 0,
       k18_121g: Number.isFinite(k18_121g) ? k18_121g : 0,
@@ -263,6 +271,13 @@ export function validateInvoiceSheetRows(rows: SpreadsheetInvoiceRow[]): {
       errors.push("name: Name is required");
     }
 
+    if (row.email && row.email.trim().length > 0) {
+      const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailPattern.test(row.email.trim())) {
+        errors.push("email: Email must be a valid email address");
+      }
+    }
+
     if (!Number.isFinite(row.amount) || row.amount <= 0) {
       errors.push("amount: Amount must be a positive number");
     }
@@ -288,7 +303,7 @@ export function validateInvoiceSheetRows(rows: SpreadsheetInvoiceRow[]): {
       });
     }
 
-    const duplicateKey = `${row.name.toLowerCase().trim()}_${row.description.toLowerCase().trim()}_${row.amount.toFixed(2)}`;
+    const duplicateKey = `${(row.email || "").toLowerCase().trim()}_${row.name.toLowerCase().trim()}_${row.description.toLowerCase().trim()}_${row.amount.toFixed(2)}`;
     if (!duplicateMap.has(duplicateKey)) {
       duplicateMap.set(duplicateKey, []);
     }
@@ -310,6 +325,7 @@ export function validateInvoiceSheetRows(rows: SpreadsheetInvoiceRow[]): {
 
 export interface InvoiceSheetExportRow {
   name: string;
+  email?: string;
   description: string;
   vca116g?: number;
   k18_121g?: number;
@@ -336,6 +352,7 @@ export function buildInvoiceSheetWorkbook(
     [
       "#",
       "NAME",
+      "EMAIL",
       "DESCRIPTION",
       "VCA 116/G",
       "18K 121/G",
@@ -371,6 +388,7 @@ export function buildInvoiceSheetWorkbook(
     aoa.push([
       idx + 1,
       row.name,
+      row.email || "",
       row.description,
       vca116g,
       k18_121g,
@@ -385,6 +403,7 @@ export function buildInvoiceSheetWorkbook(
     "",
     "TOTAL:",
     "",
+    "",
     Number(sumVca116g.toFixed(2)),
     Number(sum18K121g.toFixed(2)),
     Number(sumVca118g.toFixed(2)),
@@ -395,12 +414,13 @@ export function buildInvoiceSheetWorkbook(
 
   const worksheet = XLSX.utils.aoa_to_sheet(aoa);
   worksheet["!merges"] = [
-    { s: { r: 0, c: 1 }, e: { r: 0, c: 8 } },
-    { s: { r: 1, c: 1 }, e: { r: 1, c: 8 } },
+    { s: { r: 0, c: 1 }, e: { r: 0, c: 9 } },
+    { s: { r: 1, c: 1 }, e: { r: 1, c: 9 } },
   ];
   worksheet["!cols"] = [
     { wch: 5 },
     { wch: 28 },
+    { wch: 30 },
     { wch: 38 },
     { wch: 12 },
     { wch: 12 },

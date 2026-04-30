@@ -4,6 +4,7 @@ import { requireAuth } from "../../../lib/auth";
 import { updateInvoiceAfterPayment } from "../../../lib/invoice-utils";
 import { invalidateDashboard } from "../../../lib/cache-helpers";
 import { sendPaymentConfirmation } from "../../../lib/email";
+import { stampPaymentCode } from "../../../lib/payment-code";
 
 export async function GET(request: NextRequest) {
   try {
@@ -239,6 +240,8 @@ export async function POST(request: NextRequest) {
             },
             include: { method: true },
           });
+
+          await stampPaymentCode(tx, mainPayment.id);
         }
 
         if (excessAmount > 0) {
@@ -254,6 +257,8 @@ export async function POST(request: NextRequest) {
               source: "store_credit_excess",
             },
           });
+
+          await stampPaymentCode(tx, creditPayment.id);
 
           await (tx as any).customer.update({
             where: { id: invoice.customerId },
@@ -290,13 +295,25 @@ export async function POST(request: NextRequest) {
       await updateInvoiceAfterPayment(parsedInvoiceId);
 
       // Fire-and-forget: email failure must never block the payment response
-      const newRemaining = roundMoney(Math.max(remaining - txResult.appliedAmount, 0));
+      const newRemaining = roundMoney(
+        Math.max(remaining - txResult.appliedAmount, 0),
+      );
       if (invoice.customer?.email && txResult.payment) {
         sendPaymentConfirmation(
-          { id: txResult.payment.id, amount: txResult.appliedAmount, paymentDate: txResult.payment.paymentDate },
-          { invoiceNumber: invoice.invoiceNumber, amount: Number(invoice.amount), newRemaining },
+          {
+            id: txResult.payment.id,
+            amount: txResult.appliedAmount,
+            paymentDate: txResult.payment.paymentDate,
+          },
+          {
+            invoiceNumber: invoice.invoiceNumber,
+            amount: Number(invoice.amount),
+            newRemaining,
+          },
           { name: invoice.customer.name, email: invoice.customer.email },
-        ).catch((err) => console.error('[Email] sendPaymentConfirmation failed:', err));
+        ).catch((err) =>
+          console.error("[Email] sendPaymentConfirmation failed:", err),
+        );
       }
     } else {
       payment = await prisma.payment.create({
@@ -312,6 +329,8 @@ export async function POST(request: NextRequest) {
         },
         include: { method: true },
       });
+
+      await stampPaymentCode(prisma, payment.id);
     }
 
     // Invalidate dashboard cache

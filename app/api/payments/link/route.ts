@@ -3,6 +3,7 @@ import prisma from "../../../../lib/prisma";
 import { requireAuth } from "../../../../lib/auth";
 import { updateInvoiceAfterPayment } from "../../../../lib/invoice-utils";
 import { Prisma } from "@prisma/client";
+import { stampPaymentCode } from "../../../../lib/payment-code";
 
 export async function POST(request: NextRequest) {
   try {
@@ -51,12 +52,17 @@ export async function POST(request: NextRequest) {
         new Prisma.Decimal(0),
       );
       const paymentAvailable = payment.amount.sub(matchedAmount);
+      const canSplitResidualIntoCredit =
+        payment.paymentMatches.length === 0 &&
+        payment.source !== "store_credit_excess";
 
       if (amountToLink.gt(paymentAvailable)) {
         throw new Error(
           `Payment has insufficient allocation remaining. Available: ${paymentAvailable}`,
         );
       }
+
+      const remainingAfterLink = paymentAvailable.sub(amountToLink);
 
       // 2. Fetch Invoice
       const invoice = await tx.invoice.findUnique({
@@ -65,6 +71,16 @@ export async function POST(request: NextRequest) {
 
       if (!invoice) {
         throw new Error("Invoice not found");
+      }
+
+      if (
+        remainingAfterLink.gt(0) &&
+        canSplitResidualIntoCredit &&
+        !invoice.customerId
+      ) {
+        throw new Error(
+          "Cannot convert the remaining payment balance to store credit because this invoice has no linked customer",
+        );
       }
 
       // Store-credit excess payments are customer-scoped and must only apply
@@ -115,17 +131,65 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      // 4. Update Payment isMatched status
-      // If the NEW matched amount is close/equal to total payment amount, mark as matched
-      const newMatchedTotal = matchedAmount.add(amountToLink);
-      // Logic: if newMatchedTotal >= payment.amount
-      const isNowFullyMatched = newMatchedTotal.gte(payment.amount);
-
-      if (isNowFullyMatched !== payment.isMatched) {
+      // 4. If this is a regular payment and it still has remaining balance,
+      // split the remainder into customer-scoped store credit so it cannot be
+      // reused against unrelated invoices.
+      if (remainingAfterLink.gt(0) && canSplitResidualIntoCredit) {
         await tx.payment.update({
           where: { id: paymentId },
-          data: { isMatched: isNowFullyMatched },
+          data: {
+            amount: amountToLink,
+            isMatched: true,
+          },
         });
+
+        const creditPayment = await tx.payment.create({
+          data: {
+            invoiceId: null,
+            amount: remainingAfterLink,
+            paymentDate: payment.paymentDate,
+            methodId: payment.methodId,
+            notes: `Store credit from excess payment on ${invoice.invoiceNumber}${payment.notes ? ` | ${payment.notes}` : ""}`,
+            userId: user.id,
+            isMatched: false,
+            source: "store_credit_excess",
+          },
+        });
+
+        await stampPaymentCode(tx, creditPayment.id);
+
+        await (tx as any).customer.update({
+          where: { id: invoice.customerId },
+          data: {
+            storeCredit: {
+              increment: remainingAfterLink,
+            },
+          },
+        });
+
+        await (tx as any).customerCreditTransaction.create({
+          data: {
+            customerId: invoice.customerId,
+            amount: remainingAfterLink,
+            type: "credit",
+            reason: `Excess payment captured as store credit from ${invoice.invoiceNumber}`,
+            paymentId: creditPayment.id,
+            invoiceId,
+            createdById: user.id,
+          },
+        });
+      } else {
+        // Store-credit payments keep their remaining balance available for the
+        // same customer, so only mark them fully matched when exhausted.
+        const newMatchedTotal = matchedAmount.add(amountToLink);
+        const isNowFullyMatched = newMatchedTotal.gte(payment.amount);
+
+        if (isNowFullyMatched !== payment.isMatched) {
+          await tx.payment.update({
+            where: { id: paymentId },
+            data: { isMatched: isNowFullyMatched },
+          });
+        }
       }
 
       return match;

@@ -179,6 +179,7 @@ model DueDateReason {
 
 model Payment {
   id          Int      @id @default(autoincrement())
+  paymentCode String?  @unique
   invoiceId   Int? // Nullable for unmatched payments
   amount      Decimal  @db.Decimal(10, 2)
   paymentDate DateTime @default(now())
@@ -201,12 +202,13 @@ model Payment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  invoice            Invoice?                    @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  user               User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  method             PaymentMethodEntry          @relation(fields: [methodId], references: [id])
-  paymentMatches     PaymentInvoiceMatch[]
-  editHistory        PaymentEditHistory[]
-  creditTransactions CustomerCreditTransaction[]
+  invoice             Invoice?                    @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  user                User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  method              PaymentMethodEntry          @relation(fields: [methodId], references: [id])
+  paymentMatches      PaymentInvoiceMatch[]
+  layawayInstallments LayawayInstallment[]
+  editHistory         PaymentEditHistory[]
+  creditTransactions  CustomerCreditTransaction[]
 
   @@map("payments")
 }
@@ -418,6 +420,7 @@ model LayawayPlan {
 model LayawayInstallment {
   id            Int       @id @default(autoincrement())
   layawayPlanId Int
+  paymentId     Int?
   dueDate       DateTime
   amount        Decimal   @db.Decimal(10, 2)
   label         String // "Down payment", "1st Payment", etc.
@@ -428,7 +431,9 @@ model LayawayInstallment {
   updatedAt     DateTime  @updatedAt
 
   layawayPlan LayawayPlan @relation(fields: [layawayPlanId], references: [id], onDelete: Cascade)
+  payment     Payment?    @relation(fields: [paymentId], references: [id], onDelete: SetNull)
 
+  @@index([paymentId])
   @@map("layaway_installments")
 }
 

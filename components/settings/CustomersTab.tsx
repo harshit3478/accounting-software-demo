@@ -105,7 +105,9 @@ export default function CustomersTab({
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState("revenue");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [showTopOnly, setShowTopOnly] = useState(false);
+  const [filterPastDue, setFilterPastDue] = useState(false);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
 
@@ -141,9 +143,11 @@ export default function CustomersTab({
         page: String(page),
         limit: "50",
         sortBy,
+        sortDirection,
       });
       if (search) params.set("search", search);
       if (showTopOnly) params.set("top", "10");
+      if (filterPastDue) params.set("pastDue", "true");
 
       const res = await fetch(`/api/customers?${params}`);
       if (res.ok) {
@@ -154,7 +158,7 @@ export default function CustomersTab({
     } finally {
       setLoading(false);
     }
-  }, [page, search, sortBy, showTopOnly]);
+  }, [page, search, sortBy, showTopOnly, sortDirection, filterPastDue]);
 
   useEffect(() => {
     fetchCustomers();
@@ -405,6 +409,28 @@ export default function CustomersTab({
               </option>
             ))}
           </select>
+          <button
+            onClick={() => {
+              setSortDirection((d) => (d === "asc" ? "desc" : "asc"));
+              setPage(1);
+            }}
+            className="px-3 py-2 rounded-lg text-sm font-medium border border-gray-300 hover:bg-gray-50"
+            title="Toggle sort direction"
+          >
+            {sortDirection === "asc" ? "A→Z" : "Z→A"}
+          </button>
+          <label className="inline-flex items-center px-2 py-2 border border-gray-300 rounded-lg text-sm ml-2">
+            <input
+              type="checkbox"
+              checked={filterPastDue}
+              onChange={(e) => {
+                setFilterPastDue(e.target.checked);
+                setPage(1);
+              }}
+              className="mr-2"
+            />
+            Past Due
+          </label>
           <button
             onClick={() => {
               setShowTopOnly(!showTopOnly);

@@ -43,6 +43,7 @@ interface UnmatchedPayment {
   method?: string | { name: string };
   allocatedAmount?: number;
   remainingAmount?: number;
+  paymentCode?: string;
 }
 
 interface LayawayInstallment {
@@ -53,6 +54,7 @@ interface LayawayInstallment {
   isPaid: boolean;
   paidDate?: string | null;
   paidAmount?: number | null;
+  paymentId?: number | null;
 }
 
 interface LayawayPlan {
@@ -157,6 +159,7 @@ export default function ViewInvoiceModal({
   const [unmatchedPayments, setUnmatchedPayments] = useState<
     UnmatchedPayment[]
   >([]);
+  const [unmatchedPaymentSearch, setUnmatchedPaymentSearch] = useState("");
   const [selectedUnmatchedPaymentId, setSelectedUnmatchedPaymentId] = useState<
     number | null
   >(null);
@@ -333,6 +336,32 @@ export default function ViewInvoiceModal({
           setMarkPaidError(data.error || "Failed to create payment.");
           return;
         }
+
+        const createData = await createRes.json();
+        const createdPaymentId = createData?.payment?.id;
+
+        if (!createdPaymentId) {
+          setMarkPaidError(
+            "Payment was created but could not be linked to the installment.",
+          );
+          return;
+        }
+
+        await fetch(`/api/invoices/${invoice.id}/layaway-plan`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            installments: [
+              {
+                id: selectedInstallment.id,
+                isPaid: true,
+                paidDate: new Date().toISOString(),
+                paidAmount: paymentAmount,
+                paymentId: createdPaymentId,
+              },
+            ],
+          }),
+        });
       } else {
         if (!Number.isFinite(linkAmount) || linkAmount <= 0) {
           setMarkPaidError("Please enter a valid link amount.");
@@ -359,30 +388,30 @@ export default function ViewInvoiceModal({
           setMarkPaidError(data.error || "Failed to link payment.");
           return;
         }
-      }
 
-      await fetch(`/api/invoices/${invoice.id}/layaway-plan`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          installments: [
-            {
-              id: selectedInstallment.id,
-              isPaid: true,
-              paidDate: new Date().toISOString(),
-              paidAmount:
-                markPaidMode === "create"
-                  ? paymentAmount
-                  : Math.min(linkAmount, selectedInstallment.amount),
-            },
-          ],
-        }),
-      });
+        await fetch(`/api/invoices/${invoice.id}/layaway-plan`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            installments: [
+              {
+                id: selectedInstallment.id,
+                isPaid: true,
+                paidDate: new Date().toISOString(),
+                paidAmount: Math.min(linkAmount, selectedInstallment.amount),
+                paymentId: selectedUnmatchedPaymentId,
+              },
+            ],
+          }),
+        });
+      }
 
       await Promise.all([fetchPayments(), fetchLayawayPlan()]);
       setMarkPaidModalOpen(false);
       setSelectedInstallment(null);
       setMarkPaidError(null);
+      setUnmatchedPaymentSearch("");
+      setSelectedUnmatchedPaymentId(null);
     } catch (error) {
       console.error("Failed to mark installment paid:", error);
       setMarkPaidError("Failed to process installment payment.");
@@ -391,11 +420,10 @@ export default function ViewInvoiceModal({
     }
   };
 
-  const toggleInstallmentPaid = async (installment: LayawayInstallment) => {
+  const unlinkInstallmentPayment = async (installment: LayawayInstallment) => {
     if (!invoice) return;
     setUpdatingInstallment(installment.id);
     try {
-      const newIsPaid = !installment.isPaid;
       const res = await fetch(`/api/invoices/${invoice.id}/layaway-plan`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -403,9 +431,11 @@ export default function ViewInvoiceModal({
           installments: [
             {
               id: installment.id,
-              isPaid: newIsPaid,
-              paidDate: newIsPaid ? new Date().toISOString() : null,
-              paidAmount: newIsPaid ? installment.amount : null,
+              isPaid: false,
+              paidDate: null,
+              paidAmount: null,
+              paymentId: null,
+              unlinkPayment: true,
             },
           ],
         }),
@@ -416,16 +446,18 @@ export default function ViewInvoiceModal({
             inst.id === installment.id
               ? {
                   ...inst,
-                  isPaid: newIsPaid,
-                  paidDate: newIsPaid ? new Date().toISOString() : null,
-                  paidAmount: newIsPaid ? installment.amount : null,
+                  isPaid: false,
+                  paidDate: null,
+                  paidAmount: null,
+                  paymentId: null,
                 }
               : inst,
           ),
         );
+        await Promise.all([fetchPayments(), fetchLayawayPlan()]);
       }
     } catch (error) {
-      console.error("Failed to update installment:", error);
+      console.error("Failed to unlink installment payment:", error);
     } finally {
       setUpdatingInstallment(null);
     }
@@ -995,7 +1027,7 @@ export default function ViewInvoiceModal({
                             <button
                               onClick={() => {
                                 if (inst.isPaid) {
-                                  toggleInstallmentPaid(inst);
+                                  unlinkInstallmentPayment(inst);
                                 } else {
                                   openMarkPaidModal(inst);
                                 }
@@ -1010,7 +1042,7 @@ export default function ViewInvoiceModal({
                                   : "bg-green-600 text-white hover:bg-green-700"
                               }`}
                               title={
-                                inst.isPaid ? "Mark as unpaid" : "Mark as paid"
+                                inst.isPaid ? "Unlink payment" : "Mark as paid"
                               }
                             >
                               {updatingInstallment === inst.id ? (
@@ -1034,7 +1066,7 @@ export default function ViewInvoiceModal({
                                   ></path>
                                 </svg>
                               ) : inst.isPaid ? (
-                                "Undo"
+                                "Unlink"
                               ) : (
                                 "Mark Paid"
                               )}
@@ -1191,6 +1223,8 @@ export default function ViewInvoiceModal({
             setMarkPaidModalOpen(false);
             setSelectedInstallment(null);
             setMarkPaidError(null);
+            setUnmatchedPaymentSearch("");
+            setSelectedUnmatchedPaymentId(null);
           }
         }}
         title={
@@ -1206,6 +1240,8 @@ export default function ViewInvoiceModal({
                 setMarkPaidModalOpen(false);
                 setSelectedInstallment(null);
                 setMarkPaidError(null);
+                setUnmatchedPaymentSearch("");
+                setSelectedUnmatchedPaymentId(null);
               }}
               className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100"
               disabled={isSavingInstallmentPayment}
@@ -1322,6 +1358,18 @@ export default function ViewInvoiceModal({
             <div className="space-y-3">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Search Payment
+                </label>
+                <input
+                  type="text"
+                  placeholder="Search by payment code or amount..."
+                  value={unmatchedPaymentSearch}
+                  onChange={(e) => setUnmatchedPaymentSearch(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
                   Select Payment
                 </label>
                 <select
@@ -1344,14 +1392,28 @@ export default function ViewInvoiceModal({
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900"
                 >
                   <option value="">Select unmatched payment</option>
-                  {unmatchedPayments.map((payment) => (
-                    <option key={payment.id} value={payment.id}>
-                      #{payment.id} - $
-                      {Number(
+                  {unmatchedPayments
+                    .filter((payment) => {
+                      const code =
+                        payment?.paymentCode ||
+                        `PAY-${String(payment.id).padStart(6, "0")}`;
+                      const amount = Number(
                         payment.remainingAmount ?? payment.amount,
-                      ).toFixed(2)}
-                    </option>
-                  ))}
+                      ).toFixed(2);
+                      const searchLower = unmatchedPaymentSearch.toLowerCase();
+                      return (
+                        code.toLowerCase().includes(searchLower) ||
+                        amount.includes(searchLower)
+                      );
+                    })
+                    .map((payment) => (
+                      <option key={payment.id} value={payment.id}>
+                        {payment?.paymentCode || `PAY-${String(payment.id).padStart(6, "0")}`} - $
+                        {Number(
+                          payment.remainingAmount ?? payment.amount,
+                        ).toFixed(2)}
+                      </option>
+                    ))}
                 </select>
               </div>
               <div>

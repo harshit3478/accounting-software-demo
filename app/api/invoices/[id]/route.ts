@@ -399,217 +399,226 @@ export async function DELETE(
     let movedAmount = 0;
     let resolvedTargetInvoiceId: number | null = null;
 
-    const updated = await prisma.$transaction(async (tx) => {
-      if (targetStatus === "abandoned") {
-        const directPayments = await tx.payment.findMany({
-          where: { invoiceId },
-          select: { id: true, amount: true },
-        });
+    const updated = await prisma.$transaction(
+      async (tx) => {
+        if (targetStatus === "abandoned") {
+          const directPayments = await tx.payment.findMany({
+            where: { invoiceId },
+            select: { id: true, amount: true },
+          });
 
-        const matchedPayments = await tx.paymentInvoiceMatch.findMany({
-          where: { invoiceId },
-          select: { id: true, paymentId: true, amount: true },
-        });
+          const matchedPayments = await tx.paymentInvoiceMatch.findMany({
+            where: { invoiceId },
+            select: { id: true, paymentId: true, amount: true },
+          });
 
-        const directTotal = directPayments.reduce(
-          (sum, p) => sum + p.amount.toNumber(),
-          0,
-        );
-        const matchedTotal = matchedPayments.reduce(
-          (sum, m) => sum + m.amount.toNumber(),
-          0,
-        );
-        movedAmount = Math.round((directTotal + matchedTotal) * 100) / 100;
+          const directTotal = directPayments.reduce(
+            (sum, p) => sum + p.amount.toNumber(),
+            0,
+          );
+          const matchedTotal = matchedPayments.reduce(
+            (sum, m) => sum + m.amount.toNumber(),
+            0,
+          );
+          movedAmount = Math.round((directTotal + matchedTotal) * 100) / 100;
 
-        if (movedAmount > 0.009) {
-          if (!paymentAction || paymentAction === "none") {
-            throw new Error(
-              "This invoice has payments. Please choose how to handle them.",
-            );
-          }
-
-          const affectedPaymentIds = new Set<number>([
-            ...directPayments.map((p) => p.id),
-            ...matchedPayments.map((m) => m.paymentId),
-          ]);
-
-          if (paymentAction === "credit") {
-            if (!existingInvoice.customerId) {
+          if (movedAmount > 0.009) {
+            if (!paymentAction || paymentAction === "none") {
               throw new Error(
-                "Cannot move payments to credit because this invoice has no linked customer.",
+                "This invoice has payments. Please choose how to handle them.",
               );
             }
 
-            if (directPayments.length > 0) {
-              await tx.payment.updateMany({
-                where: { id: { in: directPayments.map((p) => p.id) } },
-                data: { invoiceId: null },
-              });
-            }
+            const affectedPaymentIds = new Set<number>([
+              ...directPayments.map((p) => p.id),
+              ...matchedPayments.map((m) => m.paymentId),
+            ]);
 
-            if (matchedPayments.length > 0) {
-              await tx.paymentInvoiceMatch.deleteMany({
-                where: { id: { in: matchedPayments.map((m) => m.id) } },
-              });
-            }
+            if (paymentAction === "credit") {
+              if (!existingInvoice.customerId) {
+                throw new Error(
+                  "Cannot move payments to credit because this invoice has no linked customer.",
+                );
+              }
 
-            await (tx as any).customer.update({
-              where: { id: existingInvoice.customerId },
-              data: {
-                storeCredit: {
-                  increment: movedAmount,
+              if (directPayments.length > 0) {
+                await tx.payment.updateMany({
+                  where: { id: { in: directPayments.map((p) => p.id) } },
+                  data: { invoiceId: null },
+                });
+              }
+
+              if (matchedPayments.length > 0) {
+                await tx.paymentInvoiceMatch.deleteMany({
+                  where: { id: { in: matchedPayments.map((m) => m.id) } },
+                });
+              }
+
+              await (tx as any).customer.update({
+                where: { id: existingInvoice.customerId },
+                data: {
+                  storeCredit: {
+                    increment: movedAmount,
+                  },
                 },
-              },
-            });
+              });
 
-            await (tx as any).customerCreditTransaction.create({
-              data: {
-                customerId: existingInvoice.customerId,
-                amount: movedAmount,
-                type: "credit",
-                reason: `Payments moved from abandoned invoice ${existingInvoice.invoiceNumber}. ${reason}`,
-                invoiceId,
-                createdById: user.id,
-              },
-            });
-          }
-
-          if (paymentAction === "transfer") {
-            if (!Number.isFinite(targetInvoiceId as number)) {
-              throw new Error("Target invoice is required for transfer.");
-            }
-
-            const target = await tx.invoice.findUnique({
-              where: { id: targetInvoiceId as number },
-              select: { id: true, customerId: true, status: true },
-            });
-
-            if (!target) {
-              throw new Error("Target invoice not found.");
-            }
-            if (target.id === invoiceId) {
-              throw new Error(
-                "Target invoice must be different from the abandoned invoice.",
-              );
-            }
-            if (
-              !existingInvoice.customerId ||
-              target.customerId !== existingInvoice.customerId
-            ) {
-              throw new Error(
-                "Target invoice must belong to the same customer.",
-              );
-            }
-            if (target.status === "inactive" || target.status === "abandoned") {
-              throw new Error(
-                "Target invoice cannot be inactive or abandoned.",
-              );
-            }
-
-            resolvedTargetInvoiceId = target.id;
-
-            if (directPayments.length > 0) {
-              await tx.payment.updateMany({
-                where: { id: { in: directPayments.map((p) => p.id) } },
-                data: { invoiceId: target.id, isMatched: true },
+              await (tx as any).customerCreditTransaction.create({
+                data: {
+                  customerId: existingInvoice.customerId,
+                  amount: movedAmount,
+                  type: "credit",
+                  reason: `Payments moved from abandoned invoice ${existingInvoice.invoiceNumber}. ${reason}`,
+                  invoiceId,
+                  createdById: user.id,
+                },
               });
             }
 
-            for (const match of matchedPayments) {
-              const existingTargetMatch =
-                await tx.paymentInvoiceMatch.findUnique({
-                  where: {
-                    paymentId_invoiceId: {
-                      paymentId: match.paymentId,
-                      invoiceId: target.id,
-                    },
-                  },
-                });
+            if (paymentAction === "transfer") {
+              if (!Number.isFinite(targetInvoiceId as number)) {
+                throw new Error("Target invoice is required for transfer.");
+              }
 
-              if (existingTargetMatch) {
-                await tx.paymentInvoiceMatch.update({
-                  where: { id: existingTargetMatch.id },
-                  data: {
-                    amount: {
-                      increment: match.amount,
+              const target = await tx.invoice.findUnique({
+                where: { id: targetInvoiceId as number },
+                select: { id: true, customerId: true, status: true },
+              });
+
+              if (!target) {
+                throw new Error("Target invoice not found.");
+              }
+              if (target.id === invoiceId) {
+                throw new Error(
+                  "Target invoice must be different from the abandoned invoice.",
+                );
+              }
+              if (
+                !existingInvoice.customerId ||
+                target.customerId !== existingInvoice.customerId
+              ) {
+                throw new Error(
+                  "Target invoice must belong to the same customer.",
+                );
+              }
+              if (
+                target.status === "inactive" ||
+                target.status === "abandoned"
+              ) {
+                throw new Error(
+                  "Target invoice cannot be inactive or abandoned.",
+                );
+              }
+
+              resolvedTargetInvoiceId = target.id;
+
+              if (directPayments.length > 0) {
+                await tx.payment.updateMany({
+                  where: { id: { in: directPayments.map((p) => p.id) } },
+                  data: { invoiceId: target.id, isMatched: true },
+                });
+              }
+
+              for (const match of matchedPayments) {
+                const existingTargetMatch =
+                  await tx.paymentInvoiceMatch.findUnique({
+                    where: {
+                      paymentId_invoiceId: {
+                        paymentId: match.paymentId,
+                        invoiceId: target.id,
+                      },
                     },
-                  },
-                });
-                await tx.paymentInvoiceMatch.delete({
-                  where: { id: match.id },
-                });
-              } else {
-                await tx.paymentInvoiceMatch.update({
-                  where: { id: match.id },
-                  data: { invoiceId: target.id },
+                  });
+
+                if (existingTargetMatch) {
+                  await tx.paymentInvoiceMatch.update({
+                    where: { id: existingTargetMatch.id },
+                    data: {
+                      amount: {
+                        increment: match.amount,
+                      },
+                    },
+                  });
+                  await tx.paymentInvoiceMatch.delete({
+                    where: { id: match.id },
+                  });
+                } else {
+                  await tx.paymentInvoiceMatch.update({
+                    where: { id: match.id },
+                    data: { invoiceId: target.id },
+                  });
+                }
+              }
+            }
+
+            for (const pid of affectedPaymentIds) {
+              const payment = await tx.payment.findUnique({
+                where: { id: pid },
+                include: { paymentMatches: true },
+              });
+              if (!payment) continue;
+
+              const shouldBeMatched =
+                !!payment.invoiceId || payment.paymentMatches.length > 0;
+              if (payment.isMatched !== shouldBeMatched) {
+                await tx.payment.update({
+                  where: { id: pid },
+                  data: { isMatched: shouldBeMatched },
                 });
               }
             }
           }
-
-          for (const pid of affectedPaymentIds) {
-            const payment = await tx.payment.findUnique({
-              where: { id: pid },
-              include: { paymentMatches: true },
-            });
-            if (!payment) continue;
-
-            const shouldBeMatched =
-              !!payment.invoiceId || payment.paymentMatches.length > 0;
-            if (payment.isMatched !== shouldBeMatched) {
-              await tx.payment.update({
-                where: { id: pid },
-                data: { isMatched: shouldBeMatched },
-              });
-            }
-          }
         }
-      }
 
-      const inv = await tx.invoice.update({
-        where: { id: invoiceId },
-        data: {
-          status: targetStatus,
-          ...(targetStatus === "abandoned" ? { paidAmount: 0 } : {}),
-        },
-      });
-
-      await (tx as any).invoiceEditHistory.create({
-        data: {
-          invoiceId,
-          editedById: user.id,
-          reason,
-          changes: {
-            status: {
-              from: existingInvoice.status,
-              to: targetStatus,
-            },
-            ...(targetStatus === "abandoned"
-              ? {
-                  paymentDisposition: {
-                    from: "linked-to-invoice",
-                    to: paymentAction || "none",
-                  },
-                  movedAmount: {
-                    from: 0,
-                    to: movedAmount,
-                  },
-                  ...(resolvedTargetInvoiceId
-                    ? {
-                        targetInvoiceId: {
-                          from: null,
-                          to: resolvedTargetInvoiceId,
-                        },
-                      }
-                    : {}),
-                }
-              : {}),
+        const inv = await tx.invoice.update({
+          where: { id: invoiceId },
+          data: {
+            status: targetStatus,
+            ...(targetStatus === "abandoned" ? { paidAmount: 0 } : {}),
           },
-        },
-      });
+        });
 
-      return inv;
-    });
+        await (tx as any).invoiceEditHistory.create({
+          data: {
+            invoiceId,
+            editedById: user.id,
+            reason,
+            changes: {
+              status: {
+                from: existingInvoice.status,
+                to: targetStatus,
+              },
+              ...(targetStatus === "abandoned"
+                ? {
+                    paymentDisposition: {
+                      from: "linked-to-invoice",
+                      to: paymentAction || "none",
+                    },
+                    movedAmount: {
+                      from: 0,
+                      to: movedAmount,
+                    },
+                    ...(resolvedTargetInvoiceId
+                      ? {
+                          targetInvoiceId: {
+                            from: null,
+                            to: resolvedTargetInvoiceId,
+                          },
+                        }
+                      : {}),
+                  }
+                : {}),
+            },
+          },
+        });
+
+        return inv;
+      },
+      {
+        timeout: 20000,
+        maxWait: 5000,
+      },
+    );
 
     if (resolvedTargetInvoiceId) {
       await updateInvoiceAfterPayment(resolvedTargetInvoiceId);
