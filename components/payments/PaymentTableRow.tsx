@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { MoreVertical, Printer, Eye, Link2, Edit3 } from "lucide-react";
+import { MoreVertical, Printer, Eye, Link2, Edit3, Trash2 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Button } from "../ui/button";
 import { generatePaymentReceiptPDF } from "../../lib/payment-receipt";
+import AbandonPaymentModal from "./AbandonPaymentModal";
 import type { Payment } from "../../hooks/usePayments";
 
 interface PaymentTableRowProps {
@@ -13,6 +14,7 @@ interface PaymentTableRowProps {
   onView?: (payment: Payment) => void;
   onEditPayment?: (payment: Payment) => void;
   onEditNotes?: (payment: Payment) => void;
+  onAbandon?: (payment: Payment) => void;
 }
 
 export default function PaymentTableRow({
@@ -21,8 +23,11 @@ export default function PaymentTableRow({
   onView,
   onEditPayment,
   onEditNotes,
+  onAbandon,
 }: PaymentTableRowProps) {
   const [showActionsMenu, setShowActionsMenu] = useState(false);
+  const [showAbandonModal, setShowAbandonModal] = useState(false);
+  const [isAbandoning, setIsAbandoning] = useState(false);
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString("en-US", {
@@ -30,6 +35,19 @@ export default function PaymentTableRow({
       month: "short",
       day: "numeric",
     });
+  };
+
+  const formatAmount = (value: unknown) => {
+    const numericValue =
+      typeof value === "number"
+        ? value
+        : typeof value === "string"
+          ? Number(value)
+          : value && typeof value === "object" && "toNumber" in value
+            ? Number((value as { toNumber: () => number }).toNumber())
+            : Number(value);
+
+    return Number.isFinite(numericValue) ? numericValue.toFixed(2) : "0.00";
   };
 
   const getMethodBadgeStyle = (method: Payment["method"]) => {
@@ -71,8 +89,36 @@ export default function PaymentTableRow({
   };
 
   const isUnmatched =
+    !payment.isAbandoned &&
     !payment.invoice &&
     (!payment.paymentMatches || payment.paymentMatches.length === 0);
+
+  const handleOpenAbandonModal = () => {
+    setShowActionsMenu(false);
+    setShowAbandonModal(true);
+  };
+
+  const handleAbandonConfirm = async (reason: string) => {
+    setIsAbandoning(true);
+    try {
+      const response = await fetch(`/api/payments/${payment.id}/abandon`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to abandon payment");
+      }
+      onAbandon?.(payment);
+    } catch (error) {
+      console.error("Failed to abandon payment:", error);
+      throw error;
+    } finally {
+      setIsAbandoning(false);
+    }
+  };
 
   return (
     <tr
@@ -125,7 +171,14 @@ export default function PaymentTableRow({
         )}
       </td>
       <td className="px-4 py-3 text-sm font-semibold text-gray-900">
-        ${payment.amount.toFixed(2)}
+        <div className="flex items-center gap-2">
+          <span>${formatAmount(payment.amount)}</span>
+          {payment.isAbandoned && (
+            <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-700">
+              Abandoned
+            </span>
+          )}
+        </div>
       </td>
       <td className="px-4 py-3">
         <span
@@ -195,6 +248,16 @@ export default function PaymentTableRow({
                   Edit Notes
                 </button>
               )}
+              {onAbandon && !payment.isAbandoned && (
+                <button
+                  onClick={handleOpenAbandonModal}
+                  disabled={isAbandoning}
+                  className="flex items-center gap-2 px-3 py-2 text-sm text-red-700 hover:bg-red-50 rounded-md text-left disabled:opacity-50"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Abandon Payment
+                </button>
+              )}
               {onEditPayment && (
                 <button
                   onClick={() => {
@@ -211,6 +274,14 @@ export default function PaymentTableRow({
           </PopoverContent>
         </Popover>
       </td>
+
+      <AbandonPaymentModal
+        isOpen={showAbandonModal}
+        onClose={() => setShowAbandonModal(false)}
+        payment={payment}
+        onConfirm={handleAbandonConfirm}
+        isLoading={isAbandoning}
+      />
     </tr>
   );
 }

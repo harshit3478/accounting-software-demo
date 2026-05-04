@@ -158,26 +158,18 @@ export async function POST(request: NextRequest) {
 
         await stampPaymentCode(tx, creditPayment.id);
 
-        await (tx as any).customer.update({
-          where: { id: invoice.customerId },
-          data: {
-            storeCredit: {
-              increment: remainingAfterLink,
-            },
-          },
-        });
+        // NOTE: we intentionally do NOT update customer.storeCredit or create the
+        // customerCreditTransaction inside this large interactive transaction to
+        // avoid timeouts on slower DB connections. Instead we return the created
+        // creditPayment id and remaining amount so we can perform a small follow
+        // up transaction after commit.
 
-        await (tx as any).customerCreditTransaction.create({
-          data: {
-            customerId: invoice.customerId,
-            amount: remainingAfterLink,
-            type: "credit",
-            reason: `Excess payment captured as store credit from ${invoice.invoiceNumber}`,
-            paymentId: creditPayment.id,
-            invoiceId,
-            createdById: user.id,
-          },
-        });
+        return {
+          match,
+          creditPaymentId: creditPayment.id,
+          remainingAfterLink: remainingAfterLink.toString(),
+          customerId: invoice.customerId,
+        };
       } else {
         // Store-credit payments keep their remaining balance available for the
         // same customer, so only mark them fully matched when exhausted.
@@ -192,17 +184,106 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      return match;
+      // If this was a store-credit payment, create a new Payment record that directly
+      // represents this application to the invoice so it shows as a payment in the
+      // invoice's payment list. Also return info for follow-up transaction to update
+      // customer credit.
+      if (payment.source === "store_credit_excess") {
+        const ownerTx = await (tx as any).customerCreditTransaction.findFirst({
+          where: { paymentId: payment.id },
+          orderBy: { createdAt: "desc" },
+        });
+
+        // Create a new Payment record for this store-credit application that will
+        // appear in the invoice's payment list
+        const creditAppliedPayment = await tx.payment.create({
+          data: {
+            invoiceId,
+            amount: amountToLink,
+            paymentDate: payment.paymentDate,
+            methodId: payment.methodId,
+            notes: `Store credit applied (From payment ${payment.paymentCode || `#${payment.id}`})${payment.notes ? ` | ${payment.notes}` : ""}`,
+            userId: user.id,
+            isMatched: true,
+            source: "store_credit_applied",
+          },
+        });
+
+        return {
+          match,
+          debitFromCustomerId: ownerTx?.customerId ?? null,
+          debitAmount: amountToLink.toString(),
+          paymentId: payment.id,
+          creditAppliedPaymentId: creditAppliedPayment.id,
+        };
+      }
+
+      return { match };
     });
 
-    // 5. Update Invoice Status (Outside transaction since it uses its own logic/checks)
-    // Although ideally it should be inside, updateInvoiceAfterPayment uses top-level prisma client usually,
-    // unless we pass tx. Let's see if updateInvoiceAfterPayment accepts tx.
-    // It imports prisma from lib/prisma, so it uses the global one.
-    // For safety, we call it after.
+    // If the transaction returned a created credit payment, perform a small
+    // follow-up transaction to update the customer's store credit and create
+    // the customerCreditTransaction record. Keeping this separate avoids long
+    // interactive transactions which can time out.
+    if ((result as any).creditPaymentId) {
+      const payload = result as any;
+      await prisma.$transaction([
+        prisma.customer.update({
+          where: { id: payload.customerId },
+          data: {
+            storeCredit: {
+              increment: new Prisma.Decimal(payload.remainingAfterLink),
+            },
+          },
+        }),
+        prisma.customerCreditTransaction.create({
+          data: {
+            customerId: payload.customerId,
+            amount: new Prisma.Decimal(payload.remainingAfterLink),
+            type: "credit",
+            reason: `Excess payment captured as store credit from ${invoiceId}`,
+            paymentId: payload.creditPaymentId,
+            invoiceId,
+            createdById: user.id,
+          },
+        }),
+      ]);
+    }
+
+    // If the transaction returned a debit instruction (using existing store
+    // credit), perform a short transaction to decrement the customer's store
+    // credit and record the customerCreditTransaction of type 'debit'.
+    if ((result as any).debitFromCustomerId) {
+      const payload = result as any;
+      await prisma.$transaction([
+        prisma.customer.update({
+          where: { id: payload.debitFromCustomerId },
+          data: {
+            storeCredit: {
+              decrement: new Prisma.Decimal(payload.debitAmount),
+            },
+          },
+        }),
+        prisma.customerCreditTransaction.create({
+          data: {
+            customerId: payload.debitFromCustomerId,
+            amount: new Prisma.Decimal(payload.debitAmount),
+            type: "debit",
+            reason: `Applied store credit to invoice ${invoiceId}`,
+            paymentId: payload.paymentId,
+            invoiceId,
+            createdById: user.id,
+          },
+        }),
+      ]);
+    }
+
+    // 5. Update Invoice Status (outside transactions)
     await updateInvoiceAfterPayment(invoiceId);
 
-    return NextResponse.json({ success: true, match: result });
+    // Normalize response shape: return match
+    const match = (result as any).match;
+    return NextResponse.json({ success: true, match });
   } catch (error: any) {
     console.error("Error linking payment:", error);
     return NextResponse.json(

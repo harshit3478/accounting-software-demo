@@ -1,19 +1,36 @@
+"use client";
 
-'use client';
-
-import { useState } from 'react';
-import { Search, Filter, Calendar, ChevronDown, X, Plus, Download, Upload, RefreshCw, Link } from 'lucide-react';
-import LucideIcon from '../LucideIcon';
-import { Button } from '../ui/button';
-import { Input } from '../ui/input';
-import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
-import { Calendar as CalendarComponent } from '../ui/calendar';
-import { format } from 'date-fns';
-import type { PaymentMethodFilter, DateRange, PaymentMethodType } from '../../hooks/usePayments';
+import { useState } from "react";
+import {
+  Search,
+  Filter,
+  Calendar,
+  ChevronDown,
+  X,
+  Plus,
+  Download,
+  Upload,
+  RefreshCw,
+  Link,
+} from "lucide-react";
+import LucideIcon from "../LucideIcon";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
+import { Calendar as CalendarComponent } from "../ui/calendar";
+import { format } from "date-fns";
+import type {
+  PaymentMethodFilter,
+  PaymentStatusFilter,
+  DateRange,
+  PaymentMethodType,
+} from "../../hooks/usePayments";
 
 interface PaymentToolbarProps {
   filterMethod: PaymentMethodFilter;
   onFilterChange: (method: PaymentMethodFilter) => void;
+  filterStatus: PaymentStatusFilter;
+  onStatusChange: (status: PaymentStatusFilter) => void;
   searchQuery: string;
   onSearchChange: (query: string) => void;
   dateRange: DateRange | null;
@@ -32,6 +49,8 @@ interface PaymentToolbarProps {
 export default function PaymentToolbar({
   filterMethod,
   onFilterChange,
+  filterStatus,
+  onStatusChange,
   searchQuery,
   onSearchChange,
   dateRange,
@@ -48,18 +67,18 @@ export default function PaymentToolbar({
 }: PaymentToolbarProps) {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [dateFrom, setDateFrom] = useState<Date | undefined>(
-    dateRange?.startDate ? new Date(dateRange.startDate) : undefined
+    dateRange?.startDate ? new Date(dateRange.startDate) : undefined,
   );
   const [dateTo, setDateTo] = useState<Date | undefined>(
-    dateRange?.endDate ? new Date(dateRange.endDate) : undefined
+    dateRange?.endDate ? new Date(dateRange.endDate) : undefined,
   );
 
   const handleApplyDateRange = () => {
     if (dateFrom && dateTo) {
       onDateRangeChange({
-        startDate: format(dateFrom, 'yyyy-MM-dd'),
-        endDate: format(dateTo, 'yyyy-MM-dd'),
-        preset: 'custom'
+        startDate: format(dateFrom, "yyyy-MM-dd"),
+        endDate: format(dateTo, "yyyy-MM-dd"),
+        preset: "custom",
       });
       setShowDatePicker(false);
     }
@@ -73,16 +92,30 @@ export default function PaymentToolbar({
   };
 
   const getMethodLabel = (methodFilter: string) => {
-    if (methodFilter === 'all') return 'All Methods';
-    const method = paymentMethods.find(m => String(m.id) === methodFilter);
+    if (methodFilter === "all") return "All Methods";
+    const method = paymentMethods.find((m) => String(m.id) === methodFilter);
     return method?.name || methodFilter;
   };
 
   const getMethodIcon = (methodFilter: string) => {
-    if (methodFilter === 'all') return <Filter className="h-4 w-4 mr-2" />;
-    const method = paymentMethods.find(m => String(m.id) === methodFilter);
-    if (method?.icon) return <LucideIcon name={method.icon} fallback={method.name} size={14} className="mr-2" />;
+    if (methodFilter === "all") return <Filter className="h-4 w-4 mr-2" />;
+    const method = paymentMethods.find((m) => String(m.id) === methodFilter);
+    if (method?.icon)
+      return (
+        <LucideIcon
+          name={method.icon}
+          fallback={method.name}
+          size={14}
+          className="mr-2"
+        />
+      );
     return <Filter className="h-4 w-4 mr-2" />;
+  };
+
+  const getStatusLabel = (status: PaymentStatusFilter) => {
+    if (status === "all") return "All Payments";
+    if (status === "abandoned") return "Abandoned";
+    return "Active Only";
   };
 
   return (
@@ -91,8 +124,8 @@ export default function PaymentToolbar({
       <div className="flex items-center gap-3 w-full sm:w-auto flex-1">
         <div className="relative w-full sm:w-64">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-          <Input 
-            placeholder="Search payments..." 
+          <Input
+            placeholder="Search payments..."
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             className="pl-9 h-9 text-sm"
@@ -106,10 +139,12 @@ export default function PaymentToolbar({
               <Button variant="outline" size="sm" className="h-9 border-dashed">
                 {getMethodIcon(filterMethod)}
                 Method
-                {filterMethod !== 'all' && (
+                {filterMethod !== "all" && (
                   <>
                     <span className="mx-2 h-4 w-[1px] bg-gray-200" />
-                    <span className="text-blue-600">{getMethodLabel(filterMethod)}</span>
+                    <span className="text-blue-600">
+                      {getMethodLabel(filterMethod)}
+                    </span>
                   </>
                 )}
               </Button>
@@ -118,9 +153,11 @@ export default function PaymentToolbar({
               <div className="p-2">
                 <div
                   className={`px-3 py-2 text-sm rounded-md cursor-pointer hover:bg-gray-100 flex items-center ${
-                    filterMethod === 'all' ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'
+                    filterMethod === "all"
+                      ? "bg-blue-50 text-blue-700 font-medium"
+                      : "text-gray-700"
                   }`}
-                  onClick={() => onFilterChange('all')}
+                  onClick={() => onFilterChange("all")}
                 >
                   All Methods
                 </div>
@@ -130,15 +167,61 @@ export default function PaymentToolbar({
                     <div
                       key={method.id}
                       className={`px-3 py-2 text-sm rounded-md cursor-pointer hover:bg-gray-100 flex items-center ${
-                        filterMethod === methodId ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'
+                        filterMethod === methodId
+                          ? "bg-blue-50 text-blue-700 font-medium"
+                          : "text-gray-700"
                       }`}
                       onClick={() => onFilterChange(methodId)}
                     >
-                      {method.icon && <LucideIcon name={method.icon} fallback={method.name} size={14} className="mr-2" />}
+                      {method.icon && (
+                        <LucideIcon
+                          name={method.icon}
+                          fallback={method.name}
+                          size={14}
+                          className="mr-2"
+                        />
+                      )}
                       {method.name}
                     </div>
                   );
                 })}
+              </div>
+            </PopoverContent>
+          </Popover>
+
+          {/* Status Filter Dropdown */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className="h-9 border-dashed">
+                <Filter className="h-4 w-4 mr-2" />
+                Status
+                {filterStatus !== "active" && (
+                  <>
+                    <span className="mx-2 h-4 w-[1px] bg-gray-200" />
+                    <span className="text-blue-600">
+                      {getStatusLabel(filterStatus)}
+                    </span>
+                  </>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[200px] p-0" align="start">
+              <div className="p-2">
+                {(["active", "abandoned", "all"] as PaymentStatusFilter[]).map(
+                  (status) => (
+                    <div
+                      key={status}
+                      className={`px-3 py-2 text-sm rounded-md cursor-pointer hover:bg-gray-100 flex items-center ${
+                        filterStatus === status
+                          ? "bg-blue-50 text-blue-700 font-medium"
+                          : "text-gray-700"
+                      }`}
+                      onClick={() => onStatusChange(status)}
+                    >
+                      {getStatusLabel(status)}
+                    </div>
+                  ),
+                )}
               </div>
             </PopoverContent>
           </Popover>
@@ -148,17 +231,17 @@ export default function PaymentToolbar({
             <PopoverTrigger asChild>
               <Button variant="outline" size="sm" className="h-9 border-dashed">
                 <Calendar className="mr-2 h-4 w-4" />
-                {dateRange ? (
-                  `${format(new Date(dateRange.startDate), 'MMM d')} - ${format(new Date(dateRange.endDate), 'MMM d')}`
-                ) : (
-                  'Date'
-                )}
+                {dateRange
+                  ? `${format(new Date(dateRange.startDate), "MMM d")} - ${format(new Date(dateRange.endDate), "MMM d")}`
+                  : "Date"}
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-auto p-4" align="start">
               <div className="flex gap-4">
                 <div>
-                  <p className="text-xs font-medium text-gray-500 mb-2">Start Date</p>
+                  <p className="text-xs font-medium text-gray-500 mb-2">
+                    Start Date
+                  </p>
                   <CalendarComponent
                     mode="single"
                     selected={dateFrom}
@@ -167,7 +250,9 @@ export default function PaymentToolbar({
                   />
                 </div>
                 <div>
-                  <p className="text-xs font-medium text-gray-500 mb-2">End Date</p>
+                  <p className="text-xs font-medium text-gray-500 mb-2">
+                    End Date
+                  </p>
                   <CalendarComponent
                     mode="single"
                     selected={dateTo}
@@ -176,20 +261,32 @@ export default function PaymentToolbar({
                 </div>
               </div>
               <div className="flex justify-end gap-2 mt-4">
-                <Button variant="ghost" size="sm" onClick={handleClearDateRange}>Clear</Button>
-                <Button size="sm" onClick={handleApplyDateRange}>Apply</Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleClearDateRange}
+                >
+                  Clear
+                </Button>
+                <Button size="sm" onClick={handleApplyDateRange}>
+                  Apply
+                </Button>
               </div>
             </PopoverContent>
           </Popover>
 
-          {(filterMethod !== 'all' || dateRange || searchQuery) && (
-            <Button 
-              variant="ghost" 
-              size="sm" 
+          {(filterMethod !== "all" ||
+            filterStatus !== "active" ||
+            dateRange ||
+            searchQuery) && (
+            <Button
+              variant="ghost"
+              size="sm"
               className="h-9 px-2 lg:px-3"
               onClick={() => {
-                onFilterChange('all');
-                onSearchChange('');
+                onFilterChange("all");
+                onStatusChange("active");
+                onSearchChange("");
                 onDateRangeChange(null);
               }}
             >
@@ -202,10 +299,10 @@ export default function PaymentToolbar({
 
       {/* Right Side: Actions */}
       <div className="flex items-center gap-2 w-full sm:w-auto">
-        <Button 
-          variant="outline" 
-          size="sm" 
-          className="h-9 relative" 
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-9 relative"
           onClick={onMatchClick}
         >
           <Link className="mr-2 h-4 w-4" />
@@ -216,17 +313,24 @@ export default function PaymentToolbar({
             </span>
           )}
         </Button>
-        <Button 
-          variant="outline" 
-          size="sm" 
-          className="h-9" 
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-9"
           onClick={onSyncClick}
           disabled={isSyncing}
         >
-          <RefreshCw className={`mr-2 h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
-          {isSyncing ? 'Syncing...' : 'Sync QB'}
+          <RefreshCw
+            className={`mr-2 h-4 w-4 ${isSyncing ? "animate-spin" : ""}`}
+          />
+          {isSyncing ? "Syncing..." : "Sync QB"}
         </Button>
-        <Button variant="outline" size="sm" className="h-9" onClick={onImportClick}>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-9"
+          onClick={onImportClick}
+        >
           <Upload className="mr-2 h-4 w-4" />
           Import
         </Button>
@@ -257,7 +361,11 @@ export default function PaymentToolbar({
             </div>
           </PopoverContent>
         </Popover>
-        <Button size="sm" className="h-9 bg-blue-600 hover:bg-blue-700" onClick={onRecordClick}>
+        <Button
+          size="sm"
+          className="h-9 bg-blue-600 hover:bg-blue-700"
+          onClick={onRecordClick}
+        >
           <Plus className="mr-2 h-4 w-4" />
           Record Payment
         </Button>

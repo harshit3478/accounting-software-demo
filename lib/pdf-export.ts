@@ -543,9 +543,13 @@ export async function generateSingleInvoicePDF(
   // doc.text(`$${Number(invoice.amount).toFixed(2)}`, R, y, { align: "right" });
   // y += 6;
 
-  // Each recorded payment
+  // Each recorded payment (sorted in ascending order by date)
   if (invoice.payments && invoice.payments.length > 0) {
-    invoice.payments.forEach((p) => {
+    const sortedPayments = [...invoice.payments].sort(
+      (a, b) =>
+        new Date(a.paymentDate).getTime() - new Date(b.paymentDate).getTime(),
+    );
+    sortedPayments.forEach((p) => {
       const dateStr = new Date(p.paymentDate).toLocaleDateString("en-US", {
         month: "long",
         day: "numeric",

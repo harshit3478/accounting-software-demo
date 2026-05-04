@@ -20,10 +20,20 @@ export async function GET(request: NextRequest) {
     const invoiceId = searchParams.get("invoiceId");
     const search = searchParams.get("search") || "";
     const method = searchParams.get("method") || "all";
+    const status = searchParams.get("status") || "active";
     const startDate = searchParams.get("startDate");
     const endDate = searchParams.get("endDate");
 
     let where: any = {};
+
+    // Status filter
+    if (status === "abandoned") {
+      where.isAbandoned = true;
+    } else if (status === "all") {
+      delete where.isAbandoned;
+    } else {
+      where.isAbandoned = false;
+    }
 
     // Filter by invoiceId if provided
     if (invoiceId) {
@@ -90,6 +100,13 @@ export async function GET(request: NextRequest) {
       include: {
         invoice: true,
         method: true,
+        abandonedByUser: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
         editHistory: {
           orderBy: { createdAt: "desc" },
           include: {
@@ -124,6 +141,11 @@ export async function GET(request: NextRequest) {
     const serializedPayments = payments.map((payment: any) => ({
       ...payment,
       amount: payment.amount.toNumber(),
+      abandonedByUser: payment.abandonedByUser
+        ? {
+            ...payment.abandonedByUser,
+          }
+        : null,
       editHistory: (payment.editHistory || []).map((entry: any) => ({
         ...entry,
         createdAt: entry.createdAt?.toISOString

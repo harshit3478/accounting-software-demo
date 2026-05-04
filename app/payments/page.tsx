@@ -30,6 +30,8 @@ function PaymentsPageContent() {
     unmatchedCount,
     filterMethod,
     setFilterMethod,
+    filterStatus,
+    setFilterStatus,
     searchQuery,
     setSearchQuery,
     dateRange,
@@ -111,6 +113,16 @@ function PaymentsPageContent() {
     }
   };
 
+  const handleAbandonPayment = async (payment: any) => {
+    // The modal and API call are now handled in PaymentTableRow
+    // This callback just needs to refresh the active payments list
+    showSuccess("Payment abandoned successfully!");
+    // Reset filter to 'active' to exclude abandoned payments from the list
+    setFilterStatus("active");
+    // Refresh immediately so the row disappears even when the filter was already active
+    await fetchPayments();
+  };
+
   const handleSync = async () => {
     showSuccess("Sync started...");
     setIsSyncing(true);
@@ -156,6 +168,8 @@ function PaymentsPageContent() {
         <PaymentToolbar
           filterMethod={filterMethod}
           onFilterChange={setFilterMethod}
+          filterStatus={filterStatus}
+          onStatusChange={setFilterStatus}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
           dateRange={dateRange}
@@ -193,6 +207,7 @@ function PaymentsPageContent() {
             onView={handleViewPayment}
             onEditPayment={handleEditPayment}
             onEditNotes={handleEditNotes}
+            onAbandon={handleAbandonPayment}
             totalItems={totalItems}
           >
             <Pagination

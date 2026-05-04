@@ -56,6 +56,7 @@ model User {
 
   invoices                   Invoice[]
   payments                   Payment[]
+  abandonedPayments          Payment[]                   @relation("PaymentAbandonedBy")
   documents                  Document[]
   paymentMatches             PaymentInvoiceMatch[]
   deletedDocumentsAsUploader DeletedDocument[]           @relation("DeletedDocOriginalUploader")
@@ -199,11 +200,18 @@ model Payment {
   // Matching status
   isMatched Boolean @default(true)
 
+  // Abandonment status & tracking (for security/audit)
+  isAbandoned   Boolean   @default(false)
+  abandonedAt   DateTime?
+  abandonedBy   Int?
+  abandonReason String?   @db.Text
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   invoice             Invoice?                    @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   user                User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  abandonedByUser     User?                       @relation("PaymentAbandonedBy", fields: [abandonedBy], references: [id], onDelete: SetNull)
   method              PaymentMethodEntry          @relation(fields: [methodId], references: [id])
   paymentMatches      PaymentInvoiceMatch[]
   layawayInstallments LayawayInstallment[]

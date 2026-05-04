@@ -19,6 +19,7 @@ interface PaymentTableProps {
   onView?: (payment: Payment) => void;
   onEditPayment?: (payment: Payment) => void;
   onEditNotes?: (payment: Payment) => void;
+  onAbandon?: (payment: Payment) => void;
   totalItems?: number;
   children?: React.ReactNode;
 }
@@ -34,6 +35,7 @@ export default function PaymentTable({
   onView,
   onEditPayment,
   onEditNotes,
+  onAbandon,
   totalItems,
   children,
 }: PaymentTableProps) {
@@ -167,6 +169,7 @@ export default function PaymentTable({
                 onView={onView}
                 onEditPayment={onEditPayment}
                 onEditNotes={onEditNotes}
+                onAbandon={onAbandon}
               />
             ))}
           </tbody>

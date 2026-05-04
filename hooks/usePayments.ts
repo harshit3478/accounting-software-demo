@@ -24,6 +24,15 @@ export interface Payment {
   createdAt: string;
   source?: string;
   paymentCode?: string;
+  isAbandoned?: boolean;
+  abandonedAt?: string | null;
+  abandonedBy?: number | null;
+  abandonReason?: string | null;
+  abandonedByUser?: {
+    id: number;
+    name: string;
+    email?: string;
+  } | null;
 
   invoice: {
     id: number;
@@ -64,6 +73,7 @@ export interface PaymentStats {
 }
 
 export type PaymentMethodFilter = "all" | string; // 'all' or methodId as string
+export type PaymentStatusFilter = "active" | "abandoned" | "all";
 export type PaymentSortField = "date" | "amount" | "client";
 export type SortDirection = "asc" | "desc";
 
@@ -84,6 +94,8 @@ interface UsePaymentsReturn {
   // Filters
   filterMethod: PaymentMethodFilter;
   setFilterMethod: (filter: PaymentMethodFilter) => void;
+  filterStatus: PaymentStatusFilter;
+  setFilterStatus: (filter: PaymentStatusFilter) => void;
   searchQuery: string;
   setSearchQuery: (query: string) => void;
   dateRange: DateRange | null;
@@ -154,6 +166,9 @@ export function usePayments(): UsePaymentsReturn {
   const [filterMethod, setFilterMethodState] = useState<PaymentMethodFilter>(
     (searchParams.get("method") as PaymentMethodFilter) || "all",
   );
+  const [filterStatus, setFilterStatusState] = useState<PaymentStatusFilter>(
+    (searchParams.get("status") as PaymentStatusFilter) || "active",
+  );
   const [searchQuery, setSearchQueryState] = useState(
     searchParams.get("search") || "",
   );
@@ -205,7 +220,12 @@ export function usePayments(): UsePaymentsReturn {
       const newSearchParams = new URLSearchParams(searchParams.toString());
 
       Object.entries(params).forEach(([key, value]) => {
-        if (value === null || value === "" || value === "all") {
+        if (
+          value === null ||
+          value === "" ||
+          value === "all" ||
+          value === "active"
+        ) {
           newSearchParams.delete(key);
         } else {
           newSearchParams.set(key, value);
@@ -222,6 +242,12 @@ export function usePayments(): UsePaymentsReturn {
     setFilterMethodState(method);
     setCurrentPage(1);
     updateUrl({ method, page: "1" });
+  };
+
+  const setFilterStatus = (status: PaymentStatusFilter) => {
+    setFilterStatusState(status);
+    setCurrentPage(1);
+    updateUrl({ status, page: "1" });
   };
 
   const setSearchQuery = (query: string) => {
@@ -293,6 +319,7 @@ export function usePayments(): UsePaymentsReturn {
       params.set("page", currentPage.toString());
       params.set("limit", itemsPerPage.toString());
       if (filterMethod !== "all") params.set("method", filterMethod);
+      if (filterStatus !== "active") params.set("status", filterStatus);
       if (debouncedSearchQuery) params.set("search", debouncedSearchQuery);
       if (dateRange) {
         params.set("startDate", dateRange.startDate);
@@ -357,6 +384,7 @@ export function usePayments(): UsePaymentsReturn {
     currentPage,
     itemsPerPage,
     filterMethod,
+    filterStatus,
     debouncedSearchQuery,
     dateRange,
     sortBy,
@@ -375,6 +403,7 @@ export function usePayments(): UsePaymentsReturn {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     filterMethod,
+    filterStatus,
     debouncedSearchQuery,
     dateRange,
     currentPage,
@@ -537,6 +566,7 @@ export function usePayments(): UsePaymentsReturn {
       // Build query string with current filters
       const params = new URLSearchParams();
       if (filterMethod !== "all") params.set("method", filterMethod);
+      if (filterStatus !== "active") params.set("status", filterStatus);
       if (debouncedSearchQuery) params.set("search", debouncedSearchQuery);
       if (dateRange) {
         params.set("startDate", dateRange.startDate);
@@ -577,6 +607,8 @@ export function usePayments(): UsePaymentsReturn {
     unmatchedCount,
     filterMethod,
     setFilterMethod,
+    filterStatus,
+    setFilterStatus,
     searchQuery,
     setSearchQuery,
     dateRange,

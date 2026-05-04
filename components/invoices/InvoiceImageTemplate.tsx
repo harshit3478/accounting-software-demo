@@ -517,38 +517,43 @@ export default function InvoiceImageTemplate({
           </div>
 
           {/* Each payment */}
-          {payments.map((p, i) => {
-            const methodName =
-              typeof p.method === "object" ? p.method.name : String(p.method);
-            const dateStr = new Date(p.date || p.createdAt).toLocaleDateString(
-              "en-US",
-              {
+          {[...payments]
+            .sort(
+              (a, b) =>
+                new Date(a.date || a.createdAt).getTime() -
+                new Date(b.date || b.createdAt).getTime(),
+            )
+            .map((p, i) => {
+              const methodName =
+                typeof p.method === "object" ? p.method.name : String(p.method);
+              const dateStr = new Date(
+                p.date || p.createdAt,
+              ).toLocaleDateString("en-US", {
                 month: "long",
                 day: "numeric",
                 year: "numeric",
-              },
-            );
-            return (
-              <div
-                key={i}
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  padding: "4px 0",
-                  fontSize: "12px",
-                }}
-              >
-                <span
-                  style={{ color: "#555555", flex: 1, paddingRight: "8px" }}
+              });
+              return (
+                <div
+                  key={i}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    padding: "4px 0",
+                    fontSize: "12px",
+                  }}
                 >
-                  Payment on {dateStr} using {methodName.toLowerCase()}:
-                </span>
-                <span style={{ color: "#333333", whiteSpace: "nowrap" }}>
-                  {fmt(p.amount)}
-                </span>
-              </div>
-            );
-          })}
+                  <span
+                    style={{ color: "#555555", flex: 1, paddingRight: "8px" }}
+                  >
+                    Payment on {dateStr} using {methodName.toLowerCase()}:
+                  </span>
+                  <span style={{ color: "#333333", whiteSpace: "nowrap" }}>
+                    {fmt(p.amount)}
+                  </span>
+                </div>
+              );
+            })}
 
           {/* Separator */}
           <div

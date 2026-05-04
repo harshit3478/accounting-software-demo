@@ -20,6 +20,14 @@ interface ViewPaymentModalProps {
     paymentDate: string;
     notes: string | null;
     createdAt: string;
+    isAbandoned?: boolean;
+    abandonedAt?: string | null;
+    abandonReason?: string | null;
+    abandonedByUser?: {
+      id: number;
+      name: string;
+      email?: string;
+    } | null;
     editHistory?: Array<{
       id: number;
       reason: string;
@@ -67,16 +75,6 @@ export default function ViewPaymentModal({
           }
         : null,
     });
-  };
-
-  const handleShareImage = async () => {
-    if (!receiptRef.current) return;
-    const { shareElementAsImage } = await import("../../lib/image-export");
-    await shareElementAsImage(
-      receiptRef.current,
-      `receipt-PAY-${String(payment.id).padStart(5, "0")}.png`,
-      `Payment Receipt #${payment.id}`,
-    );
   };
 
   const formatDate = (dateString: string) => {
@@ -226,6 +224,57 @@ export default function ViewPaymentModal({
             </div>
           )}
 
+          {/* Abandonment Info */}
+          {payment.isAbandoned && payment.abandonedAt && (
+            <div className="border border-red-200 rounded-lg p-5 bg-red-50">
+              <h4 className="text-sm font-medium text-red-700 mb-3 flex items-center">
+                <svg
+                  className="w-5 h-5 mr-2 text-red-600"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M12 9v2m0 4v2m0 4v2M7.08 6.06L8.5 7.5m3 3l1.42 1.42M7.08 17.94L8.5 16.5m3-3l1.42-1.42m6.36-1.42L16.5 7.5m-3-3l-1.42-1.42M16.92 17.94L15.5 16.5m3-3l-1.42-1.42"
+                  />
+                </svg>
+                Payment Abandoned
+              </h4>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-red-600">Status:</span>
+                  <span className="font-medium text-red-700">Abandoned</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-red-600">Abandoned on:</span>
+                  <span className="font-medium text-red-700">
+                    {new Date(payment.abandonedAt).toLocaleString()}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-red-600">Abandoned by:</span>
+                  <span className="font-medium text-red-700">
+                    {payment.abandonedByUser?.name || "Unknown"}
+                    {payment.abandonedByUser?.email
+                      ? ` (${payment.abandonedByUser.email})`
+                      : ""}
+                  </span>
+                </div>
+                {payment.abandonReason && (
+                  <div className="mt-3 pt-3 border-t border-red-200">
+                    <p className="text-red-600 font-medium mb-1">Reason:</p>
+                    <p className="text-red-700 whitespace-pre-wrap">
+                      {payment.abandonReason}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Metadata */}
           <div className="pt-4 border-t border-gray-200">
             <p className="text-xs text-gray-500">
@@ -285,16 +334,6 @@ export default function ViewPaymentModal({
               </svg>
               PDF
             </button>
-            {/* <button
-              type="button"
-              onClick={handleShareImage}
-              className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors flex items-center gap-2"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
-              </svg>
-              Share
-            </button> */}
           </div>
           <button
             type="button"
