@@ -26,6 +26,9 @@ export async function PUT(
       dueDateReason,
       description,
       isLayaway,
+      layawayPlan,
+      termsId,
+      newTerms,
       editReason,
     } = await request.json();
 
@@ -50,6 +53,8 @@ export async function PUT(
     }
 
     const existingInvoiceAny = existingInvoice as any;
+    const existingTermsId = existingInvoice.termsId ?? null;
+    const existingTermsSnapshot = existingInvoiceAny.termsSnapshot ?? null;
     const normalizedClientName =
       typeof clientName === "string"
         ? clientName.trim()
@@ -159,6 +164,52 @@ export async function PUT(
       parseFloat(discountAmount) +
       shippingFeeAmount +
       insuranceFeeAmount;
+    const paidAmount = Number(existingInvoiceAny.paidAmount?.toNumber?.() ?? 0);
+
+    let resolvedTermsId: number | null = existingTermsId;
+    let resolvedTermsSnapshot: any = existingTermsSnapshot;
+
+    if (termsId !== undefined) {
+      if (termsId === null) {
+        resolvedTermsId = null;
+        resolvedTermsSnapshot = null;
+      } else {
+        const parsedTermsId = Number(termsId);
+        if (!Number.isFinite(parsedTermsId)) {
+          return NextResponse.json(
+            { error: "Invalid terms id" },
+            { status: 400 },
+          );
+        }
+
+        const found = await (prisma as any).term.findUnique({
+          where: { id: parsedTermsId },
+        });
+
+        if (!found) {
+          return NextResponse.json(
+            { error: "Selected terms not found" },
+            { status: 404 },
+          );
+        }
+
+        resolvedTermsId = found.id;
+        resolvedTermsSnapshot = found.lines;
+      }
+    } else if (Array.isArray(newTerms) && newTerms.length > 0) {
+      const lines = newTerms
+        .map((line: any) => String(line || "").trim())
+        .filter(Boolean)
+        .slice(0, 5);
+
+      if (lines.length > 0) {
+        const createdTerm = await (prisma as any).term.create({
+          data: { lines, createdBy: user.id },
+        });
+        resolvedTermsId = createdTerm.id;
+        resolvedTermsSnapshot = createdTerm.lines;
+      }
+    }
 
     let resolvedCustomerId: number | null =
       customerId !== undefined
@@ -217,6 +268,8 @@ export async function PUT(
       dueDateReason: requiresDueDateReason ? normalizedDueDateReason : null,
       description,
       isLayaway: isLayaway || false,
+      termsId: resolvedTermsId,
+      termsSnapshot: resolvedTermsSnapshot,
       customerId: resolvedCustomerId,
     };
 
@@ -273,6 +326,7 @@ export async function PUT(
       nextData.description || null,
     );
     trackChange("isLayaway", existingInvoice.isLayaway, nextData.isLayaway);
+    trackChange("termsId", existingInvoice.termsId || null, nextData.termsId);
     trackChange(
       "customerId",
       existingInvoice.customerId || null,
@@ -284,6 +338,141 @@ export async function PUT(
         where: { id: invoiceId },
         data: nextData,
       });
+
+      const normalizedLayawayPlan =
+        layawayPlan && isLayaway
+          ? {
+              months: Math.max(1, Number(layawayPlan.months) || 3),
+              paymentFrequency:
+                layawayPlan.paymentFrequency === "weekly" ||
+                layawayPlan.paymentFrequency === "bi-weekly"
+                  ? layawayPlan.paymentFrequency
+                  : "monthly",
+              downPayment: Math.max(0, Number(layawayPlan.downPayment) || 0),
+              notes:
+                typeof layawayPlan.notes === "string"
+                  ? layawayPlan.notes.trim() || null
+                  : null,
+            }
+          : null;
+
+      if (normalizedLayawayPlan || (!isLayaway && existingInvoice.isLayaway)) {
+        const existingPlan = await tx.layawayPlan.findUnique({
+          where: { invoiceId },
+          include: { installments: true },
+        });
+
+        const hasPaidInstallments = !!existingPlan?.installments?.some(
+          (inst: any) => inst.isPaid,
+        );
+
+        if (!isLayaway && existingPlan) {
+          if (hasPaidInstallments) {
+            throw new Error(
+              "Cannot disable layaway after installment payments have been recorded.",
+            );
+          }
+
+          await tx.layawayInstallment.deleteMany({
+            where: { layawayPlanId: existingPlan.id },
+          });
+          await tx.layawayPlan.delete({ where: { invoiceId } });
+        } else if (normalizedLayawayPlan) {
+          if (existingPlan && hasPaidInstallments) {
+            throw new Error(
+              "Cannot reconfigure layaway plan after installment payments have been recorded.",
+            );
+          }
+
+          const totalForPlan = Math.max(Number(updated.amount) - paidAmount, 0);
+          const planBaseDate = new Date(invoiceDateValue);
+          const remaining = totalForPlan - normalizedLayawayPlan.downPayment;
+          let numInstallments = normalizedLayawayPlan.months;
+          if (normalizedLayawayPlan.paymentFrequency === "bi-weekly") {
+            numInstallments = normalizedLayawayPlan.months * 2;
+          } else if (normalizedLayawayPlan.paymentFrequency === "weekly") {
+            numInstallments = normalizedLayawayPlan.months * 4;
+          }
+
+          const installmentAmount =
+            numInstallments > 0 ? remaining / numInstallments : 0;
+          const installments: {
+            dueDate: Date;
+            amount: number;
+            label: string;
+          }[] = [];
+
+          if (normalizedLayawayPlan.downPayment > 0) {
+            installments.push({
+              dueDate: planBaseDate,
+              amount: normalizedLayawayPlan.downPayment,
+              label: "Down Payment",
+            });
+          }
+
+          for (let i = 1; i <= numInstallments; i++) {
+            const instDate = new Date(planBaseDate);
+            if (normalizedLayawayPlan.paymentFrequency === "monthly") {
+              instDate.setMonth(instDate.getMonth() + i);
+            } else if (normalizedLayawayPlan.paymentFrequency === "bi-weekly") {
+              instDate.setDate(instDate.getDate() + i * 14);
+            } else {
+              instDate.setDate(instDate.getDate() + i * 7);
+            }
+
+            const suffix =
+              i === 1 ? "st" : i === 2 ? "nd" : i === 3 ? "rd" : "th";
+            installments.push({
+              dueDate: instDate,
+              amount: installmentAmount,
+              label: `${i}${suffix} Payment`,
+            });
+          }
+
+          if (existingPlan) {
+            await tx.layawayInstallment.deleteMany({
+              where: { layawayPlanId: existingPlan.id },
+            });
+
+            await tx.layawayPlan.update({
+              where: { invoiceId },
+              data: {
+                months: normalizedLayawayPlan.months,
+                paymentFrequency: normalizedLayawayPlan.paymentFrequency,
+                downPayment: normalizedLayawayPlan.downPayment,
+                notes: normalizedLayawayPlan.notes,
+              },
+            });
+          } else {
+            await tx.layawayPlan.create({
+              data: {
+                invoiceId,
+                months: normalizedLayawayPlan.months,
+                paymentFrequency: normalizedLayawayPlan.paymentFrequency,
+                downPayment: normalizedLayawayPlan.downPayment,
+                notes: normalizedLayawayPlan.notes,
+              },
+            });
+          }
+
+          const plan = await tx.layawayPlan.findUnique({
+            where: { invoiceId },
+            select: { id: true },
+          });
+
+          if (plan) {
+            await tx.layawayInstallment.createMany({
+              data: installments.map((inst) => ({
+                layawayPlanId: plan.id,
+                dueDate: inst.dueDate,
+                amount: inst.amount,
+                label: inst.label,
+                isPaid: false,
+              })),
+            });
+          }
+        }
+      }
 
       await (tx as any).invoiceEditHistory.create({
         data: {

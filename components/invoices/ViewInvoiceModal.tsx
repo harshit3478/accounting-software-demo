@@ -85,6 +85,14 @@ interface Invoice {
   isLayaway: boolean;
   createdAt: string;
   description?: string | null;
+  termsId?: number | null;
+  termsSnapshot?: string[] | null;
+  terms?: {
+    id: number;
+    title?: string | null;
+    lines: string[];
+    isDefault: boolean;
+  } | null;
   shipmentId?: string | null;
   trackingNumber?: string | null;
   externalInvoiceNumber?: string | null;
@@ -100,6 +108,7 @@ interface Invoice {
     id: number;
     reason: string;
     createdAt: string;
+    changes?: Record<string, { from: any; to: any }> | null;
     editedBy?: {
       id: number;
       name: string;
@@ -167,6 +176,12 @@ export default function ViewInvoiceModal({
   const [isSavingInstallmentPayment, setIsSavingInstallmentPayment] =
     useState(false);
   const [markPaidError, setMarkPaidError] = useState<string | null>(null);
+  const [invoiceActionError, setInvoiceActionError] = useState<string | null>(
+    null,
+  );
+  const [isSendingInvoice, setIsSendingInvoice] = useState(false);
+  const [isMarkingSent, setIsMarkingSent] = useState(false);
+  const [invoiceSentAt, setInvoiceSentAt] = useState<string | null>(null);
   const invoiceRef = useRef<HTMLDivElement>(null);
   const imageTemplateRef = useRef<HTMLDivElement>(null);
 
@@ -211,6 +226,77 @@ export default function ViewInvoiceModal({
     );
   };
 
+  const resolveLatestSentAt = () => {
+    if (!invoice?.editHistory?.length) return null;
+
+    for (const entry of invoice.editHistory) {
+      const sentAt = entry.changes?.sentAt?.to;
+      if (typeof sentAt === "string" && sentAt.trim()) {
+        return sentAt;
+      }
+
+      if (entry.reason?.toLowerCase().includes("sent")) {
+        return entry.createdAt;
+      }
+    }
+
+    return null;
+  };
+
+  const sendInvoiceToCustomer = async () => {
+    if (!invoice) return;
+    if (!invoice.customer?.email) {
+      setInvoiceActionError("Customer email is required to send this invoice.");
+      return;
+    }
+
+    setIsSendingInvoice(true);
+    setInvoiceActionError(null);
+
+    try {
+      const res = await fetch(`/api/invoices/${invoice.id}/send`, {
+        method: "POST",
+      });
+
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.error || "Failed to send invoice");
+      }
+
+      const data = await res.json();
+      setInvoiceSentAt(data.sentAt || new Date().toISOString());
+    } catch (error: any) {
+      setInvoiceActionError(error.message || "Failed to send invoice");
+    } finally {
+      setIsSendingInvoice(false);
+    }
+  };
+
+  const markInvoiceAsSent = async () => {
+    if (!invoice) return;
+
+    setIsMarkingSent(true);
+    setInvoiceActionError(null);
+
+    try {
+      const res = await fetch(`/api/invoices/${invoice.id}/mark-sent`, {
+        method: "POST",
+      });
+
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.error || "Failed to mark invoice as sent");
+      }
+
+      const data = await res.json();
+      setInvoiceSentAt(data.sentAt || new Date().toISOString());
+    } catch (error: any) {
+      setInvoiceActionError(error.message || "Failed to mark invoice as sent");
+    } finally {
+      setIsMarkingSent(false);
+    }
+  };
+
   useEffect(() => {
     if (isOpen && invoice) {
       fetchPayments();
@@ -218,6 +304,8 @@ export default function ViewInvoiceModal({
       if (invoice.layawayPlan?.installments) {
         setLocalInstallments(invoice.layawayPlan.installments);
       }
+      setInvoiceSentAt(resolveLatestSentAt());
+      setInvoiceActionError(null);
 
       if (invoice.shipmentId || invoice.trackingNumber) {
         setShipmentLoading(true);
@@ -588,6 +676,46 @@ export default function ViewInvoiceModal({
         {/* Export buttons */}
         <div className="flex items-center gap-2 flex-wrap">
           <button
+            onClick={sendInvoiceToCustomer}
+            disabled={isSendingInvoice || !invoice?.customer?.email}
+            className="px-4 py-2 text-sm bg-amber-600 text-white rounded-lg font-medium hover:bg-amber-700 transition-colors flex items-center gap-2 disabled:bg-amber-300 disabled:cursor-not-allowed"
+          >
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8m-18 8l6.5-4.33m11.5 4.33V6a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2z"
+              />
+            </svg>
+            {isSendingInvoice ? "Sending..." : "Send Invoice"}
+          </button>
+          <button
+            onClick={markInvoiceAsSent}
+            disabled={isMarkingSent}
+            className="px-4 py-2 text-sm bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition-colors flex items-center gap-2 disabled:bg-emerald-300 disabled:cursor-not-allowed"
+          >
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M5 13l4 4L19 7"
+              />
+            </svg>
+            {isMarkingSent ? "Marking..." : "Mark as Sent"}
+          </button>
+          <button
             onClick={handlePrintPDF}
             className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center gap-2"
           >
@@ -647,6 +775,32 @@ export default function ViewInvoiceModal({
         </div>
 
         <div ref={invoiceRef}>
+          {invoiceActionError && (
+            <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {invoiceActionError}
+            </div>
+          )}
+
+          <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+            <span className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+              Invoice Type
+            </span>
+            <span
+              className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-semibold ${
+                invoice.isLayaway
+                  ? "bg-purple-100 text-purple-800"
+                  : "bg-emerald-100 text-emerald-800"
+              }`}
+            >
+              {invoice.isLayaway ? "Layaway Invoice" : "Cash Invoice"}
+            </span>
+            {invoiceSentAt && (
+              <span className="inline-flex items-center rounded-full bg-sky-100 px-3 py-1 text-sm font-semibold text-sky-800">
+                Sent {new Date(invoiceSentAt).toLocaleDateString()}
+              </span>
+            )}
+          </div>
+
           {/* Invoice Header */}
           <div className="bg-gradient-to-r from-gray-50 to-gray-100 p-6 rounded-xl border border-gray-200">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -1408,7 +1562,9 @@ export default function ViewInvoiceModal({
                     })
                     .map((payment) => (
                       <option key={payment.id} value={payment.id}>
-                        {payment?.paymentCode || `PAY-${String(payment.id).padStart(6, "0")}`} - $
+                        {payment?.paymentCode ||
+                          `PAY-${String(payment.id).padStart(6, "0")}`}{" "}
+                        - $
                         {Number(
                           payment.remainingAmount ?? payment.amount,
                         ).toFixed(2)}
@@ -1456,7 +1612,9 @@ export default function ViewInvoiceModal({
           <InvoiceImageTemplate
             invoice={invoice}
             payments={payments}
-            terms={defaultTerms}
+            terms={
+              invoice?.terms?.lines || invoice?.termsSnapshot || defaultTerms
+            }
           />
         </div>
       </div>

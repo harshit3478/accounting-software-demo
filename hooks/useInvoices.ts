@@ -28,6 +28,14 @@ export interface Invoice {
   isLayaway: boolean;
   createdAt: string;
   description?: string | null;
+  termsId?: number | null;
+  termsSnapshot?: string[] | null;
+  terms?: {
+    id: number;
+    title?: string | null;
+    lines: string[];
+    isDefault: boolean;
+  } | null;
   // Customer relation
   customerId?: number | null;
   customer?: {
@@ -47,6 +55,7 @@ export interface Invoice {
     paymentFrequency: string;
     downPayment: number;
     isCancelled: boolean;
+    notes?: string | null;
     installments: {
       id: number;
       dueDate: string;

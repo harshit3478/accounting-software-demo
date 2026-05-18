@@ -281,14 +281,6 @@ export default function PaymentModal({
               >
                 {paymentMethods.map((method) => (
                   <option key={method.id} value={method.id}>
-                    {method.icon && (
-                      <LucideIcon
-                        name={method.icon}
-                        fallback={method.name}
-                        size={16}
-                        className="inline mr-1"
-                      />
-                    )}
                     {method.name}
                   </option>
                 ))}

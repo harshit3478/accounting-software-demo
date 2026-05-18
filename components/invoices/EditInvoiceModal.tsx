@@ -21,6 +21,32 @@ interface DueDateReasonOption {
   sortOrder: number;
 }
 
+interface TermOption {
+  id: number;
+  title: string | null;
+  lines: string[];
+  isDefault: boolean;
+}
+
+interface LayawayInstallment {
+  id?: number;
+  dueDate: string;
+  amount: number;
+  label: string;
+  isPaid?: boolean;
+  paidDate?: string | null;
+  paidAmount?: number | null;
+}
+
+interface LayawayPlan {
+  id?: number;
+  months: number;
+  paymentFrequency: "monthly" | "bi-weekly" | "weekly";
+  downPayment: number;
+  notes?: string | null;
+  installments?: LayawayInstallment[];
+}
+
 interface Invoice {
   id: number;
   invoiceNumber: string;
@@ -47,6 +73,10 @@ interface Invoice {
   status: "paid" | "pending" | "overdue" | "partial" | "abandoned" | "inactive";
   isLayaway: boolean;
   createdAt: string;
+  termsId?: number | null;
+  termsSnapshot?: string[] | null;
+  terms?: TermOption | null;
+  layawayPlan?: LayawayPlan | null;
 }
 
 interface EditInvoiceModalProps {
@@ -86,10 +116,23 @@ export default function EditInvoiceModal({
   const [shippingFee, setShippingFee] = useState(0);
   const [insuranceAmount, setInsuranceAmount] = useState(0);
   const [isLayaway, setIsLayaway] = useState(false);
+  const [layawayMonths, setLayawayMonths] = useState(3);
+  const [layawayFrequency, setLayawayFrequency] = useState<
+    "monthly" | "bi-weekly" | "weekly"
+  >("monthly");
+  const [layawayDownPayment, setLayawayDownPayment] = useState(0);
+  const [layawayNotes, setLayawayNotes] = useState("");
+  const [termsOptions, setTermsOptions] = useState<TermOption[]>([]);
+  const [selectedTermsId, setSelectedTermsId] = useState<
+    number | "custom" | "none"
+  >("none");
+  const [customTerms, setCustomTerms] = useState<string[]>([""]);
   const [isUpdating, setIsUpdating] = useState(false);
   const [invoiceDateError, setInvoiceDateError] = useState("");
   const [dateError, setDateError] = useState("");
   const [editReason, setEditReason] = useState("");
+
+  const paidAmount = Number(invoice?.paidAmount || 0);
 
   const isBackDate = (selectedDate: string) => {
     if (!selectedDate) return false;
@@ -147,6 +190,21 @@ export default function EditInvoiceModal({
         .catch(() => {
           setDueDateReasons([]);
         });
+
+      fetch("/api/terms")
+        .then((res) => (res.ok ? res.json() : []))
+        .then((data) => {
+          const normalized: TermOption[] = Array.isArray(data)
+            ? data.map((t: any) => ({
+                id: t.id,
+                title: t.title || null,
+                lines: Array.isArray(t.lines) ? t.lines : [],
+                isDefault: !!t.isDefault,
+              }))
+            : [];
+          setTermsOptions(normalized);
+        })
+        .catch(() => setTermsOptions([]));
     }
   }, [isOpen]);
 
@@ -200,6 +258,27 @@ export default function EditInvoiceModal({
       setShippingFee(Number(invoice.shippingFee || 0));
       setInsuranceAmount(Number(invoice.insuranceAmount || 0));
       setIsLayaway(invoice.isLayaway);
+      setLayawayMonths(invoice.layawayPlan?.months || 3);
+      setLayawayFrequency(invoice.layawayPlan?.paymentFrequency || "monthly");
+      setLayawayDownPayment(Number(invoice.layawayPlan?.downPayment || 0));
+      setLayawayNotes(invoice.layawayPlan?.notes || "");
+      if (invoice.terms?.id) {
+        setSelectedTermsId(invoice.terms.id);
+        setCustomTerms(
+          invoice.terms.lines?.length ? invoice.terms.lines : [""],
+        );
+      } else if (
+        Array.isArray(invoice.termsSnapshot) &&
+        invoice.termsSnapshot.length > 0
+      ) {
+        setSelectedTermsId("custom");
+        setCustomTerms(
+          invoice.termsSnapshot.length > 0 ? invoice.termsSnapshot : [""],
+        );
+      } else {
+        setSelectedTermsId("none");
+        setCustomTerms([""]);
+      }
       setEditReason("");
       setInvoiceDateError("");
       setDateError("");
@@ -230,6 +309,58 @@ export default function EditInvoiceModal({
       shippingFee +
       insuranceAmount
     );
+  };
+
+  const calculateRemainingBalance = () => {
+    return Math.max(calculateTotal() - paidAmount, 0);
+  };
+
+  const buildLayawayInstallments = () => {
+    const remainingBalance = calculateRemainingBalance();
+    const downPayment = Math.min(layawayDownPayment, remainingBalance);
+    const remaining = remainingBalance - downPayment;
+
+    let numInstallments = layawayMonths;
+    if (layawayFrequency === "bi-weekly") numInstallments = layawayMonths * 2;
+    if (layawayFrequency === "weekly") numInstallments = layawayMonths * 4;
+
+    const installmentAmount =
+      numInstallments > 0 ? remaining / numInstallments : 0;
+    const baseDate = invoiceDate ? new Date(invoiceDate) : new Date();
+    if (Number.isNaN(baseDate.getTime())) {
+      return [];
+    }
+    const installments: LayawayInstallment[] = [];
+
+    if (downPayment > 0) {
+      installments.push({
+        dueDate: baseDate.toISOString(),
+        amount: downPayment,
+        label: "Down Payment",
+        isPaid: false,
+      });
+    }
+
+    for (let i = 1; i <= numInstallments; i++) {
+      const dueDateValue = new Date(baseDate);
+      if (layawayFrequency === "monthly") {
+        dueDateValue.setMonth(dueDateValue.getMonth() + i);
+      } else if (layawayFrequency === "bi-weekly") {
+        dueDateValue.setDate(dueDateValue.getDate() + i * 14);
+      } else {
+        dueDateValue.setDate(dueDateValue.getDate() + i * 7);
+      }
+
+      const suffix = i === 1 ? "st" : i === 2 ? "nd" : i === 3 ? "rd" : "th";
+      installments.push({
+        dueDate: dueDateValue.toISOString(),
+        amount: installmentAmount,
+        label: `${i}${suffix} Payment`,
+        isPaid: false,
+      });
+    }
+
+    return installments;
   };
 
   const validateDate = (selectedDate: string) => {
@@ -311,6 +442,20 @@ export default function EditInvoiceModal({
     setIsUpdating(true);
     try {
       const subtotal = calculateSubtotal();
+      const selectedCustomTerms =
+        selectedTermsId === "custom"
+          ? customTerms
+              .map((term) => term.trim())
+              .filter(Boolean)
+              .slice(0, 5)
+          : [];
+      const resolvedTermsId =
+        selectedTermsId === "none" ||
+        (selectedTermsId === "custom" && selectedCustomTerms.length === 0)
+          ? null
+          : selectedTermsId === "custom"
+            ? undefined
+            : selectedTermsId;
 
       const res = await fetch(`/api/invoices/${invoice.id}`, {
         method: "PUT",
@@ -329,6 +474,18 @@ export default function EditInvoiceModal({
           dueDate,
           dueDateReason: requiresDueDateReason ? dueDateReason.trim() : null,
           isLayaway,
+          layawayPlan: isLayaway
+            ? {
+                months: layawayMonths,
+                paymentFrequency: layawayFrequency,
+                downPayment: layawayDownPayment,
+                notes: layawayNotes || null,
+                installments: buildLayawayInstallments(),
+              }
+            : null,
+          termsId: resolvedTermsId,
+          newTerms:
+            selectedCustomTerms.length > 0 ? selectedCustomTerms : undefined,
           editReason: editReason.trim(),
         }),
       });
@@ -408,6 +565,48 @@ export default function EditInvoiceModal({
       headerColor="blue"
     >
       <div className="space-y-6">
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3">
+          <span className="text-xs font-semibold uppercase tracking-wide text-blue-700">
+            Invoice Type
+          </span>
+          <span
+            className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-semibold ${
+              isLayaway
+                ? "bg-purple-100 text-purple-800"
+                : "bg-emerald-100 text-emerald-800"
+            }`}
+          >
+            {isLayaway ? "Layaway Invoice" : "Cash Invoice"}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 rounded-xl border border-gray-200 bg-gray-50 p-4">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+              Invoice Total
+            </p>
+            <p className="text-lg font-semibold text-gray-900">
+              ${calculateTotal().toFixed(2)}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+              Already Paid
+            </p>
+            <p className="text-lg font-semibold text-emerald-700">
+              ${paidAmount.toFixed(2)}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+              Remaining Balance
+            </p>
+            <p className="text-lg font-semibold text-blue-700">
+              ${calculateRemainingBalance().toFixed(2)}
+            </p>
+          </div>
+        </div>
+
         {/* Client Info */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div ref={customerRef} className="relative">
@@ -695,6 +894,197 @@ export default function EditInvoiceModal({
                   Mark as Layaway (Installment Payment Plan)
                 </label>
               </div>
+
+              {isLayaway && (
+                <div className="p-4 bg-purple-50 border border-purple-200 rounded-lg space-y-4">
+                  <h4 className="text-sm font-semibold text-purple-900">
+                    Layaway Plan Configuration
+                  </h4>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                        Duration (months)
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="24"
+                        value={layawayMonths}
+                        onChange={(e) =>
+                          setLayawayMonths(
+                            Math.min(
+                              24,
+                              Math.max(1, parseInt(e.target.value) || 1),
+                            ),
+                          )
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 text-gray-900 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                        Payment Frequency
+                      </label>
+                      <select
+                        value={layawayFrequency}
+                        onChange={(e) =>
+                          setLayawayFrequency(
+                            e.target.value as
+                              | "monthly"
+                              | "bi-weekly"
+                              | "weekly",
+                          )
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 text-gray-900 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                      >
+                        <option value="monthly">Monthly</option>
+                        <option value="bi-weekly">Bi-Weekly</option>
+                        <option value="weekly">Weekly</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Down Payment ($)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={layawayDownPayment || ""}
+                      onChange={(e) =>
+                        setLayawayDownPayment(parseFloat(e.target.value) || 0)
+                      }
+                      className="w-full px-3 py-2 border border-gray-300 text-gray-900 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                      placeholder="0.00"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Notes (optional)
+                    </label>
+                    <input
+                      type="text"
+                      value={layawayNotes}
+                      onChange={(e) => setLayawayNotes(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 text-gray-900 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                      placeholder="e.g. Flexible schedule approved"
+                    />
+                  </div>
+
+                  <div className="rounded-lg border border-purple-200 bg-white p-3">
+                    <p className="text-xs font-semibold text-purple-800 mb-2">
+                      Installment Preview
+                    </p>
+                    <div className="space-y-1 text-xs text-gray-700 max-h-40 overflow-y-auto">
+                      {buildLayawayInstallments()
+                        .slice(0, 8)
+                        .map((inst, idx) => (
+                          <div
+                            key={`${inst.label}-${idx}`}
+                            className="flex justify-between gap-3"
+                          >
+                            <span>{inst.label}</span>
+                            <span className="font-medium">
+                              ${inst.amount.toFixed(2)}
+                            </span>
+                          </div>
+                        ))}
+                      {buildLayawayInstallments().length > 8 && (
+                        <p className="text-xs text-gray-500">
+                          ... and {buildLayawayInstallments().length - 8} more
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="border-b border-gray-200 pb-4 mb-4">
+                <h4 className="text-sm font-semibold text-gray-900 mb-3">
+                  Terms & Conditions
+                </h4>
+                <div className="mb-3">
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                    Select Terms Set
+                  </label>
+                  <select
+                    value={String(selectedTermsId)}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      if (value === "custom" || value === "none") {
+                        setSelectedTermsId(value);
+                        return;
+                      }
+                      const parsed = parseInt(value, 10);
+                      if (!Number.isNaN(parsed)) setSelectedTermsId(parsed);
+                    }}
+                    className="w-full px-4 py-2 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    {termsOptions.map((term) => (
+                      <option key={term.id} value={term.id}>
+                        {term.title?.trim() || `Terms #${term.id}`}
+                        {term.isDefault ? " (Default)" : ""}
+                      </option>
+                    ))}
+                    <option value="custom">
+                      Custom terms (for this invoice)
+                    </option>
+                    <option value="none">No terms</option>
+                  </select>
+                </div>
+
+                {selectedTermsId === "custom" && (
+                  <div className="space-y-3">
+                    <p className="text-xs text-gray-500">
+                      Add up to 5 points for this invoice.
+                    </p>
+                    <div className="space-y-2">
+                      {customTerms.map((term, idx) => (
+                        <input
+                          key={idx}
+                          value={term}
+                          onChange={(e) => {
+                            const copy = [...customTerms];
+                            copy[idx] = e.target.value;
+                            setCustomTerms(copy);
+                          }}
+                          className="w-full px-4 py-2 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          placeholder={`Term ${idx + 1}`}
+                        />
+                      ))}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (customTerms.length < 5)
+                            setCustomTerms([...customTerms, ""]);
+                        }}
+                        className="px-3 py-1 bg-white border border-gray-200 rounded text-sm hover:bg-gray-50"
+                      >
+                        Add line
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setCustomTerms(
+                            customTerms.length > 1
+                              ? customTerms.slice(0, -1)
+                              : [""],
+                          )
+                        }
+                        className="px-3 py-1 bg-white border border-gray-200 rounded text-sm hover:bg-gray-50"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
             <InvoiceSummary
@@ -707,6 +1097,14 @@ export default function EditInvoiceModal({
               insuranceAmount={insuranceAmount}
               total={calculateTotal()}
             />
+
+            {paidAmount > 0 && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                This invoice already has payments applied. Layaway calculations
+                and the schedule preview use the remaining balance, not the full
+                invoice total.
+              </div>
+            )}
           </div>
         </div>
 

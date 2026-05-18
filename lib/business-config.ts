@@ -1,11 +1,12 @@
 export const BUSINESS_CONFIG = {
-  name: process.env.NEXT_PUBLIC_BUSINESS_NAME || "Gold Connections by Apple",
-  tagline: process.env.NEXT_PUBLIC_BUSINESS_TAGLINE || "18K Saudi Gold Jewelry",
+  name: "Gold Connections by Apple",
+  tagline: "18K Saudi Gold Jewelry",
   website:
     process.env.NEXT_PUBLIC_BUSINESS_WEBSITE || "https://barleylux.com/en",
   phone: process.env.NEXT_PUBLIC_BUSINESS_PHONE || "",
   email: process.env.NEXT_PUBLIC_BUSINESS_EMAIL || "",
-  address: process.env.NEXT_PUBLIC_BUSINESS_ADDRESS || "",
+  address: "PO Box 162357, Fort Worth, TX 76161",
+  websiteAdress: "www.goldconnectionsbyapple.com/",
   colors: {
     gold: "#D4AF37",
     goldRGB: [212, 175, 55] as [number, number, number],

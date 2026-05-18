@@ -328,6 +328,7 @@ export async function GET(request: NextRequest) {
         createdAt: entry.createdAt?.toISOString
           ? entry.createdAt.toISOString()
           : entry.createdAt,
+        changes: entry.changes || null,
       })),
     }));
 

@@ -244,6 +244,12 @@ export function generateInvoicesPDF(
     doc.line(15, 280, doc.internal.pageSize.getWidth() - 15, 280);
     doc.setFontSize(7);
     doc.setTextColor(150);
+    doc.text(
+      "Gold Connections By Apple is a DBA of Cooper Creek LLC",
+      105,
+      282,
+      { align: "center" },
+    );
     doc.text(`${BUSINESS_CONFIG.name} - ${BUSINESS_CONFIG.tagline}`, 105, 284, {
       align: "center",
     });
@@ -343,12 +349,8 @@ export async function generateSingleInvoicePDF(
     });
     bizY += 2;
   }
-  if (biz.phone) {
-    doc.text(biz.phone, R, bizY, { align: "right" });
-    bizY += 5;
-  }
-  if (biz.email) {
-    doc.text(biz.email, R, bizY, { align: "right" });
+  if (biz.websiteAdress) {
+    doc.text(biz.websiteAdress, R, bizY, { align: "right" });
     bizY += 5;
   }
 
@@ -416,6 +418,10 @@ export async function generateSingleInvoicePDF(
         day: "numeric",
         year: "numeric",
       }),
+    },
+    {
+      label: "Invoice Type:",
+      value: invoice.isLayaway ? "Layaway" : "Cash",
     },
   ];
 
@@ -690,6 +696,15 @@ export async function generateSingleInvoicePDF(
     doc.setFontSize(8);
     doc.setFont("helvetica", "normal");
     doc.setTextColor(150, 150, 150);
+    // DBA line
+    doc.text(
+      "Gold Connections By Apple is a DBA of Cooper Creek LLC",
+      pageW / 2,
+      286,
+      { align: "center" },
+    );
+
+    // Page counter
     doc.text(
       `Page ${i} of ${pageCount} for Invoice #${invoice.invoiceNumber}`,
       pageW / 2,
