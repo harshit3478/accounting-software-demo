@@ -298,6 +298,38 @@ export default function InvoiceImageTemplate({
               {fmtDate(invoice.dueDate)}
             </span>
           </div>
+          {/* Invoice Type */}
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              padding: "8px 10px",
+              backgroundColor: invoice.isLayaway ? "#fff7ed" : "#f0fdf4",
+              borderRadius: "6px",
+              marginTop: "6px",
+              border: invoice.isLayaway
+                ? "1px solid #fdba74"
+                : "1px solid #86efac",
+            }}
+          >
+            <span
+              style={{ fontSize: "12px", fontWeight: 700, color: "#1a1a1a" }}
+            >
+              Invoice Type:
+            </span>
+            <span
+              style={{
+                fontSize: "12px",
+                fontWeight: 800,
+                color: invoice.isLayaway ? "#9a3412" : "#166534",
+                textTransform: "uppercase",
+                letterSpacing: "0.5px",
+              }}
+            >
+              {invoice.isLayaway ? "Layaway" : "Cash"}
+            </span>
+          </div>
           {/* Amount Due — highlighted */}
           <div
             style={{
@@ -666,14 +698,24 @@ export default function InvoiceImageTemplate({
           padding: "16px 48px",
           borderTop: "1px solid #dddddd",
           display: "flex",
-          justifyContent: "space-between",
+          flexDirection: "column",
+          gap: "4px",
           alignItems: "center",
         }}
       >
-        <div style={{ fontSize: "11px", color: "#999999" }}>
+        <div
+          style={{ fontSize: "11px", color: "#999999", textAlign: "center" }}
+        >
+          Gold Connections By Apple is a DBA of Cooper Creek LLC
+        </div>
+        <div
+          style={{ fontSize: "11px", color: "#999999", textAlign: "center" }}
+        >
           Invoice #{invoice.invoiceNumber}
         </div>
-        <div style={{ fontSize: "11px", color: "#999999" }}>
+        <div
+          style={{ fontSize: "11px", color: "#999999", textAlign: "center" }}
+        >
           Generated on{" "}
           {new Date().toLocaleDateString("en-US", {
             year: "numeric",

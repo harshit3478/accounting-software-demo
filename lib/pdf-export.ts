@@ -734,3 +734,341 @@ export async function generateSingleInvoicePDF(
     URL.revokeObjectURL(url);
   }
 }
+
+export function buildSingleInvoicePdfBuffer(
+  invoice: Invoice,
+  options?: {
+    logoBase64?: string | null;
+    defaultTermLines?: string[] | null;
+  },
+) {
+  const doc = new jsPDF();
+  const pageW = doc.internal.pageSize.getWidth();
+  const L = 14;
+  const R = pageW - 14;
+  const logoBase64 = options?.logoBase64 ?? null;
+  const defaultTermLines = Array.isArray(options?.defaultTermLines)
+    ? options?.defaultTermLines
+    : [];
+
+  let logoW = 62;
+  let logoH = 46;
+  if (logoBase64) {
+    doc.addImage(logoBase64, "JPEG", L, 10, logoW, logoH);
+  }
+
+  doc.setFontSize(28);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(26, 26, 26);
+  doc.text("INVOICE", R, 19, { align: "right" });
+
+  const biz = BUSINESS_CONFIG;
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(26, 26, 26);
+  doc.text(biz.name, R, 30, { align: "right" });
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(60, 60, 60);
+  let bizY = 37;
+  if (biz.address) {
+    const parts = biz.address
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    parts.forEach((part) => {
+      doc.text(part, R, bizY, { align: "right" });
+      bizY += 5;
+    });
+    bizY += 2;
+  }
+  if (biz.websiteAdress) {
+    doc.text(biz.websiteAdress, R, bizY, { align: "right" });
+    bizY += 5;
+  }
+
+  let y = Math.max(60, bizY + 4);
+  doc.setDrawColor(200, 200, 200);
+  doc.setLineWidth(0.3);
+  doc.line(L, y, R, y);
+  y += 8;
+
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(150, 150, 150);
+  doc.text("BILL TO", L, y);
+  y += 6;
+
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(26, 26, 26);
+  doc.text(invoice.clientName, L, y);
+  y += 6;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(60, 60, 60);
+  if (invoice.customer?.address) {
+    const addrLines = doc.splitTextToSize(invoice.customer.address, 80);
+    doc.text(addrLines, L, y);
+    y += addrLines.length * 5;
+  }
+  if (invoice.customer?.phone) {
+    doc.text(invoice.customer.phone, L, y);
+    y += 5;
+  }
+  if (invoice.customer?.email) {
+    doc.text(invoice.customer.email, L, y);
+    y += 5;
+  }
+
+  const metaLabelX = 160;
+  let metaY = 66;
+  const dueDate = new Date(invoice.dueDate).toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+  const invoiceDate = new Date(invoice.createdAt).toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+  [
+    ["Invoice Number:", invoice.invoiceNumber],
+    ["Invoice Date:", invoiceDate],
+    ["Payment Due:", dueDate],
+    ["Invoice Type:", invoice.isLayaway ? "Layaway" : "Cash"],
+  ].forEach(([label, value]) => {
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(26, 26, 26);
+    doc.text(label, metaLabelX, metaY, { align: "right" });
+    doc.setFont("helvetica", "normal");
+    doc.text(String(value), R, metaY, { align: "right" });
+    metaY += 6;
+  });
+
+  const amtDue = Number(invoice.amount) - Number(invoice.paidAmount);
+  doc.setFillColor(240, 240, 240);
+  doc.rect(105, metaY - 4, R - 105, 9, "F");
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(26, 26, 26);
+  doc.text("Amount Due (USD):", metaLabelX, metaY + 1, { align: "right" });
+  doc.text(`$${amtDue.toFixed(2)}`, R, metaY + 1, { align: "right" });
+  metaY += 12;
+
+  y = Math.max(y + 4, metaY + 4);
+
+  if (invoice.items && invoice.items.length > 0) {
+    const bodyData = invoice.items.map((item) => {
+      const parts = item.name.split("\n");
+      return {
+        displayName: parts[0],
+        subtitle: parts.slice(1).join(" "),
+        qty: item.quantity,
+        price: Number(item.price),
+        amount: Number(item.quantity) * Number(item.price),
+      };
+    });
+
+    autoTable(doc, {
+      startY: y,
+      head: [["Items", "Quantity", "Price", "Amount"]],
+      body: bodyData.map((r) => [
+        r.displayName,
+        r.qty.toString(),
+        `$${r.price.toFixed(2)}`,
+        `$${r.amount.toFixed(2)}`,
+      ]),
+      theme: "plain",
+      headStyles: {
+        fillColor: [245, 200, 66],
+        textColor: [26, 26, 26],
+        fontStyle: "bold",
+        fontSize: 9,
+      },
+      bodyStyles: {
+        fontSize: 9,
+        fontStyle: "bold",
+        textColor: [26, 26, 26],
+        minCellHeight: bodyData.some((r) => r.subtitle) ? 12 : 8,
+      },
+      alternateRowStyles: { fillColor: [255, 255, 255] },
+      columnStyles: {
+        0: { cellWidth: "auto" },
+        1: { halign: "center", cellWidth: 25 },
+        2: { halign: "right", cellWidth: 30 },
+        3: { halign: "right", cellWidth: 30 },
+      },
+      margin: { left: L, right: 14 },
+      tableLineColor: [220, 220, 220],
+      tableLineWidth: 0.2,
+      didDrawCell: (data) => {
+        if (data.section === "body" && data.column.index === 0) {
+          const row = bodyData[data.row.index];
+          if (row?.subtitle) {
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(8);
+            doc.setTextColor(120, 120, 120);
+            doc.text(
+              row.subtitle,
+              data.cell.x + 2,
+              data.cell.y + data.cell.padding("top") + 6,
+            );
+          }
+        }
+      },
+    });
+
+    y = (doc as any).lastAutoTable.finalY + 10;
+  }
+
+  if (invoice.payments && invoice.payments.length > 0) {
+    const sortedPayments = [...invoice.payments].sort(
+      (a, b) =>
+        new Date(a.paymentDate).getTime() - new Date(b.paymentDate).getTime(),
+    );
+    sortedPayments.forEach((p) => {
+      const dateStr = new Date(p.paymentDate).toLocaleDateString("en-US", {
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+      });
+      const methodName = p.method?.name || "payment";
+      const label = `Payment on ${dateStr} using ${methodName.toLowerCase()}:`;
+      const labelLines = doc.splitTextToSize(label, 115);
+      doc.text(labelLines, 130, y, { align: "right" });
+      doc.text(`$${Number(p.amount).toFixed(2)}`, R, y, { align: "right" });
+      y += labelLines.length > 1 ? labelLines.length * 5 + 1 : 6;
+    });
+  }
+
+  doc.setDrawColor(180, 180, 180);
+  doc.setLineWidth(0.3);
+  doc.line(110, y, R, y);
+  y += 6;
+
+  const summaryRows = [
+    { label: "Shipping Fee:", value: Number(invoice.shippingFee || 0) },
+    { label: "Insurance:", value: Number(invoice.insuranceAmount || 0) },
+  ].filter((row) => row.value !== 0);
+
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(26, 26, 26);
+  summaryRows.forEach((row) => {
+    doc.text(row.label, 130, y, { align: "right" });
+    doc.text(`$${row.value.toFixed(2)}`, R, y, { align: "right" });
+    y += 6;
+  });
+
+  doc.setDrawColor(180, 180, 180);
+  doc.line(110, y, R, y);
+  y += 6;
+
+  doc.setFont("helvetica", "bold");
+  doc.text("Total:", 130, y, { align: "right" });
+  doc.text(`$${amtDue.toFixed(2)}`, R, y, { align: "right" });
+  y += 10;
+
+  const hasDescription = !!invoice.description;
+  const hasLayaway = !!(invoice.isLayaway && invoice.layawayPlan);
+  const hasTerms = defaultTermLines.length > 0;
+
+  if (hasDescription || hasLayaway || hasTerms) {
+    if (y > 230) {
+      doc.addPage();
+      y = 20;
+    }
+
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(26, 26, 26);
+    doc.text("Notes / Terms", L, y);
+    y += 6;
+
+    if (invoice.description) {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(60, 60, 60);
+      const descLines = doc.splitTextToSize(invoice.description, R - L);
+      doc.text(descLines, L, y);
+      y += descLines.length * 5 + 3;
+    }
+
+    if (hasLayaway) {
+      const plan = invoice.layawayPlan!;
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(60, 60, 60);
+      doc.text("TERMS: LAY-AWAY", L, y);
+      y += 5;
+      doc.text(`Month(s): ${plan.months}`, L, y);
+      y += 5;
+      doc.text(`Payment Type: ${plan.paymentFrequency}`, L, y);
+      y += 5;
+      plan.installments.forEach((inst) => {
+        if (y > 272) {
+          doc.addPage();
+          y = 20;
+        }
+        const d = new Date(inst.dueDate).toLocaleDateString("en-US", {
+          month: "2-digit",
+          day: "2-digit",
+          year: "2-digit",
+        });
+        doc.text(
+          `${d} - ${inst.label} - $${Number(inst.amount).toFixed(2)}`,
+          L,
+          y,
+        );
+        y += 5;
+      });
+      y += 3;
+    }
+
+    if (hasTerms) {
+      if (y > 240) {
+        doc.addPage();
+        y = 20;
+      }
+      defaultTermLines.forEach((termLine) => {
+        doc.setFontSize(8);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(60, 60, 60);
+        const wrapped = doc.splitTextToSize(String(termLine), R - L);
+        if (y + wrapped.length * 4 > 275) {
+          doc.addPage();
+          y = 20;
+        }
+        doc.text(wrapped, L, y);
+        y += wrapped.length * 4 + 3;
+      });
+    }
+  }
+
+  const pageCount = doc.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(150, 150, 150);
+    doc.text(
+      "Gold Connections By Apple is a DBA of Cooper Creek LLC",
+      pageW / 2,
+      286,
+      { align: "center" },
+    );
+    doc.text(
+      `Page ${i} of ${pageCount} for Invoice #${invoice.invoiceNumber}`,
+      pageW / 2,
+      291,
+      { align: "center" },
+    );
+  }
+
+  return Buffer.from(doc.output("arraybuffer"));
+}

@@ -20,6 +20,17 @@ export async function POST(
             id: true,
             name: true,
             email: true,
+            phone: true,
+            address: true,
+          },
+        },
+        payments: {
+          include: {
+            method: {
+              select: {
+                name: true,
+              },
+            },
           },
         },
       },
@@ -46,6 +57,18 @@ export async function POST(
       isLayaway: invoice.isLayaway,
       termsSnapshot: (invoice as any).termsSnapshot || null,
       customer: invoice.customer,
+      description: invoice.description || null,
+      items: (invoice.items as any) || null,
+      subtotal: Number(invoice.subtotal || 0),
+      tax: Number(invoice.tax || 0),
+      discount: Number(invoice.discount || 0),
+      shippingFee: Number(invoice.shippingFee || 0),
+      insuranceAmount: Number(invoice.insuranceAmount || 0),
+      payments: invoice.payments.map((payment) => ({
+        amount: Number(payment.amount),
+        paymentDate: payment.paymentDate,
+        method: payment.method ? { name: payment.method.name } : null,
+      })),
     });
 
     if (!emailResult.success) {

@@ -5,7 +5,7 @@ export const BUSINESS_CONFIG = {
     process.env.NEXT_PUBLIC_BUSINESS_WEBSITE || "https://barleylux.com/en",
   phone: process.env.NEXT_PUBLIC_BUSINESS_PHONE || "",
   email: process.env.NEXT_PUBLIC_BUSINESS_EMAIL || "",
-  address: "PO Box 162357, Fort Worth, TX 76161",
+  address: "PO Box 162357, Fort Worth TX 76161",
   websiteAdress: "www.goldconnectionsbyapple.com/",
   colors: {
     gold: "#D4AF37",

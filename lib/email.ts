@@ -1,90 +1,11 @@
-import { jsPDF } from "jspdf";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { Resend } from "resend";
 import { BUSINESS_CONFIG } from "./business-config";
+import prisma from "./prisma";
+import { buildSingleInvoicePdfBuffer } from "./pdf-export";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
-
-function buildInvoicePdfAttachment(invoice: {
-  invoiceNumber: string;
-  clientName: string;
-  amount: number;
-  paidAmount: number;
-  dueDate: string | Date;
-  isLayaway: boolean;
-  termsSnapshot?: string[] | null;
-  customer?: { name?: string | null } | null;
-}) {
-  const doc = new jsPDF();
-  const pageW = doc.internal.pageSize.getWidth();
-  const left = 14;
-  const right = pageW - 14;
-  const remaining = Math.max(
-    Number(invoice.amount || 0) - Number(invoice.paidAmount || 0),
-    0,
-  );
-  const dueDate = new Date(invoice.dueDate).toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
-  const terms = Array.isArray(invoice.termsSnapshot)
-    ? invoice.termsSnapshot
-    : [];
-
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(22);
-  doc.text(BUSINESS_CONFIG.name, left, 18);
-
-  doc.setFontSize(12);
-  doc.text(`Invoice ${invoice.invoiceNumber}`, left, 28);
-
-  doc.setDrawColor(...BUSINESS_CONFIG.colors.goldRGB);
-  doc.setLineWidth(0.4);
-  doc.line(left, 32, right, 32);
-
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(11);
-  doc.text(
-    `Bill To: ${invoice.customer?.name || invoice.clientName}`,
-    left,
-    44,
-  );
-  doc.text(`Invoice Type: ${invoice.isLayaway ? "Layaway" : "Cash"}`, left, 52);
-  doc.text(`Due Date: ${dueDate}`, left, 60);
-  doc.text(
-    `Invoice Total: $${Number(invoice.amount || 0).toFixed(2)}`,
-    left,
-    68,
-  );
-  doc.text(
-    `Already Paid: $${Number(invoice.paidAmount || 0).toFixed(2)}`,
-    left,
-    76,
-  );
-  doc.text(
-    `Remaining Balance: ${remaining <= 0 ? "PAID IN FULL" : `$${remaining.toFixed(2)}`}`,
-    left,
-    84,
-  );
-
-  let y = 98;
-  if (terms.length) {
-    doc.setFont("helvetica", "bold");
-    doc.text("Terms & Conditions", left, y);
-    y += 8;
-    doc.setFont("helvetica", "normal");
-    terms.forEach((term, index) => {
-      const lines = doc.splitTextToSize(`${index + 1}. ${term}`, right - left);
-      doc.text(lines, left, y);
-      y += lines.length * 6;
-    });
-  }
-
-  doc.setFontSize(10);
-  doc.text(BUSINESS_CONFIG.tagline, left, 280);
-
-  return Buffer.from(doc.output("arraybuffer"));
-}
 
 export async function sendLoginOtp(email: string, otp: string) {
   try {
@@ -233,6 +154,18 @@ export async function sendInvoiceEmail(invoice: {
   isLayaway: boolean;
   termsSnapshot?: string[] | null;
   customer?: { email?: string | null; name?: string | null } | null;
+  description?: string | null;
+  items?: Array<{ name: string; quantity: number; price: number }> | null;
+  subtotal?: number;
+  tax?: number;
+  discount?: number;
+  shippingFee?: number;
+  insuranceAmount?: number;
+  payments?: Array<{
+    amount: number;
+    paymentDate: string | Date;
+    method?: { name: string } | null;
+  }> | null;
 }) {
   const {
     name: businessName,
@@ -261,7 +194,29 @@ export async function sendInvoiceEmail(invoice: {
   const terms = Array.isArray(invoice.termsSnapshot)
     ? invoice.termsSnapshot
     : [];
-  const invoicePdf = buildInvoicePdfAttachment(invoice);
+  const [logoBuffer, defaultTerms] = await Promise.all([
+    readFile(path.join(process.cwd(), "public", "goldLogo.jpg.jpeg")).catch(
+      () => null,
+    ),
+    (async () => {
+      const termModel = (prisma as any)?.term;
+      if (!termModel) return [] as string[];
+      const defaultTerm = await termModel.findFirst({
+        where: { isDefault: true },
+        select: { lines: true },
+      });
+      return Array.isArray(defaultTerm?.lines)
+        ? (defaultTerm.lines as string[])
+        : [];
+    })(),
+  ]);
+
+  const invoicePdf = buildSingleInvoicePdfBuffer(invoice as any, {
+    logoBase64: logoBuffer
+      ? `data:image/jpeg;base64,${logoBuffer.toString("base64")}`
+      : null,
+    defaultTermLines: defaultTerms,
+  });
 
   try {
     const { data, error } = await resend.emails.send({
