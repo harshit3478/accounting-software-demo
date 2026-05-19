@@ -174,6 +174,8 @@ export async function sendInvoiceEmail(invoice: {
     email: bizEmail,
     phone,
     colors,
+    websiteAdress,
+    footerText,
   } = BUSINESS_CONFIG;
   const { gold, cream, charcoal } = colors;
   const customerEmail = invoice.customer?.email;
@@ -226,6 +228,7 @@ export async function sendInvoiceEmail(invoice: {
       text: [
         `${businessName} — Invoice ${invoice.invoiceNumber}`,
         `Dear ${invoice.customer?.name || invoice.clientName},`,
+        `Please find your invoice attached as a PDF for easy review and recordkeeping.`,
         `Your invoice is ready for review.`,
         `Invoice Total: $${Number(invoice.amount || 0).toFixed(2)}`,
         `Already Paid: $${Number(invoice.paidAmount || 0).toFixed(2)}`,
@@ -248,7 +251,8 @@ export async function sendInvoiceEmail(invoice: {
           </div>
           <div style="padding:0 32px 28px;background:#fff;">
             <h2 style="font-size:18px;margin:0 0 12px;">Invoice ${invoice.invoiceNumber}</h2>
-            <p style="margin:0 0 18px;font-size:14px;color:#374151;">Dear <strong>${invoice.customer?.name || invoice.clientName}</strong>, your invoice is ready.</p>
+            <p style="margin:0 0 12px;font-size:14px;color:#374151;">Dear <strong>${invoice.customer?.name || invoice.clientName}</strong>,</p>
+            <p style="margin:0 0 18px;font-size:14px;color:#374151;line-height:1.6;">Please find your invoice attached as a PDF for easy review and recordkeeping. The summary below shows the current amount due and invoice type.</p>
             <div style="background:${cream};border:1px solid ${gold};border-radius:10px;padding:16px 18px;margin-bottom:18px;">
               <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:13px;">
                 <span>Total</span><strong>$${Number(invoice.amount || 0).toFixed(2)}</strong>
@@ -267,10 +271,8 @@ export async function sendInvoiceEmail(invoice: {
             ${terms.length ? `<div style="margin-top:18px;"><p style="margin:0 0 8px;font-weight:bold;">Terms &amp; Conditions</p><ol style="margin:0;padding-left:18px;color:#374151;">${terms.map((line) => `<li style="margin-bottom:4px;">${line}</li>`).join("")}</ol></div>` : ""}
           </div>
           <div style="padding:18px 32px 26px;border-top:1px solid #e5e7eb;background:#f9fafb;text-align:center;font-size:11px;color:#9ca3af;">
-            ${website ? `<div>${website}</div>` : ""}
-            ${bizEmail ? `<div>${bizEmail}</div>` : ""}
-            ${phone ? `<div>${phone}</div>` : ""}
-          </div>
+            ${websiteAdress ? `<div>${websiteAdress}</div>` : ""}
+            ${footerText ? `<div>${footerText}</div>` : ""}
         </div>
       `,
       attachments: [
