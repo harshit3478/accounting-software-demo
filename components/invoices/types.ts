@@ -2,6 +2,7 @@ export interface InvoiceItem {
   name: string;
   quantity: number;
   price: number;
+  unit?: string;
 }
 
 export interface Invoice {

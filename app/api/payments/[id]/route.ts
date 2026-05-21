@@ -3,6 +3,7 @@ import prisma from "../../../../lib/prisma";
 import { requireAuth } from "../../../../lib/auth";
 import { updateInvoiceAfterPayment } from "../../../../lib/invoice-utils";
 import { invalidateDashboard } from "../../../../lib/cache-helpers";
+import { Prisma } from "@prisma/client";
 
 export async function PUT(
   request: NextRequest,
@@ -85,8 +86,40 @@ export async function PUT(
       );
     }
 
+    const storeCreditTransaction =
+      existingPayment.source === "store_credit_excess"
+        ? await prisma.customerCreditTransaction.findFirst({
+            where: {
+              paymentId: paymentId,
+              type: "credit",
+            },
+            orderBy: { createdAt: "desc" },
+          })
+        : null;
+
+    const storeCreditDelta = nextAmount - existingAmount;
+    const shouldUpdateStoreCredit =
+      existingPayment.source === "store_credit_excess" &&
+      Math.abs(storeCreditDelta) > 0.0001;
+
+    if (
+      existingPayment.source === "store_credit_excess" &&
+      normalizedInvoiceId
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Store credit payments cannot be assigned to an invoice. Use payment matching instead.",
+        },
+        { status: 400 },
+      );
+    }
+
     const nextData = {
-      invoiceId: normalizedInvoiceId,
+      invoiceId:
+        existingPayment.source === "store_credit_excess"
+          ? null
+          : normalizedInvoiceId,
       amount: nextAmount,
       paymentDate: paymentDate
         ? new Date(paymentDate)
@@ -130,6 +163,25 @@ export async function PUT(
           invoice: true,
         },
       });
+
+      if (shouldUpdateStoreCredit && storeCreditTransaction?.customerId) {
+        const storeCreditUpdate =
+          storeCreditDelta > 0
+            ? { increment: new Prisma.Decimal(storeCreditDelta) }
+            : { decrement: new Prisma.Decimal(Math.abs(storeCreditDelta)) };
+
+        await (tx as any).customer.update({
+          where: { id: storeCreditTransaction.customerId },
+          data: { storeCredit: storeCreditUpdate },
+        });
+
+        await (tx as any).customerCreditTransaction.update({
+          where: { id: storeCreditTransaction.id },
+          data: {
+            amount: new Prisma.Decimal(nextAmount),
+          },
+        });
+      }
 
       await (tx as any).paymentEditHistory.create({
         data: {

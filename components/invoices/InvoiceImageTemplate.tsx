@@ -364,7 +364,7 @@ export default function InvoiceImageTemplate({
               <tr style={{ backgroundColor: "#F5C842" }}>
                 {[
                   { label: "Items", align: "left" as const },
-                  { label: "Quantity", align: "center" as const, w: "90px" },
+                  { label: "Qty / Unit", align: "center" as const, w: "110px" },
                   { label: "Price", align: "right" as const, w: "110px" },
                   { label: "Amount", align: "right" as const, w: "110px" },
                 ].map(({ label, align, w }) => (
@@ -427,7 +427,7 @@ export default function InvoiceImageTemplate({
                         textAlign: "center",
                       }}
                     >
-                      {item.quantity}
+                      {item.quantity} {item.unit || "grams"}
                     </td>
                     <td
                       style={{

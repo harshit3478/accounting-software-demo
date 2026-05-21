@@ -7,6 +7,7 @@ import { ToastProvider, useToastContext } from "../../components/ToastContext";
 import PaymentMethodsTab from "../../components/settings/PaymentMethodsTab";
 import UserManagementTab from "../../components/settings/UserManagementTab";
 import RegularizationsTab from "../../components/settings/RegularizationsTab";
+import UnitsTab from "../../components/settings/UnitsTab";
 import CustomersTab from "../../components/settings/CustomersTab";
 import TermsConditionsTab from "../../components/settings/TermsConditionsTab";
 import ShippingFeeRulesTab from "../../components/settings/ShippingFeeRulesTab";
@@ -21,6 +22,7 @@ import {
   UsersRound,
   FileText,
   Link2,
+  Ruler,
   Layers,
   Truck,
   CalendarClock,
@@ -32,11 +34,12 @@ const TABS = [
   { id: "users", label: "User Management", icon: Users },
   { id: "regularizations", label: "Regularizations", icon: CalendarCheck2 },
   { id: "customers", label: "Clients", icon: UsersRound },
+  { id: "units", label: "Units", icon: Ruler },
   { id: "terms", label: "Terms & Conditions", icon: FileText },
   { id: "shipping-fee-rules", label: "Shipping Fee Rules", icon: Truck },
   { id: "insurance-rules", label: "Insurance Rules", icon: Shield },
   { id: "due-date-reasons", label: "Due Date Reasons", icon: CalendarClock },
-  // { id: 'layaway', label: 'Layaway', icon: Layers },
+  { id: "layaway", label: "Layaway", icon: Layers },
   { id: "quickbooks", label: "QuickBooks", icon: Link2 },
 ] as const;
 
@@ -69,6 +72,8 @@ function SettingsContent() {
         );
       case "customers":
         return <CustomersTab showSuccess={showSuccess} showError={showError} />;
+      case "units":
+        return <UnitsTab showSuccess={showSuccess} showError={showError} />;
       case "terms":
         return (
           <TermsConditionsTab showSuccess={showSuccess} showError={showError} />
@@ -88,8 +93,10 @@ function SettingsContent() {
         return (
           <DueDateReasonsTab showSuccess={showSuccess} showError={showError} />
         );
-      // case 'layaway':
-      //   return <LayawaySettingsTab showSuccess={showSuccess} showError={showError} />;
+      case "layaway":
+        return (
+          <LayawaySettingsTab showSuccess={showSuccess} showError={showError} />
+        );
       case "quickbooks":
         return (
           <QuickBooksTab showSuccess={showSuccess} showError={showError} />

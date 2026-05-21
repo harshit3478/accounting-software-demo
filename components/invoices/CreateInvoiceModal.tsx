@@ -13,6 +13,12 @@ import {
   DEFAULT_INSURANCE_BANDS,
   type InsuranceBand,
 } from "../../lib/insurance";
+import {
+  DEFAULT_LAYAWAY_FEE_RATES,
+  calculateLayawayFeeFromItems,
+  normalizeLayawayFeeRates,
+  type LayawayFeeRate,
+} from "../../lib/layaway-fees";
 
 interface CustomerOption {
   id: number;
@@ -257,6 +263,17 @@ export default function CreateInvoiceModal({
       .catch(() => {
         setInsuranceBands(DEFAULT_INSURANCE_BANDS);
       });
+
+    fetch("/api/layaway-fees")
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setLayawayFeeRates(normalizeLayawayFeeRates(data));
+        }
+      })
+      .catch(() => {
+        setLayawayFeeRates(DEFAULT_LAYAWAY_FEE_RATES);
+      });
   }, [isOpen]);
 
   useEffect(() => {
@@ -283,7 +300,7 @@ export default function CreateInvoiceModal({
     .filter((c) => c.name.toLowerCase().includes(clientName.toLowerCase()))
     .slice(0, 8);
   const [items, setItems] = useState<InvoiceItem[]>([
-    { name: "", quantity: 1, price: 0 },
+    { name: "", quantity: 1, price: 0, unit: "grams" },
   ]);
   const [tax, setTax] = useState(0);
   const [taxType, setTaxType] = useState<"fixed" | "percentage">("fixed");
@@ -321,6 +338,9 @@ export default function CreateInvoiceModal({
   const [insuranceAmount, setInsuranceAmount] = useState(0);
   const [isInsuranceManuallyOverridden, setIsInsuranceManuallyOverridden] =
     useState(false);
+  const [layawayFeeRates, setLayawayFeeRates] = useState<LayawayFeeRate[]>(
+    DEFAULT_LAYAWAY_FEE_RATES,
+  );
   const [isCreating, setIsCreating] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [invoiceDateError, setInvoiceDateError] = useState("");
@@ -348,13 +368,23 @@ export default function CreateInvoiceModal({
     );
   };
 
+  const calculateLayawayFeeAmount = () => {
+    if (!isLayaway) return 0;
+    return calculateLayawayFeeFromItems(
+      items as any,
+      layawayMonths || 3,
+      layawayFeeRates,
+    );
+  };
+
   const calculateTotal = () => {
     return (
       calculateSubtotal() +
       calculateTaxAmount() -
       calculateDiscountAmount() +
       shippingFee +
-      insuranceAmount
+      insuranceAmount +
+      calculateLayawayFeeAmount()
     );
   };
 
@@ -468,7 +498,7 @@ export default function CreateInvoiceModal({
       });
       if (res.ok) {
         const created = await res.json();
-        setCustomers((prev:any) => [
+        setCustomers((prev: any) => [
           ...prev,
           {
             id: created.id,
@@ -528,7 +558,7 @@ export default function CreateInvoiceModal({
     setDueDate("");
     setDueDateReason("");
     setDueDateReasons([]);
-    setItems([{ name: "", quantity: 1, price: 0 }]);
+    setItems([{ name: "", quantity: 1, price: 0, unit: "grams" }]);
     setTax(0);
     setTaxType("fixed");
     setDiscount(0);
@@ -1598,6 +1628,7 @@ export default function CreateInvoiceModal({
                 discountType={discountType}
                 shippingFee={shippingFee}
                 insuranceAmount={insuranceAmount}
+                layawayFee={calculateLayawayFeeAmount()}
                 total={calculateTotal()}
               />
             </div>
@@ -1621,6 +1652,7 @@ export default function CreateInvoiceModal({
         discountType={discountType}
         shippingFee={shippingFee}
         insuranceAmount={insuranceAmount}
+        layawayFee={calculateLayawayFeeAmount()}
         insuranceBaseAmount={
           useCustomInsuranceBase ? Number(insuranceBaseAmount || 0) : null
         }

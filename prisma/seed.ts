@@ -7,7 +7,7 @@ async function main() {
   // Hash a default password for the admin
   const hashedPassword = await bcrypt.hash(
     process.env.SUPERADMIN_PASSWORD || "admin123",
-    10
+    10,
   ); // Change this in production
 
   const admin = await prisma.user.upsert({
@@ -76,9 +76,27 @@ async function main() {
 
   // Seed default payment methods
   const paymentMethods = [
-    { name: "Cash", icon: "banknote", color: "#D97706", isSystem: true, sortOrder: 1 },
-    { name: "Zelle", icon: "smartphone", color: "#16A34A", isSystem: false, sortOrder: 2 },
-    { name: "Bank of America", icon: "building-2", color: "#1D4ED8", isSystem: false, sortOrder: 3 },
+    {
+      name: "Cash",
+      icon: "banknote",
+      color: "#D97706",
+      isSystem: true,
+      sortOrder: 1,
+    },
+    {
+      name: "Zelle",
+      icon: "smartphone",
+      color: "#16A34A",
+      isSystem: false,
+      sortOrder: 2,
+    },
+    {
+      name: "Bank of America",
+      icon: "building-2",
+      color: "#1D4ED8",
+      isSystem: false,
+      sortOrder: 3,
+    },
   ];
 
   for (const pm of paymentMethods) {
@@ -89,7 +107,52 @@ async function main() {
     });
   }
 
-  console.log("Seeded payment methods:", paymentMethods.map(p => p.name).join(", "));
+  console.log(
+    "Seeded payment methods:",
+    paymentMethods.map((p) => p.name).join(", "),
+  );
+
+  const units = [
+    {
+      name: "grams",
+      isActive: true,
+      isDefault: true,
+      isSystem: true,
+      sortOrder: 1,
+    },
+  ];
+
+  for (const unit of units) {
+    await (prisma as any).invoiceUnit.upsert({
+      where: { name: unit.name },
+      update: { ...unit },
+      create: unit,
+    });
+  }
+
+  console.log("Seeded invoice units:", units.map((u) => u.name).join(", "));
+
+  const layawayFeeRates = [
+    { months: 1, ratePerGram: 3, isActive: true, sortOrder: 1 },
+    { months: 2, ratePerGram: 4, isActive: true, sortOrder: 2 },
+    { months: 3, ratePerGram: 5, isActive: true, sortOrder: 3 },
+    { months: 4, ratePerGram: 8, isActive: true, sortOrder: 4 },
+    { months: 5, ratePerGram: 9, isActive: true, sortOrder: 5 },
+    { months: 6, ratePerGram: 10, isActive: true, sortOrder: 6 },
+  ];
+
+  for (const rate of layawayFeeRates) {
+    await (prisma as any).layawayFeeSetting.upsert({
+      where: { months: rate.months },
+      update: { ...rate },
+      create: rate,
+    });
+  }
+
+  console.log(
+    "Seeded layaway fee settings:",
+    layawayFeeRates.map((rate) => `${rate.months}m`).join(", "),
+  );
 
   // // Create default system folder for documents
   // const defaultFolder = await prisma.systemFolder.upsert({

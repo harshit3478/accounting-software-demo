@@ -10,6 +10,11 @@ import {
   DEFAULT_INSURANCE_BANDS,
   type InsuranceBand,
 } from "../../../lib/insurance";
+import {
+  DEFAULT_LAYAWAY_FEE_RATES,
+  calculateLayawayFeeFromItems,
+  normalizeLayawayFeeRates,
+} from "../../../lib/layaway-fees";
 import { invalidateDashboard } from "../../../lib/cache-helpers";
 
 async function getConfiguredInsuranceBands(): Promise<InsuranceBand[]> {
@@ -37,6 +42,36 @@ async function getConfiguredInsuranceBands(): Promise<InsuranceBand[]> {
     }));
   } catch {
     return DEFAULT_INSURANCE_BANDS;
+  }
+}
+
+async function getConfiguredLayawayFeeRates() {
+  const rateModel = (prisma as any)?.layawayFeeSetting;
+  if (!rateModel) {
+    return DEFAULT_LAYAWAY_FEE_RATES;
+  }
+
+  try {
+    const rows = await rateModel.findMany({
+      orderBy: [{ sortOrder: "asc" }, { months: "asc" }],
+    });
+
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return DEFAULT_LAYAWAY_FEE_RATES;
+    }
+
+    return normalizeLayawayFeeRates(
+      rows.map((row: any) => ({
+        months: row.months,
+        ratePerGram: row.ratePerGram?.toNumber
+          ? row.ratePerGram.toNumber()
+          : Number(row.ratePerGram),
+        isActive: row.isActive,
+        sortOrder: row.sortOrder,
+      })),
+    );
+  } catch {
+    return DEFAULT_LAYAWAY_FEE_RATES;
   }
 }
 
@@ -280,6 +315,9 @@ export async function GET(request: NextRequest) {
       insuranceBaseAmount: invoice.insuranceBaseAmount?.toNumber
         ? invoice.insuranceBaseAmount.toNumber()
         : invoice.insuranceBaseAmount,
+      layawayFee: invoice.layawayFee?.toNumber
+        ? invoice.layawayFee.toNumber()
+        : invoice.layawayFee,
       amount: invoice.amount?.toNumber
         ? invoice.amount.toNumber()
         : invoice.amount,
@@ -539,8 +577,20 @@ export async function POST(request: NextRequest) {
       insuranceAmount !== undefined && insuranceAmount !== null
         ? Number(insuranceAmount)
         : calculateInsuranceAmount(insuranceCalculationBase, insuranceBands);
+    const layawayFeeRates = await getConfiguredLayawayFeeRates();
+    const layawayMonths = Number(layawayPlan?.months || 0);
+    const layawayFeeAmount = isLayaway
+      ? calculateLayawayFeeFromItems(
+          items as any,
+          layawayMonths || 3,
+          layawayFeeRates,
+        )
+      : 0;
     const totalAmount =
-      preShippingTotal + parseFloat(shippingFeeAmount) + insuranceFeeAmount;
+      preShippingTotal +
+      parseFloat(shippingFeeAmount) +
+      insuranceFeeAmount +
+      layawayFeeAmount;
 
     // Handle terms: either attach default, attach existing terms by id, or create new terms
     let attachedTermsId: number | null = null;
@@ -584,6 +634,7 @@ export async function POST(request: NextRequest) {
         discount: parseFloat(discountAmount),
         shippingFee: parseFloat(shippingFeeAmount),
         insuranceAmount: insuranceFeeAmount,
+        layawayFee: layawayFeeAmount,
         amount: totalAmount,
         paidAmount: 0,
         invoiceDate: invoiceDateValue,
@@ -691,6 +742,9 @@ export async function POST(request: NextRequest) {
       insuranceAmount: invAny.insuranceAmount?.toNumber
         ? invAny.insuranceAmount.toNumber()
         : invAny.insuranceAmount,
+      layawayFee: invAny.layawayFee?.toNumber
+        ? invAny.layawayFee.toNumber()
+        : invAny.layawayFee,
       insuranceBaseAmount:
         normalizedInsuranceBaseAmount ??
         (invAny.insuranceBaseAmount?.toNumber

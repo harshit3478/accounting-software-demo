@@ -20,6 +20,7 @@ interface PreviewInvoiceModalProps {
   discountType: "fixed" | "percentage";
   shippingFee?: number;
   insuranceAmount?: number;
+  layawayFee?: number;
   insuranceBaseAmount?: number | null;
   total: number;
   isLayaway: boolean;
@@ -44,6 +45,7 @@ export default function PreviewInvoiceModal({
   discountType,
   shippingFee = 0,
   insuranceAmount = 0,
+  layawayFee = 0,
   insuranceBaseAmount,
   total,
   isLayaway,
@@ -199,7 +201,7 @@ export default function PreviewInvoiceModal({
                     Item
                   </th>
                   <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700">
-                    Qty
+                    Qty / Unit
                   </th>
                   <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700">
                     Price
@@ -219,7 +221,7 @@ export default function PreviewInvoiceModal({
                       {item.name}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-900 text-right">
-                      {item.quantity}
+                      {item.quantity} {item.unit || "grams"}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-900 text-right">
                       ${item.price.toFixed(2)}
@@ -272,6 +274,14 @@ export default function PreviewInvoiceModal({
               ${insuranceAmount.toFixed(2)}
             </span>
           </div>
+          {layawayFee > 0 && (
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-600">Layaway Fee:</span>
+              <span className="font-medium text-gray-900">
+                ${layawayFee.toFixed(2)}
+              </span>
+            </div>
+          )}
           {insuranceBaseAmount != null && insuranceBaseAmount > 0 && (
             <div className="flex justify-between text-sm">
               <span className="text-gray-600">Insurance Applied On:</span>

@@ -4,6 +4,43 @@ import { requireAuth } from "../../../../lib/auth";
 import { invalidateDashboard } from "../../../../lib/cache-helpers";
 import { calculateInvoiceStatus } from "../../../../lib/invoice-utils";
 import { updateInvoiceAfterPayment } from "../../../../lib/invoice-utils";
+import { Prisma } from "@prisma/client";
+import { stampPaymentCode } from "../../../../lib/payment-code";
+import {
+  DEFAULT_LAYAWAY_FEE_RATES,
+  calculateLayawayFeeFromItems,
+  normalizeLayawayFeeRates,
+} from "../../../../lib/layaway-fees";
+
+async function getConfiguredLayawayFeeRates() {
+  const rateModel = (prisma as any)?.layawayFeeSetting;
+  if (!rateModel) {
+    return DEFAULT_LAYAWAY_FEE_RATES;
+  }
+
+  try {
+    const rows = await rateModel.findMany({
+      orderBy: [{ sortOrder: "asc" }, { months: "asc" }],
+    });
+
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return DEFAULT_LAYAWAY_FEE_RATES;
+    }
+
+    return normalizeLayawayFeeRates(
+      rows.map((row: any) => ({
+        months: row.months,
+        ratePerGram: row.ratePerGram?.toNumber
+          ? row.ratePerGram.toNumber()
+          : Number(row.ratePerGram),
+        isActive: row.isActive,
+        sortOrder: row.sortOrder,
+      })),
+    );
+  } catch {
+    return DEFAULT_LAYAWAY_FEE_RATES;
+  }
+}
 
 export async function PUT(
   request: NextRequest,
@@ -158,12 +195,22 @@ export async function PUT(
       insuranceAmount !== undefined && insuranceAmount !== null
         ? Number(insuranceAmount)
         : Number(existingInvoiceAny.insuranceAmount?.toNumber?.() ?? 0);
+    const layawayFeeRates = await getConfiguredLayawayFeeRates();
+    const layawayMonths = Number(layawayPlan?.months || 0);
+    const layawayFeeAmount = isLayaway
+      ? calculateLayawayFeeFromItems(
+          items as any,
+          layawayMonths || 3,
+          layawayFeeRates,
+        )
+      : 0;
     const totalAmount =
       parseFloat(subtotal) +
       parseFloat(taxAmount) -
       parseFloat(discountAmount) +
       shippingFeeAmount +
-      insuranceFeeAmount;
+      insuranceFeeAmount +
+      layawayFeeAmount;
     const paidAmount = Number(existingInvoiceAny.paidAmount?.toNumber?.() ?? 0);
 
     let resolvedTermsId: number | null = existingTermsId;
@@ -262,6 +309,7 @@ export async function PUT(
       discount: parseFloat(discountAmount),
       shippingFee: shippingFeeAmount,
       insuranceAmount: insuranceFeeAmount,
+      layawayFee: layawayFeeAmount,
       amount: totalAmount,
       invoiceDate: invoiceDateValue,
       dueDate: dueDateValue,
@@ -306,6 +354,11 @@ export async function PUT(
       "insuranceAmount",
       Number(existingInvoiceAny.insuranceAmount?.toNumber?.() ?? 0),
       nextData.insuranceAmount,
+    );
+    trackChange(
+      "layawayFee",
+      Number(existingInvoiceAny.layawayFee?.toNumber?.() ?? 0),
+      nextData.layawayFee,
     );
     trackChange("amount", existingInvoice.amount.toNumber(), nextData.amount);
     trackChange(
@@ -496,6 +549,7 @@ export async function PUT(
       insuranceAmount: Number(
         (invoice as any).insuranceAmount?.toNumber?.() ?? 0,
       ),
+      layawayFee: Number((invoice as any).layawayFee?.toNumber?.() ?? 0),
       amount: invoice.amount.toNumber(),
       paidAmount: invoice.paidAmount.toNumber(),
     };
@@ -593,19 +647,27 @@ export async function DELETE(
         if (targetStatus === "abandoned") {
           const directPayments = await tx.payment.findMany({
             where: { invoiceId },
-            select: { id: true, amount: true },
+            select: { id: true, amount: true, source: true, methodId: true },
           });
+
+          const realDirectPayments = directPayments.filter(
+            (payment) => payment.source !== "store_credit_applied",
+          );
 
           const matchedPayments = await tx.paymentInvoiceMatch.findMany({
             where: { invoiceId },
             select: { id: true, paymentId: true, amount: true },
           });
 
-          const directTotal = directPayments.reduce(
+          const directTotal = realDirectPayments.reduce(
             (sum, p) => sum + p.amount.toNumber(),
             0,
           );
-          const matchedTotal = matchedPayments.reduce(
+          const directPaymentIds = new Set(realDirectPayments.map((p) => p.id));
+          const matchedPaymentsWithoutDirectOverlap = matchedPayments.filter(
+            (match) => !directPaymentIds.has(match.paymentId),
+          );
+          const matchedTotal = matchedPaymentsWithoutDirectOverlap.reduce(
             (sum, m) => sum + m.amount.toNumber(),
             0,
           );
@@ -619,7 +681,7 @@ export async function DELETE(
             }
 
             const affectedPaymentIds = new Set<number>([
-              ...directPayments.map((p) => p.id),
+              ...realDirectPayments.map((p) => p.id),
               ...matchedPayments.map((m) => m.paymentId),
             ]);
 
@@ -630,34 +692,80 @@ export async function DELETE(
                 );
               }
 
-              if (directPayments.length > 0) {
+              if (realDirectPayments.length > 0) {
                 await tx.payment.updateMany({
-                  where: { id: { in: directPayments.map((p) => p.id) } },
-                  data: { invoiceId: null },
+                  where: { id: { in: realDirectPayments.map((p) => p.id) } },
+                  data: {
+                    invoiceId: null,
+                    isAbandoned: true,
+                    abandonedAt: new Date(),
+                    abandonedBy: user.id,
+                    abandonReason: `Payments moved to customer store credit from abandoned invoice ${existingInvoice.invoiceNumber}. ${reason}`,
+                  },
                 });
               }
 
-              if (matchedPayments.length > 0) {
+              if (matchedPaymentsWithoutDirectOverlap.length > 0) {
                 await tx.paymentInvoiceMatch.deleteMany({
-                  where: { id: { in: matchedPayments.map((m) => m.id) } },
+                  where: {
+                    id: {
+                      in: matchedPaymentsWithoutDirectOverlap.map((m) => m.id),
+                    },
+                  },
                 });
               }
+
+              const sourceMethodId =
+                realDirectPayments[0]?.methodId ||
+                (
+                  await tx.payment.findFirst({
+                    where: { id: matchedPayments[0]?.paymentId },
+                    select: { methodId: true },
+                  })
+                )?.methodId ||
+                (
+                  await tx.paymentMethodEntry.findFirst({
+                    where: { isActive: true },
+                    orderBy: [{ isSystem: "desc" }, { sortOrder: "asc" }],
+                    select: { id: true },
+                  })
+                )?.id;
+
+              if (!sourceMethodId) {
+                throw new Error(
+                  "No active payment method available for store credit.",
+                );
+              }
+
+              const creditPayment = await tx.payment.create({
+                data: {
+                  invoiceId: null,
+                  amount: new Prisma.Decimal(movedAmount),
+                  paymentDate: new Date(),
+                  methodId: sourceMethodId,
+                  notes: `Store credit from abandoned invoice ${existingInvoice.invoiceNumber}${reason ? ` | ${reason}` : ""}`,
+                  userId: user.id,
+                  isMatched: false,
+                  source: "store_credit_excess",
+                },
+              });
+
+              await stampPaymentCode(tx, creditPayment.id);
 
               await (tx as any).customer.update({
                 where: { id: existingInvoice.customerId },
                 data: {
-                  storeCredit: {
-                    increment: movedAmount,
-                  },
+                  storeCredit: { increment: new Prisma.Decimal(movedAmount) },
                 },
               });
 
               await (tx as any).customerCreditTransaction.create({
                 data: {
                   customerId: existingInvoice.customerId,
-                  amount: movedAmount,
+                  amount: new Prisma.Decimal(movedAmount),
                   type: "credit",
                   reason: `Payments moved from abandoned invoice ${existingInvoice.invoiceNumber}. ${reason}`,
+                  paymentId: creditPayment.id,
                   invoiceId,
                   createdById: user.id,
                 },
@@ -701,9 +809,9 @@ export async function DELETE(
 
               resolvedTargetInvoiceId = target.id;
 
-              if (directPayments.length > 0) {
+              if (realDirectPayments.length > 0) {
                 await tx.payment.updateMany({
-                  where: { id: { in: directPayments.map((p) => p.id) } },
+                  where: { id: { in: realDirectPayments.map((p) => p.id) } },
                   data: { invoiceId: target.id, isMatched: true },
                 });
               }
@@ -754,6 +862,21 @@ export async function DELETE(
                   where: { id: pid },
                   data: { isMatched: shouldBeMatched },
                 });
+              }
+
+              if (!payment.invoiceId && payment.paymentMatches.length === 0) {
+                const abandonedAt = payment.abandonedAt || new Date();
+                if (!payment.isAbandoned) {
+                  await tx.payment.update({
+                    where: { id: pid },
+                    data: {
+                      isAbandoned: true,
+                      abandonedAt,
+                      abandonedBy: user.id,
+                      abandonReason: `Payments moved to customer store credit from abandoned invoice ${existingInvoice.invoiceNumber}. ${reason}`,
+                    },
+                  });
+                }
               }
             }
           }

@@ -975,7 +975,7 @@ export default function ViewInvoiceModal({
                         Item
                       </th>
                       <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                        Quantity
+                        Qty / Unit
                       </th>
                       <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">
                         Price
@@ -995,7 +995,7 @@ export default function ViewInvoiceModal({
                           {item.name}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-900 text-right">
-                          {item.quantity}
+                          {item.quantity} {item.unit || "grams"}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-900 text-right">
                           {formatCurrency(item.price)}

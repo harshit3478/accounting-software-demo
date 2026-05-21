@@ -5,6 +5,12 @@ import Modal from "./Modal";
 import InvoiceItemsEditor from "./InvoiceItemsEditor";
 import InvoiceSummary from "./InvoiceSummary";
 import { InvoiceItem } from "./types";
+import {
+  DEFAULT_LAYAWAY_FEE_RATES,
+  calculateLayawayFeeFromItems,
+  normalizeLayawayFeeRates,
+  type LayawayFeeRate,
+} from "../../lib/layaway-fees";
 
 interface CustomerOption {
   id: number;
@@ -105,7 +111,7 @@ export default function EditInvoiceModal({
     [],
   );
   const [items, setItems] = useState<InvoiceItem[]>([
-    { name: "", quantity: 1, price: 0 },
+    { name: "", quantity: 1, price: 0, unit: "grams" },
   ]);
   const [tax, setTax] = useState(0);
   const [taxType, setTaxType] = useState<"fixed" | "percentage">("fixed");
@@ -115,6 +121,9 @@ export default function EditInvoiceModal({
   );
   const [shippingFee, setShippingFee] = useState(0);
   const [insuranceAmount, setInsuranceAmount] = useState(0);
+  const [layawayFeeRates, setLayawayFeeRates] = useState<LayawayFeeRate[]>(
+    DEFAULT_LAYAWAY_FEE_RATES,
+  );
   const [isLayaway, setIsLayaway] = useState(false);
   const [layawayMonths, setLayawayMonths] = useState(3);
   const [layawayFrequency, setLayawayFrequency] = useState<
@@ -205,6 +214,17 @@ export default function EditInvoiceModal({
           setTermsOptions(normalized);
         })
         .catch(() => setTermsOptions([]));
+
+      fetch("/api/layaway-fees")
+        .then((res) => (res.ok ? res.json() : []))
+        .then((data) => {
+          if (Array.isArray(data) && data.length > 0) {
+            setLayawayFeeRates(normalizeLayawayFeeRates(data));
+          }
+        })
+        .catch(() => {
+          setLayawayFeeRates(DEFAULT_LAYAWAY_FEE_RATES);
+        });
     }
   }, [isOpen]);
 
@@ -250,7 +270,11 @@ export default function EditInvoiceModal({
       );
       setDueDate(invoice.dueDate);
       setDueDateReason(invoice.dueDateReason || "");
-      setItems(invoice.items || [{ name: "", quantity: 1, price: 0 }]);
+      setItems(
+        (
+          invoice.items || [{ name: "", quantity: 1, price: 0, unit: "grams" }]
+        ).map((item) => ({ ...item, unit: item.unit || "grams" })),
+      );
       setTax(invoice.tax);
       setTaxType("fixed"); // Default to fixed, adjust based on your needs
       setDiscount(invoice.discount);
@@ -301,13 +325,23 @@ export default function EditInvoiceModal({
       : discount;
   };
 
+  const calculateLayawayFeeAmount = () => {
+    if (!isLayaway) return 0;
+    return calculateLayawayFeeFromItems(
+      items as any,
+      layawayMonths || 3,
+      layawayFeeRates,
+    );
+  };
+
   const calculateTotal = () => {
     return (
       calculateSubtotal() +
       calculateTaxAmount() -
       calculateDiscountAmount() +
       shippingFee +
-      insuranceAmount
+      insuranceAmount +
+      calculateLayawayFeeAmount()
     );
   };
 

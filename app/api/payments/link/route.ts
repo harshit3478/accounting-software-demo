@@ -184,18 +184,12 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // If this was a store-credit payment, create a new Payment record that directly
-      // represents this application to the invoice so it shows as a payment in the
-      // invoice's payment list. Also return info for follow-up transaction to update
-      // customer credit.
       if (payment.source === "store_credit_excess") {
         const ownerTx = await (tx as any).customerCreditTransaction.findFirst({
           where: { paymentId: payment.id },
           orderBy: { createdAt: "desc" },
         });
 
-        // Create a new Payment record for this store-credit application that will
-        // appear in the invoice's payment list
         const creditAppliedPayment = await tx.payment.create({
           data: {
             invoiceId,
@@ -208,6 +202,8 @@ export async function POST(request: NextRequest) {
             source: "store_credit_applied",
           },
         });
+
+        await stampPaymentCode(tx, creditAppliedPayment.id);
 
         return {
           match,

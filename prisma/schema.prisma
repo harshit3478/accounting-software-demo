@@ -95,6 +95,7 @@ model Invoice {
   discount            Decimal  @default(0) @db.Decimal(10, 2)
   shippingFee         Decimal  @default(0) @db.Decimal(10, 2)
   insuranceAmount     Decimal  @default(0) @db.Decimal(10, 2)
+  layawayFee          Decimal  @default(0) @db.Decimal(10, 2)
   insuranceBaseAmount Decimal? @db.Decimal(10, 2)
   amount              Decimal  @db.Decimal(10, 2) // Total amount
   paidAmount          Decimal  @default(0) @db.Decimal(10, 2) // Track partial payments
@@ -406,6 +407,33 @@ model PaymentMethodEntry {
   payments Payment[]
 
   @@map("payment_methods")
+}
+
+model InvoiceUnit {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  isActive  Boolean  @default(true)
+  isDefault Boolean  @default(false)
+  isSystem  Boolean  @default(false)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive, sortOrder])
+  @@map("invoice_units")
+}
+
+model LayawayFeeSetting {
+  id          Int      @id @default(autoincrement())
+  months      Int      @unique
+  ratePerGram Decimal  @db.Decimal(10, 2)
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([isActive, sortOrder])
+  @@map("layaway_fee_settings")
 }
 
 model LayawayPlan {

@@ -6,6 +6,7 @@ interface InvoiceSummaryProps {
   discountType?: "fixed" | "percentage";
   shippingFee?: number;
   insuranceAmount?: number;
+  layawayFee?: number;
   total: number;
 }
 
@@ -17,6 +18,7 @@ export default function InvoiceSummary({
   discountType = "fixed",
   shippingFee = 0,
   insuranceAmount = 0,
+  layawayFee = 0,
   total,
 }: InvoiceSummaryProps) {
   const getTaxDisplay = () => {
@@ -70,6 +72,14 @@ export default function InvoiceSummary({
           ${insuranceAmount.toFixed(2)}
         </span>
       </div>
+      {layawayFee > 0 && (
+        <div className="flex justify-between text-sm">
+          <span className="text-gray-600">Layaway Fee:</span>
+          <span className="font-medium text-gray-900">
+            ${layawayFee.toFixed(2)}
+          </span>
+        </div>
+      )}
       <div className="border-t border-gray-300 pt-3 flex justify-between">
         <span className="text-lg font-semibold text-gray-900">Total:</span>
         <span className="text-lg font-bold text-blue-600">

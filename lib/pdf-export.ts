@@ -16,6 +16,7 @@ interface Invoice {
     name: string;
     quantity: number;
     price: number;
+    unit?: string;
   }> | null;
   termsSnapshot?: string[] | null;
   // Enriched data for branded PDF
@@ -479,6 +480,7 @@ export async function generateSingleInvoicePDF(
         displayName: parts[0],
         subtitle: parts.slice(1).join(" "),
         qty: item.quantity,
+        unit: item.unit || "grams",
         price: Number(item.price),
         amount: Number(item.quantity) * Number(item.price),
       };
@@ -486,10 +488,10 @@ export async function generateSingleInvoicePDF(
 
     autoTable(doc, {
       startY: y,
-      head: [["Items", "Quantity", "Price", "Amount"]],
+      head: [["Items", "Qty / Unit", "Price", "Amount"]],
       body: bodyData.map((r) => [
         r.displayName,
-        r.qty.toString(),
+        `${r.qty} ${r.unit}`,
         `$${r.price.toFixed(2)}`,
         `$${r.amount.toFixed(2)}`,
       ]),
@@ -869,6 +871,7 @@ export function buildSingleInvoicePdfBuffer(
         displayName: parts[0],
         subtitle: parts.slice(1).join(" "),
         qty: item.quantity,
+        unit: item.unit || "grams",
         price: Number(item.price),
         amount: Number(item.quantity) * Number(item.price),
       };
@@ -876,10 +879,10 @@ export function buildSingleInvoicePdfBuffer(
 
     autoTable(doc, {
       startY: y,
-      head: [["Items", "Quantity", "Price", "Amount"]],
+      head: [["Items", "Qty / Unit", "Price", "Amount"]],
       body: bodyData.map((r) => [
         r.displayName,
-        r.qty.toString(),
+        `${r.qty} ${r.unit}`,
         `$${r.price.toFixed(2)}`,
         `$${r.amount.toFixed(2)}`,
       ]),
