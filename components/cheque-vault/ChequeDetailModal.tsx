@@ -1,0 +1,341 @@
+"use client";
+
+import { useState } from "react";
+import { ChequeVaultRecord, InvoiceAllocation } from "@/hooks/useChequeVault";
+import InvoiceSearchModal, { AllocationEntry } from "./InvoiceSearchModal";
+import { useAuth } from "@/lib/AuthContext";
+
+interface ChequeDetailModalProps {
+  isOpen: boolean;
+  cheque: ChequeVaultRecord | null;
+  onClose: () => void;
+  onApprove: (id: number) => Promise<{ paymentRefs?: string[]; warnings?: string[] } | null>;
+  onReject: (id: number, reason: string) => Promise<boolean>;
+  onRequestCorrection: (id: number, note: string) => Promise<boolean>;
+  onUpdateAllocations: (chequeId: number, invoices: { invoiceId: number; allocatedAmount: number }[]) => Promise<boolean>;
+}
+
+const STATUS_STYLES: Record<string, string> = {
+  PENDING: "bg-yellow-100 text-yellow-800",
+  APPROVED: "bg-green-100 text-green-800",
+  REJECTED: "bg-red-100 text-red-800",
+  NEEDS_CORRECTION: "bg-orange-100 text-orange-800",
+};
+
+function formatDate(dateStr: string | null) {
+  if (!dateStr) return "—";
+  return new Date(dateStr).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+export default function ChequeDetailModal({
+  isOpen,
+  cheque,
+  onClose,
+  onApprove,
+  onReject,
+  onRequestCorrection,
+  onUpdateAllocations,
+}: ChequeDetailModalProps) {
+  const { isAdmin } = useAuth();
+  const [actionMode, setActionMode] = useState<"none" | "reject" | "correction">("none");
+  const [rejectionReason, setRejectionReason] = useState("");
+  const [correctionNote, setCorrectionNote] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [approveResult, setApproveResult] = useState<{ paymentRefs?: string[]; warnings?: string[] } | null>(null);
+  const [showInvoiceSearch, setShowInvoiceSearch] = useState(false);
+
+  if (!isOpen || !cheque) return null;
+
+  const handleApprove = async () => {
+    setIsSubmitting(true);
+    const result = await onApprove(cheque.id);
+    setIsSubmitting(false);
+    if (result) setApproveResult(result);
+  };
+
+  const handleReject = async () => {
+    if (!rejectionReason.trim()) return;
+    setIsSubmitting(true);
+    const ok = await onReject(cheque.id, rejectionReason);
+    setIsSubmitting(false);
+    if (ok) { setActionMode("none"); setRejectionReason(""); onClose(); }
+  };
+
+  const handleRequestCorrection = async () => {
+    if (!correctionNote.trim()) return;
+    setIsSubmitting(true);
+    const ok = await onRequestCorrection(cheque.id, correctionNote);
+    setIsSubmitting(false);
+    if (ok) { setActionMode("none"); setCorrectionNote(""); onClose(); }
+  };
+
+  const handleClose = () => {
+    setActionMode("none");
+    setRejectionReason("");
+    setCorrectionNote("");
+    setApproveResult(null);
+    onClose();
+  };
+
+  const handleConfirmAllocations = async (entries: AllocationEntry[]) => {
+    setShowInvoiceSearch(false);
+    await onUpdateAllocations(
+      cheque.id,
+      entries.map((e) => ({ invoiceId: e.invoiceId, allocatedAmount: e.allocatedAmount }))
+    );
+  };
+
+  const canAction = cheque.status === "PENDING" || cheque.status === "NEEDS_CORRECTION";
+  const hasAllocations = cheque.invoiceAllocations.length > 0;
+
+  // Build initial allocations for the modal from current cheque data
+  const currentAllocations: AllocationEntry[] = cheque.invoiceAllocations.map((a: InvoiceAllocation) => ({
+    invoiceId: a.invoiceId,
+    invoiceNumber: a.invoice?.invoiceNumber || "",
+    clientName: a.invoice?.clientName || "",
+    allocatedAmount: a.allocatedAmount,
+    remaining: a.invoice ? Math.max((a.invoice.amount || 0) - (a.invoice.paidAmount || 0), 0) : 0,
+  }));
+
+  // Determine customer ID from first allocation's invoice (for filtering)
+  const linkedCustomerId = cheque.invoiceAllocations[0]?.invoice ? undefined : undefined;
+
+  return (
+    <>
+      <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={handleClose} />
+        <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-5xl mx-4 flex flex-col max-h-[90vh]">
+          {/* Header */}
+          <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <h2 className="text-lg font-semibold text-gray-900">Cheque Detail</h2>
+              <span className={`px-2 py-1 rounded-full text-xs font-medium ${STATUS_STYLES[cheque.status]}`}>
+                {cheque.status.replace("_", " ")}
+              </span>
+            </div>
+            <button onClick={handleClose} className="text-gray-400 hover:text-gray-600">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Body */}
+          <div className="flex-1 overflow-y-auto">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-0 lg:divide-x divide-gray-200">
+              {/* Left: Image */}
+              <div className="p-6">
+                <p className="text-sm font-medium text-gray-700 mb-3">Cheque Image</p>
+                <div
+                  className="bg-gray-100 rounded-lg overflow-hidden border border-gray-200 cursor-pointer hover:opacity-90 transition-opacity"
+                  onClick={() => window.open(cheque.imageUrl, "_blank")}
+                  title="Click to open full size"
+                >
+                  <img
+                    src={cheque.imageUrl}
+                    alt={`Cheque #${cheque.chequeNumber}`}
+                    className="w-full object-contain max-h-80"
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                  />
+                </div>
+                <p className="text-xs text-gray-400 mt-2 text-center">Click image to view full size</p>
+
+                {cheque.correctionNote && (
+                  <div className="mt-4 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                    <p className="text-xs font-semibold text-orange-700 mb-1">Correction Required</p>
+                    <p className="text-sm text-orange-800">{cheque.correctionNote}</p>
+                  </div>
+                )}
+                {cheque.rejectionReason && (
+                  <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <p className="text-xs font-semibold text-red-700 mb-1">Rejection Reason</p>
+                    <p className="text-sm text-red-800">{cheque.rejectionReason}</p>
+                  </div>
+                )}
+                {cheque.status === "APPROVED" && cheque.approvedBy && (
+                  <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <p className="text-xs font-semibold text-green-700 mb-1">Approved</p>
+                    <p className="text-sm text-green-800">
+                      By {cheque.approvedBy.name} on {formatDate(cheque.approvedAt)}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Right: Fields */}
+              <div className="p-6">
+                <p className="text-sm font-medium text-gray-700 mb-4">Extracted Fields</p>
+                <dl className="space-y-3">
+                  <Field label="Cheque Number" value={cheque.chequeNumber} />
+                  <Field label="Payee Name" value={cheque.payeeName} />
+                  {cheque.customerEmail && (
+                    <Field label="Customer Email" value={cheque.customerEmail} />
+                  )}
+                  <Field label="Amount" value={`$${cheque.amount.toFixed(2)}`} />
+                  <Field label="Cheque Date" value={formatDate(cheque.chequeDate)} />
+                  <Field label="Bank Name" value={cheque.bankName} />
+
+                  {/* Linked Invoices */}
+                  <div>
+                    <dt className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">
+                      Linked Invoices
+                      {isAdmin && canAction && (
+                        <button
+                          onClick={() => setShowInvoiceSearch(true)}
+                          className="ml-2 text-xs px-2 py-0.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded transition-colors font-normal normal-case tracking-normal"
+                        >
+                          {hasAllocations ? "Edit" : "Link Invoices"}
+                        </button>
+                      )}
+                    </dt>
+                    <dd>
+                      {hasAllocations ? (
+                        <div className="space-y-1.5 mt-1">
+                          {cheque.invoiceAllocations.map((a: InvoiceAllocation) => (
+                            <div key={a.invoiceId} className="flex items-center justify-between text-sm">
+                              <span className="font-medium text-blue-600">
+                                {a.invoice?.invoiceNumber} — {a.invoice?.clientName}
+                              </span>
+                              <span className="text-gray-700 font-medium">${a.allocatedAmount.toFixed(2)}</span>
+                            </div>
+                          ))}
+                          <div className="flex justify-between text-xs text-gray-500 border-t border-gray-100 pt-1 mt-1">
+                            <span>Total allocated</span>
+                            <span>${cheque.invoiceAllocations.reduce((s: number, a: InvoiceAllocation) => s + a.allocatedAmount, 0).toFixed(2)}</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-gray-400 italic text-sm">Not linked</span>
+                      )}
+                    </dd>
+                  </div>
+                </dl>
+
+                <div className="mt-6 pt-4 border-t border-gray-200 space-y-2">
+                  <Field label="Uploaded By" value={`${cheque.uploadedBy?.name} (${cheque.uploadedBy?.email})`} />
+                  <Field label="Upload Date" value={formatDate(cheque.createdAt)} />
+                </div>
+              </div>
+            </div>
+
+            {/* Approval success banner */}
+            {approveResult && (
+              <div className="mx-6 mb-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+                <p className="text-sm font-semibold text-green-700">
+                  Cheque approved! Payment ref{(approveResult.paymentRefs?.length ?? 0) > 1 ? "s" : ""}: {(approveResult.paymentRefs || []).join(", ")}
+                </p>
+                {approveResult.warnings?.map((w, i) => (
+                  <p key={i} className="text-sm text-amber-700 mt-1">{w}</p>
+                ))}
+              </div>
+            )}
+
+            {/* Admin action forms */}
+            {isAdmin && canAction && !approveResult && (
+              <div className="px-6 pb-6">
+                {actionMode === "reject" && (
+                  <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                    <p className="text-sm font-medium text-red-700 mb-2">Rejection Reason *</p>
+                    <textarea
+                      value={rejectionReason}
+                      onChange={(e) => setRejectionReason(e.target.value)}
+                      placeholder="Enter reason for rejection..."
+                      rows={3}
+                      className="w-full px-3 py-2 border border-red-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                    />
+                    <div className="flex gap-2 mt-2">
+                      <button
+                        onClick={handleReject}
+                        disabled={!rejectionReason.trim() || isSubmitting}
+                        className="px-4 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors"
+                      >
+                        {isSubmitting ? "Rejecting..." : "Confirm Reject"}
+                      </button>
+                      <button onClick={() => setActionMode("none")} className="px-4 py-2 bg-gray-100 text-gray-700 text-sm rounded-lg hover:bg-gray-200 transition-colors">
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {actionMode === "correction" && (
+                  <div className="p-4 bg-orange-50 border border-orange-200 rounded-lg">
+                    <p className="text-sm font-medium text-orange-700 mb-2">Correction Note *</p>
+                    <textarea
+                      value={correctionNote}
+                      onChange={(e) => setCorrectionNote(e.target.value)}
+                      placeholder="Describe what needs to be corrected..."
+                      rows={3}
+                      className="w-full px-3 py-2 border border-orange-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    />
+                    <div className="flex gap-2 mt-2">
+                      <button
+                        onClick={handleRequestCorrection}
+                        disabled={!correctionNote.trim() || isSubmitting}
+                        className="px-4 py-2 bg-orange-600 text-white text-sm rounded-lg hover:bg-orange-700 disabled:opacity-50 transition-colors"
+                      >
+                        {isSubmitting ? "Sending..." : "Send for Correction"}
+                      </button>
+                      <button onClick={() => setActionMode("none")} className="px-4 py-2 bg-gray-100 text-gray-700 text-sm rounded-lg hover:bg-gray-200 transition-colors">
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Footer — admin actions */}
+          {isAdmin && canAction && !approveResult && actionMode === "none" && (
+            <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-end gap-3">
+              <button onClick={() => setActionMode("reject")} className="px-4 py-2 bg-red-100 text-red-700 text-sm font-medium rounded-lg hover:bg-red-200 transition-colors">
+                Reject
+              </button>
+              <button onClick={() => setActionMode("correction")} className="px-4 py-2 bg-orange-100 text-orange-700 text-sm font-medium rounded-lg hover:bg-orange-200 transition-colors">
+                Request Correction
+              </button>
+              <button
+                onClick={handleApprove}
+                disabled={isSubmitting || !hasAllocations}
+                title={!hasAllocations ? "Link at least one invoice first" : ""}
+                className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {isSubmitting ? "Approving..." : "Approve"}
+              </button>
+            </div>
+          )}
+
+          {(cheque.status === "APPROVED" || cheque.status === "REJECTED" || approveResult) && (
+            <div className="px-6 py-4 border-t border-gray-200 flex justify-end">
+              <button onClick={handleClose} className="px-4 py-2 bg-gray-100 text-gray-700 text-sm rounded-lg hover:bg-gray-200 transition-colors">
+                Close
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <InvoiceSearchModal
+        isOpen={showInvoiceSearch}
+        onClose={() => setShowInvoiceSearch(false)}
+        onConfirm={handleConfirmAllocations}
+        chequeAmount={cheque.amount}
+        customerId={linkedCustomerId}
+        initialAllocations={currentAllocations}
+      />
+    </>
+  );
+}
+
+function Field({ label, value }: { label: string; value: string | null | undefined }) {
+  return (
+    <div>
+      <dt className="text-xs font-medium text-gray-500 uppercase tracking-wider">{label}</dt>
+      <dd className="text-sm text-gray-900 mt-0.5">{value || <span className="text-gray-400 italic">Not available</span>}</dd>
+    </div>
+  );
+}

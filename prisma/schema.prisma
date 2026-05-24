@@ -33,6 +33,13 @@ enum RegularizationStatus {
   rejected
 }
 
+enum ChequeStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  NEEDS_CORRECTION
+}
+
 enum RegularizationType {
   checkin
   checkout
@@ -71,6 +78,8 @@ model User {
   creditTransactions         CustomerCreditTransaction[]
   shippingFeeRulesCreated    ShippingFeeRule[]
   dueDateReasonsCreated      DueDateReason[]
+  chequesUploaded            ChequeVault[]               @relation("ChequeUploadedBy")
+  chequesApproved            ChequeVault[]               @relation("ChequeApprovedBy")
 
   @@map("users")
 }
@@ -128,6 +137,7 @@ model Invoice {
   terms              Term?                       @relation(fields: [termsId], references: [id], onDelete: SetNull)
   layawayPlan        LayawayPlan?
   shippingFeeRule    ShippingFeeRule?            @relation(fields: [shippingFeeRuleId], references: [id], onDelete: SetNull)
+  chequeAllocations  ChequeVaultInvoice[]
 
   @@map("invoices")
 }
@@ -540,4 +550,47 @@ model CustomerCreditTransaction {
 
   @@index([customerId, createdAt])
   @@map("customer_credit_transactions")
+}
+
+model ChequeVault {
+  id              Int          @id @default(autoincrement())
+  chequeNumber    String
+  payeeName       String
+  customerEmail   String?
+  amount          Decimal      @db.Decimal(10, 2)
+  chequeDate      DateTime
+  bankName        String?
+  imageUrl        String
+  imageFileName   String
+  rawOcrText      String?      @db.Text
+  status          ChequeStatus @default(PENDING)
+  uploadedById    Int
+  approvedById    Int?
+  approvedAt      DateTime?
+  rejectionReason String?      @db.Text
+  correctionNote  String?      @db.Text
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  uploadedBy        User                 @relation("ChequeUploadedBy", fields: [uploadedById], references: [id], onDelete: Cascade)
+  approvedBy        User?                @relation("ChequeApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  invoiceAllocations ChequeVaultInvoice[]
+
+  @@index([chequeNumber])
+  @@index([status])
+  @@index([uploadedById, status])
+  @@map("cheque_vault")
+}
+
+model ChequeVaultInvoice {
+  id              Int     @id @default(autoincrement())
+  chequeVaultId   Int
+  invoiceId       Int
+  allocatedAmount Decimal @db.Decimal(10, 2)
+
+  chequeVault ChequeVault @relation(fields: [chequeVaultId], references: [id], onDelete: Cascade)
+  invoice     Invoice     @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@unique([chequeVaultId, invoiceId])
+  @@map("cheque_vault_invoices")
 }

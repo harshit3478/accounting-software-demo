@@ -144,6 +144,124 @@ export async function sendPaymentConfirmation(
   }
 }
 
+export async function sendChequeStatusNotification(params: {
+  recipientEmail: string;
+  recipientName: string;
+  chequeNumber: string;
+  amount: number;
+  status: "APPROVED" | "REJECTED" | "NEEDS_CORRECTION";
+  reason?: string;
+  paymentRef?: string;
+}): Promise<{ success: boolean; error?: any }> {
+  const {
+    name: businessName,
+    tagline,
+    website,
+    email: bizEmail,
+    phone,
+    colors,
+  } = BUSINESS_CONFIG;
+  const { gold, cream, charcoal } = colors;
+
+  const { recipientEmail, recipientName, chequeNumber, amount, status, reason, paymentRef } = params;
+
+  const statusConfig = {
+    APPROVED: {
+      subject: `Cheque #${chequeNumber} Approved`,
+      title: "Cheque Approved",
+      color: "#16a34a",
+      bgColor: "#f0fdf4",
+      borderColor: "#86efac",
+      message: `Your cheque #${chequeNumber} for $${amount.toFixed(2)} has been approved and the payment has been recorded.`,
+      extra: paymentRef ? `Payment Reference: <strong>${paymentRef}</strong>` : "",
+    },
+    REJECTED: {
+      subject: `Cheque #${chequeNumber} Rejected`,
+      title: "Cheque Rejected",
+      color: "#dc2626",
+      bgColor: "#fef2f2",
+      borderColor: "#fca5a5",
+      message: `Your cheque #${chequeNumber} for $${amount.toFixed(2)} has been rejected.`,
+      extra: reason ? `Reason: <strong>${reason}</strong>` : "",
+    },
+    NEEDS_CORRECTION: {
+      subject: `Correction Required for Cheque #${chequeNumber}`,
+      title: "Correction Required",
+      color: "#d97706",
+      bgColor: "#fffbeb",
+      borderColor: "#fcd34d",
+      message: `Your cheque #${chequeNumber} for $${amount.toFixed(2)} requires correction before it can be approved.`,
+      extra: reason ? `Note from reviewer: <strong>${reason}</strong>` : "",
+    },
+  };
+
+  const cfg = statusConfig[status];
+
+  try {
+    const { data, error } = await resend.emails.send({
+      from: process.env.EMAIL_FROM || "onboarding@resend.dev",
+      to: recipientEmail,
+      subject: cfg.subject,
+      text: [
+        `${businessName} — ${cfg.title}`,
+        `Dear ${recipientName},`,
+        cfg.message,
+        cfg.extra ? cfg.extra.replace(/<[^>]+>/g, "") : "",
+        website ? `Visit us: ${website}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      html: `
+        <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;color:${charcoal};">
+          <div style="background:${gold};height:4px;border-radius:2px 2px 0 0;"></div>
+          <div style="background:#fff;padding:28px 32px 16px;">
+            <h1 style="margin:0;font-size:22px;color:${gold};letter-spacing:1px;">${businessName}</h1>
+            <p style="margin:4px 0 0;font-size:12px;color:#6b7280;">${tagline}</p>
+          </div>
+          <div style="background:#fff;padding:0 32px 28px;">
+            <h2 style="font-size:16px;border-bottom:1px solid #e5e7eb;padding-bottom:10px;">${cfg.title}</h2>
+            <p style="font-size:14px;color:#374151;">Dear <strong>${recipientName}</strong>,</p>
+            <div style="background:${cfg.bgColor};border:1.5px solid ${cfg.borderColor};border-radius:8px;padding:14px 16px;margin-bottom:20px;">
+              <p style="margin:0;font-size:14px;color:${cfg.color};">${cfg.message}</p>
+              ${cfg.extra ? `<p style="margin:8px 0 0;font-size:13px;color:#374151;">${cfg.extra}</p>` : ""}
+            </div>
+            <table style="width:100%;border-collapse:collapse;font-size:13px;color:#374151;">
+              <tr>
+                <td style="padding:7px 0;border-bottom:1px solid #f3f4f6;color:#6b7280;">Cheque Number</td>
+                <td style="padding:7px 0;border-bottom:1px solid #f3f4f6;text-align:right;font-weight:bold;">${chequeNumber}</td>
+              </tr>
+              <tr>
+                <td style="padding:7px 0;border-bottom:1px solid #f3f4f6;color:#6b7280;">Amount</td>
+                <td style="padding:7px 0;border-bottom:1px solid #f3f4f6;text-align:right;">$${amount.toFixed(2)}</td>
+              </tr>
+              <tr>
+                <td style="padding:7px 0;color:#6b7280;">Status</td>
+                <td style="padding:7px 0;text-align:right;font-weight:bold;color:${cfg.color};">${status.replace("_", " ")}</td>
+              </tr>
+            </table>
+          </div>
+          <div style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:16px 32px;text-align:center;">
+            <p style="margin:0 0 4px;font-size:12px;color:${gold};font-weight:bold;">Thank you for choosing ${businessName}</p>
+            ${website ? `<p style="margin:0 0 2px;font-size:11px;color:#9ca3af;">${website}</p>` : ""}
+            ${bizEmail ? `<p style="margin:0 0 2px;font-size:11px;color:#9ca3af;">${bizEmail}</p>` : ""}
+            ${phone ? `<p style="margin:0;font-size:11px;color:#9ca3af;">${phone}</p>` : ""}
+          </div>
+          <div style="background:${gold};height:2px;border-radius:0 0 2px 2px;"></div>
+        </div>
+      `,
+    });
+
+    if (error) {
+      console.error("[Email] sendChequeStatusNotification error:", error);
+      return { success: false, error };
+    }
+    return { success: true };
+  } catch (error) {
+    console.error("[Email] sendChequeStatusNotification exception:", error);
+    return { success: false, error };
+  }
+}
+
 export async function sendInvoiceEmail(invoice: {
   id: number;
   invoiceNumber: string;

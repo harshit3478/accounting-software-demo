@@ -1,0 +1,568 @@
+"use client";
+
+import { useState, useRef, useCallback } from "react";
+import { ChequeVaultRecord } from "@/hooks/useChequeVault";
+import InvoiceSearchModal, { AllocationEntry } from "./InvoiceSearchModal";
+
+interface OcrResult {
+  chequeNumber: string | null;
+  payeeName: string | null;
+  amount: number | null;
+  chequeDate: string | null;
+  bankName: string | null;
+  confidence: "high" | "low";
+}
+
+interface UploadChequeModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSuccess: (cheque: ChequeVaultRecord) => void;
+}
+
+const STEPS = ["Upload", "Analyzing", "Review Fields", "Link Invoices"] as const;
+
+export default function UploadChequeModal({ isOpen, onClose, onSuccess }: UploadChequeModalProps) {
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+  const [file, setFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadedCheque, setUploadedCheque] = useState<ChequeVaultRecord | null>(null);
+  const [ocrResult, setOcrResult] = useState<OcrResult | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [showInvoiceSearch, setShowInvoiceSearch] = useState(false);
+  const [allocations, setAllocations] = useState<AllocationEntry[]>([]);
+
+  // Form fields
+  const [chequeNumber, setChequeNumber] = useState("");
+  const [payeeName, setPayeeName] = useState("");
+  const [amount, setAmount] = useState("");
+  const [chequeDate, setChequeDate] = useState("");
+  const [bankName, setBankName] = useState("");
+  const [customerEmail, setCustomerEmail] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Customer email lookup state
+  const [foundCustomer, setFoundCustomer] = useState<{ id: number; name: string } | null>(null);
+  const [emailLookupState, setEmailLookupState] = useState<"idle" | "loading" | "found" | "notfound">("idle");
+  const [customerId, setCustomerId] = useState<number | null>(null);
+
+  // Duplicate check
+  const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
+  const [isDuplicateChecking, setIsDuplicateChecking] = useState(false);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const resetState = () => {
+    setStep(1);
+    setFile(null);
+    setPreview(null);
+    setIsUploading(false);
+    setUploadedCheque(null);
+    setOcrResult(null);
+    setUploadError(null);
+    setChequeNumber("");
+    setPayeeName("");
+    setAmount("");
+    setChequeDate("");
+    setBankName("");
+    setCustomerEmail("");
+    setFoundCustomer(null);
+    setEmailLookupState("idle");
+    setCustomerId(null);
+    setDuplicateWarning(null);
+    setIsSaving(false);
+    setAllocations([]);
+  };
+
+  const handleClose = () => { resetState(); onClose(); };
+
+  const handleFileSelect = (selectedFile: File) => {
+    const allowed = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+    if (!allowed.includes(selectedFile.type)) {
+      setUploadError("Only JPEG, PNG, and WebP images are accepted.");
+      return;
+    }
+    if (selectedFile.size > 10 * 1024 * 1024) {
+      setUploadError("File size must be under 10MB.");
+      return;
+    }
+    setUploadError(null);
+    setFile(selectedFile);
+    setPreview(URL.createObjectURL(selectedFile));
+  };
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const dropped = e.dataTransfer.files[0];
+    if (dropped) handleFileSelect(dropped);
+  }, []);
+
+  const handleUploadAndScan = async () => {
+    if (!file) return;
+    setIsUploading(true);
+    setStep(2);
+    const formData = new FormData();
+    formData.append("file", file);
+    if (customerEmail.trim()) formData.append("customerEmail", customerEmail.trim());
+    try {
+      const res = await fetch("/api/cheque-vault", { method: "POST", body: formData });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Upload failed");
+      const cheque: ChequeVaultRecord = data.cheque;
+      const ocr: OcrResult = data.ocrResult;
+      setUploadedCheque(cheque);
+      setOcrResult(ocr);
+      setChequeNumber(ocr.chequeNumber || "");
+      setPayeeName(ocr.payeeName || "");
+      setAmount(ocr.amount != null ? String(ocr.amount) : "");
+      setChequeDate(ocr.chequeDate || "");
+      setBankName(ocr.bankName || "");
+      setStep(3);
+    } catch (err: any) {
+      setUploadError(err.message || "Upload failed");
+      setStep(1);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const lookupCustomerEmail = async (email: string) => {
+    if (!email.trim()) {
+      setEmailLookupState("idle");
+      setFoundCustomer(null);
+      setCustomerId(null);
+      return;
+    }
+    setEmailLookupState("loading");
+    try {
+      const res = await fetch(`/api/customers/lookup?email=${encodeURIComponent(email.trim())}`);
+      const data = await res.json();
+      if (data.customer) {
+        setFoundCustomer(data.customer);
+        setCustomerId(data.customer.id);
+        setEmailLookupState("found");
+      } else {
+        setFoundCustomer(null);
+        setCustomerId(null);
+        setEmailLookupState("notfound");
+      }
+    } catch {
+      setEmailLookupState("idle");
+    }
+  };
+
+  const checkDuplicate = async (num: string) => {
+    if (!num.trim()) { setDuplicateWarning(null); return; }
+    setIsDuplicateChecking(true);
+    try {
+      const res = await fetch(`/api/cheque-vault/check-duplicate?chequeNumber=${encodeURIComponent(num.trim())}`);
+      const data = await res.json();
+      if (data.isDuplicate && data.existingCheques.length > 0) {
+        const existing = data.existingCheques[0];
+        const date = new Date(existing.createdAt).toLocaleDateString();
+        setDuplicateWarning(
+          `A cheque with number "${num}" was already uploaded on ${date} by ${existing.uploadedBy?.name || "another user"} (status: ${existing.status}).`
+        );
+      } else {
+        setDuplicateWarning(null);
+      }
+    } catch {
+      setDuplicateWarning(null);
+    } finally {
+      setIsDuplicateChecking(false);
+    }
+  };
+
+  const saveFields = async (): Promise<ChequeVaultRecord | null> => {
+    if (!uploadedCheque || !chequeNumber.trim()) return null;
+    const res = await fetch(`/api/cheque-vault/${uploadedCheque.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chequeNumber: chequeNumber.trim(),
+        payeeName: payeeName.trim(),
+        amount: parseFloat(amount) || 0,
+        chequeDate: chequeDate || new Date().toISOString().split("T")[0],
+        bankName: bankName.trim() || null,
+        customerEmail: customerEmail.trim() || null,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Failed to save");
+    return data.cheque;
+  };
+
+  const handleSaveFields = async () => {
+    setIsSaving(true);
+    try {
+      const saved = await saveFields();
+      if (!saved) { setUploadError("Cheque number is required."); return; }
+      setUploadedCheque(saved);
+      setStep(4);
+    } catch (err: any) {
+      setUploadError(err.message || "Failed to save fields");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSaveWithoutInvoice = async () => {
+    setIsSaving(true);
+    try {
+      const saved = await saveFields();
+      if (!saved) { setUploadError("Cheque number is required."); return; }
+      onSuccess(saved);
+      handleClose();
+    } catch (err: any) {
+      setUploadError(err.message || "Failed to save");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleConfirmAllocations = async (entries: AllocationEntry[]) => {
+    setShowInvoiceSearch(false);
+    setAllocations(entries);
+    if (!uploadedCheque || entries.length === 0) return;
+    try {
+      await fetch(`/api/cheque-vault/${uploadedCheque.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          invoices: entries.map((e) => ({ invoiceId: e.invoiceId, allocatedAmount: e.allocatedAmount })),
+        }),
+      });
+    } catch {
+      // ignore — will be retried if needed
+    }
+  };
+
+  const handleFinish = async () => {
+    if (!uploadedCheque) return;
+    onSuccess(uploadedCheque);
+    handleClose();
+  };
+
+  if (!isOpen) return null;
+
+  const chequeAmountNum = parseFloat(amount) || uploadedCheque?.amount || 0;
+  const totalAllocated = allocations.reduce((s, a) => s + a.allocatedAmount, 0);
+
+  return (
+    <>
+      <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={handleClose} />
+        <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-2xl mx-4 flex flex-col max-h-[90vh]">
+          {/* Header */}
+          <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">Upload Cheque</h2>
+              <p className="text-xs text-gray-500 mt-0.5">Step {step} of 4 — {STEPS[step - 1]}</p>
+            </div>
+            <button onClick={handleClose} className="text-gray-400 hover:text-gray-600">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Step indicator */}
+          <div className="px-6 py-3 border-b border-gray-100">
+            <div className="flex items-center gap-2">
+              {STEPS.map((label, idx) => (
+                <div key={label} className="flex items-center gap-2">
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                    step > idx + 1 ? "bg-green-500 text-white" :
+                    step === idx + 1 ? "bg-blue-600 text-white" : "bg-gray-200 text-gray-500"
+                  }`}>
+                    {step > idx + 1 ? "✓" : idx + 1}
+                  </div>
+                  <span className={`text-xs ${step === idx + 1 ? "text-blue-600 font-medium" : "text-gray-400"}`}>
+                    {label}
+                  </span>
+                  {idx < STEPS.length - 1 && <div className="w-6 h-px bg-gray-200" />}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Body */}
+          <div className="flex-1 overflow-y-auto p-6">
+            {uploadError && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                {uploadError}
+              </div>
+            )}
+
+            {/* Step 1: Drop zone */}
+            {step === 1 && (
+              <div>
+                <div
+                  className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors ${
+                    isDragging ? "border-blue-500 bg-blue-50" : "border-gray-300 hover:border-gray-400"
+                  }`}
+                  onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                  onDragLeave={() => setIsDragging(false)}
+                  onDrop={handleDrop}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/jpeg,image/jpg,image/png,image/webp"
+                    className="hidden"
+                    onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileSelect(f); }}
+                  />
+                  {preview ? (
+                    <img src={preview} alt="Preview" className="max-h-48 mx-auto rounded-lg object-contain mb-3" />
+                  ) : (
+                    <div className="text-gray-400 mb-3">
+                      <svg className="w-12 h-12 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                      </svg>
+                    </div>
+                  )}
+                  <p className="text-sm font-medium text-gray-700">
+                    {file ? file.name : "Drag & drop or click to select"}
+                  </p>
+                  <p className="text-xs text-gray-400 mt-1">JPEG, PNG, WebP — max 10MB</p>
+                </div>
+
+                {/* Customer email (step 1) */}
+                <div className="mt-4" onClick={(e) => e.stopPropagation()}>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Customer Email <span className="text-gray-400 font-normal">(optional — filters invoices to this customer)</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="email"
+                      value={customerEmail}
+                      onChange={(e) => setCustomerEmail(e.target.value)}
+                      onBlur={(e) => lookupCustomerEmail(e.target.value)}
+                      placeholder="customer@email.com"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    {emailLookupState === "loading" && (
+                      <div className="absolute right-3 top-2.5">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600" />
+                      </div>
+                    )}
+                  </div>
+                  {emailLookupState === "found" && foundCustomer && (
+                    <p className="text-xs text-green-700 mt-1 flex items-center gap-1">
+                      <span>✓</span> Matched: <span className="font-medium">{foundCustomer.name}</span>
+                    </p>
+                  )}
+                  {emailLookupState === "notfound" && (
+                    <p className="text-xs text-amber-600 mt-1">No customer found — all invoices will be shown</p>
+                  )}
+                </div>
+
+                {file && (
+                  <div className="mt-4 flex justify-end">
+                    <button
+                      onClick={handleUploadAndScan}
+                      disabled={isUploading}
+                      className="px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                    >
+                      Upload & Scan with AI
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Step 2: Loading */}
+            {step === 2 && (
+              <div className="flex flex-col items-center justify-center py-12 gap-4">
+                {preview && (
+                  <img src={preview} alt="Cheque" className="max-h-40 rounded-lg object-contain opacity-60" />
+                )}
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+                <p className="text-sm text-gray-600 font-medium">Analyzing cheque with AI...</p>
+                <p className="text-xs text-gray-400">Extracting fields — this may take a few seconds</p>
+              </div>
+            )}
+
+            {/* Step 3: Review fields */}
+            {step === 3 && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div>
+                  <p className="text-sm font-medium text-gray-700 mb-2">Cheque Image</p>
+                  {preview && (
+                    <img src={preview} alt="Cheque" className="w-full rounded-lg border border-gray-200 object-contain max-h-56" />
+                  )}
+                  {ocrResult?.confidence === "low" && (
+                    <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-700">
+                      OCR could not extract all fields — please fill in manually.
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Cheque Number *</label>
+                    <input
+                      type="text"
+                      value={chequeNumber}
+                      onChange={(e) => setChequeNumber(e.target.value)}
+                      onBlur={(e) => checkDuplicate(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="e.g. 001234"
+                    />
+                    {isDuplicateChecking && <p className="text-xs text-gray-400 mt-1">Checking for duplicates...</p>}
+                    {duplicateWarning && (
+                      <div className="mt-1 p-2 bg-yellow-50 border border-yellow-300 rounded text-xs text-yellow-800">
+                        ⚠️ {duplicateWarning}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Payee Name</label>
+                    <input type="text" value={payeeName} onChange={(e) => setPayeeName(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Customer Email</label>
+                    <div className="relative">
+                      <input type="email" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)}
+                        onBlur={(e) => lookupCustomerEmail(e.target.value)}
+                        placeholder="customer@email.com"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      {emailLookupState === "loading" && (
+                        <div className="absolute right-3 top-2.5"><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600" /></div>
+                      )}
+                    </div>
+                    {emailLookupState === "found" && foundCustomer && (
+                      <p className="text-xs text-green-700 mt-1">✓ Matched: <span className="font-medium">{foundCustomer.name}</span></p>
+                    )}
+                    {emailLookupState === "notfound" && (
+                      <p className="text-xs text-amber-600 mt-1">No customer found — all invoices will be shown</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Amount ($)</label>
+                    <input type="number" step="0.01" min="0" value={amount} onChange={(e) => setAmount(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Cheque Date</label>
+                    <input type="date" value={chequeDate} onChange={(e) => setChequeDate(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Bank Name</label>
+                    <input type="text" value={bankName} onChange={(e) => setBankName(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Step 4: Invoice linking */}
+            {step === 4 && uploadedCheque && (
+              <div className="py-4">
+                <div className="text-center mb-6">
+                  <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                  <p className="text-base font-semibold text-gray-900 mb-1">Cheque uploaded successfully</p>
+                  <p className="text-sm text-gray-500">
+                    Link invoices so payment can be recorded once approved.
+                  </p>
+                </div>
+
+                {/* Allocations summary */}
+                {allocations.length > 0 ? (
+                  <div className="mb-4 border border-gray-200 rounded-lg overflow-hidden">
+                    <div className="px-4 py-2 bg-gray-50 flex items-center justify-between">
+                      <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Linked Invoices</span>
+                      <button
+                        onClick={() => setShowInvoiceSearch(true)}
+                        className="text-xs text-blue-600 hover:text-blue-700"
+                      >
+                        Edit
+                      </button>
+                    </div>
+                    {allocations.map((alloc) => (
+                      <div key={alloc.invoiceId} className="px-4 py-2.5 border-t border-gray-100 flex items-center justify-between text-sm">
+                        <span className="text-gray-900 font-medium">{alloc.invoiceNumber} — {alloc.clientName}</span>
+                        <span className="text-gray-700">${alloc.allocatedAmount.toFixed(2)}</span>
+                      </div>
+                    ))}
+                    <div className="px-4 py-2 border-t border-gray-100 bg-gray-50 flex items-center justify-between text-xs text-gray-500">
+                      <span>Total allocated</span>
+                      <span className={totalAllocated > chequeAmountNum + 0.01 ? "text-red-600 font-semibold" : "font-medium text-gray-700"}>
+                        ${totalAllocated.toFixed(2)} / ${chequeAmountNum.toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center text-gray-400 text-sm mb-4">No invoices linked yet</div>
+                )}
+
+                <div className="flex flex-col items-center gap-3">
+                  <button
+                    onClick={() => setShowInvoiceSearch(true)}
+                    className="px-6 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    {allocations.length > 0 ? "Edit Invoice Links" : "Link Invoices"}
+                  </button>
+                  <button
+                    onClick={handleFinish}
+                    className="text-sm text-gray-500 hover:text-gray-700"
+                  >
+                    {allocations.length > 0 ? "Done" : "Skip — submit without invoice"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Footer */}
+          {step === 3 && (
+            <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
+              <button onClick={() => setStep(1)} className="text-sm text-gray-500 hover:text-gray-700">
+                ← Start over
+              </button>
+              <div className="flex gap-3">
+                <button
+                  onClick={handleSaveWithoutInvoice}
+                  disabled={isSaving || !chequeNumber.trim()}
+                  className="px-4 py-2 bg-gray-100 text-gray-700 text-sm rounded-lg hover:bg-gray-200 disabled:opacity-50 transition-colors"
+                >
+                  {isSaving ? "Saving..." : "Save Without Linking"}
+                </button>
+                <button
+                  onClick={handleSaveFields}
+                  disabled={isSaving || !chequeNumber.trim()}
+                  className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                >
+                  {isSaving ? "Saving..." : "Next: Link Invoices →"}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <InvoiceSearchModal
+        isOpen={showInvoiceSearch}
+        onClose={() => setShowInvoiceSearch(false)}
+        onConfirm={handleConfirmAllocations}
+        chequeAmount={chequeAmountNum}
+        customerId={customerId}
+        initialAllocations={allocations}
+      />
+    </>
+  );
+}

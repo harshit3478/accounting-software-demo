@@ -9,6 +9,8 @@ export const config = {
     "/invoices/:path*",
     "/payments/:path*",
     "/statements/:path*",
+    "/cheque-vault/:path*",
+    "/cheque-vault",
     "/login",
     "/forgot-password",
     "/reset-password",
@@ -67,7 +69,8 @@ export function middleware(request: NextRequest) {
     path === "/" ||
     path.startsWith("/invoices") ||
     path.startsWith("/payments") ||
-    path.startsWith("/statements")
+    path.startsWith("/statements") ||
+    path.startsWith("/cheque-vault")
   ) {
     if (!token) {
       return NextResponse.redirect(new URL("/login", request.url));

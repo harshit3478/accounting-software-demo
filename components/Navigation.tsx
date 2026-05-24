@@ -20,6 +20,11 @@ export default function Navigation() {
       label: "Documents",
       active: pathname === "/documents",
     },
+    {
+      href: "/cheque-vault",
+      label: "Cheque Vault",
+      active: pathname.startsWith("/cheque-vault"),
+    },
   ];
 
   // Attendance for regular users (staff/accountant) only

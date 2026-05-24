@@ -3,6 +3,7 @@ import { requireAuth } from "../../../../../lib/auth";
 import Papa from "papaparse";
 import prisma from "../../../../../lib/prisma";
 import { stampPaymentCode } from "../../../../../lib/payment-code";
+import { updateInvoiceAfterPayment } from "../../../../../lib/invoice-utils";
 import {
   validatePaymentRow,
   detectPaymentDuplicates,
@@ -138,16 +139,7 @@ export async function POST(request: NextRequest) {
               paymentId: payment.id,
               invoiceId,
               amount: payment.amount,
-            },
-          });
-
-          // Update invoice paid amount
-          await tx.invoice.update({
-            where: { id: invoiceId },
-            data: {
-              paidAmount: {
-                increment: payment.amount,
-              },
+              userId: user.id,
             },
           });
 
@@ -159,8 +151,16 @@ export async function POST(request: NextRequest) {
         payments.push(payment);
       }
 
-      return { payments, matchedCount, unmatchedCount };
+      const matchedInvoiceIds = [...new Set(
+        payments.filter((p) => p.invoiceId != null).map((p) => p.invoiceId as number)
+      )];
+      return { payments, matchedCount, unmatchedCount, matchedInvoiceIds };
     });
+
+    // Recalculate paidAmount and status for each matched invoice outside the transaction
+    for (const invoiceId of createdPayments.matchedInvoiceIds) {
+      await updateInvoiceAfterPayment(invoiceId);
+    }
 
     const totalCount = createdPayments.payments.length;
     const message =
