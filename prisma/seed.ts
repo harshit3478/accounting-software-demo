@@ -133,12 +133,48 @@ async function main() {
   console.log("Seeded invoice units:", units.map((u) => u.name).join(", "));
 
   const layawayFeeRates = [
-    { months: 1, ratePerGram: 3, isActive: true, sortOrder: 1 },
-    { months: 2, ratePerGram: 4, isActive: true, sortOrder: 2 },
-    { months: 3, ratePerGram: 5, isActive: true, sortOrder: 3 },
-    { months: 4, ratePerGram: 8, isActive: true, sortOrder: 4 },
-    { months: 5, ratePerGram: 9, isActive: true, sortOrder: 5 },
-    { months: 6, ratePerGram: 10, isActive: true, sortOrder: 6 },
+    {
+      unitName: "grams",
+      months: 1,
+      ratePerGram: 3,
+      isActive: true,
+      sortOrder: 1,
+    },
+    {
+      unitName: "grams",
+      months: 2,
+      ratePerGram: 4,
+      isActive: true,
+      sortOrder: 2,
+    },
+    {
+      unitName: "grams",
+      months: 3,
+      ratePerGram: 5,
+      isActive: true,
+      sortOrder: 3,
+    },
+    {
+      unitName: "grams",
+      months: 4,
+      ratePerGram: 8,
+      isActive: true,
+      sortOrder: 4,
+    },
+    {
+      unitName: "grams",
+      months: 5,
+      ratePerGram: 9,
+      isActive: true,
+      sortOrder: 5,
+    },
+    {
+      unitName: "grams",
+      months: 6,
+      ratePerGram: 10,
+      isActive: true,
+      sortOrder: 6,
+    },
   ];
 
   for (const rate of layawayFeeRates) {

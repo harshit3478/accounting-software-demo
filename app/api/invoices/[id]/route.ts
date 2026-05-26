@@ -15,7 +15,10 @@ import {
 async function getConfiguredLayawayFeeRates() {
   const rateModel = (prisma as any)?.layawayFeeSetting;
   if (!rateModel) {
-    return DEFAULT_LAYAWAY_FEE_RATES;
+    return DEFAULT_LAYAWAY_FEE_RATES.map((rate) => ({
+      ...rate,
+      unitName: "grams",
+    }));
   }
 
   try {
@@ -24,11 +27,15 @@ async function getConfiguredLayawayFeeRates() {
     });
 
     if (!Array.isArray(rows) || rows.length === 0) {
-      return DEFAULT_LAYAWAY_FEE_RATES;
+      return DEFAULT_LAYAWAY_FEE_RATES.map((rate) => ({
+        ...rate,
+        unitName: "grams",
+      }));
     }
 
     return normalizeLayawayFeeRates(
       rows.map((row: any) => ({
+        unitName: row.unitName || "grams",
         months: row.months,
         ratePerGram: row.ratePerGram?.toNumber
           ? row.ratePerGram.toNumber()

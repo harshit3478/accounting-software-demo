@@ -89,6 +89,7 @@ interface EditInvoiceModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  onError?: (message: string) => void;
   invoice: Invoice | null;
 }
 
@@ -96,6 +97,7 @@ export default function EditInvoiceModal({
   isOpen,
   onClose,
   onSuccess,
+  onError,
   invoice,
 }: EditInvoiceModalProps) {
   const [clientName, setClientName] = useState("");
@@ -129,6 +131,7 @@ export default function EditInvoiceModal({
   const [layawayFrequency, setLayawayFrequency] = useState<
     "monthly" | "bi-weekly" | "weekly"
   >("monthly");
+  const [layawayBasisUnit, setLayawayBasisUnit] = useState("grams");
   const [layawayDownPayment, setLayawayDownPayment] = useState(0);
   const [layawayNotes, setLayawayNotes] = useState("");
   const [termsOptions, setTermsOptions] = useState<TermOption[]>([]);
@@ -225,6 +228,16 @@ export default function EditInvoiceModal({
         .catch(() => {
           setLayawayFeeRates(DEFAULT_LAYAWAY_FEE_RATES);
         });
+
+      try {
+        const stored = localStorage.getItem("layaway-defaults");
+        if (stored) {
+          const defaults = JSON.parse(stored);
+          if (defaults.basisUnit) setLayawayBasisUnit(defaults.basisUnit);
+        }
+      } catch {
+        // ignore
+      }
     }
   }, [isOpen]);
 
@@ -331,6 +344,7 @@ export default function EditInvoiceModal({
       items as any,
       layawayMonths || 3,
       layawayFeeRates,
+      layawayBasisUnit,
     );
   };
 
@@ -433,33 +447,38 @@ export default function EditInvoiceModal({
 
   const handleUpdateInvoice = async () => {
     if (!invoice || !clientName.trim() || !invoiceDate || !dueDate) {
-      return { success: false, error: "Please fill in all required fields" };
+      onError?.("Please fill in all required fields");
+      return;
     }
 
     if (!validateInvoiceDate(invoiceDate)) {
-      return { success: false, error: "Invalid invoice date" };
+      onError?.("Invalid invoice date");
+      return;
     }
 
     if (!validateDate(dueDate)) {
-      return { success: false, error: "Invalid due date" };
+      onError?.("Invalid due date");
+      return;
     }
 
     if (requiresDueDateReason && !dueDateReason.trim()) {
-      return {
-        success: false,
-        error: "Please provide reason for due date",
-      };
+      onError?.("Please provide reason for due date");
+      return;
     }
 
     if (
       items.length === 0 ||
-      items.some((item) => !item.name.trim() || item.price <= 0)
+      items.some(
+        (item) => !item.name.trim() || item.quantity <= 0 || item.price <= 0,
+      )
     ) {
-      return { success: false, error: "Please add at least one valid item" };
+      onError?.("Please add at least one valid item");
+      return;
     }
 
     if (!editReason.trim()) {
-      return { success: false, error: "Please provide a reason for this edit" };
+      onError?.("Please provide a reason for this edit");
+      return;
     }
 
     if (
@@ -467,10 +486,8 @@ export default function EditInvoiceModal({
       !selectedCustomer.address?.trim() &&
       !customerAddress.trim()
     ) {
-      return {
-        success: false,
-        error: "Customer address is required for this client",
-      };
+      onError?.("Customer address is required for this client");
+      return;
     }
 
     setIsUpdating(true);
@@ -659,6 +676,7 @@ export default function EditInvoiceModal({
               onFocus={() => setShowCustomerDropdown(true)}
               className="w-full px-4 py-2 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               placeholder="Search or enter client name"
+              required
             />
             {showCustomerDropdown &&
               clientName &&
@@ -700,6 +718,7 @@ export default function EditInvoiceModal({
                   onChange={(e) => setCustomerAddress(e.target.value)}
                   className="w-full px-4 py-2 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   placeholder="Enter customer address"
+                  required
                 />
                 <p className="text-xs text-amber-600 mt-1">
                   This customer record does not have an address yet.
@@ -718,6 +737,7 @@ export default function EditInvoiceModal({
               className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 ${
                 invoiceDateError ? "border-red-500" : "border-gray-300"
               }`}
+              required
             />
             {invoiceDateError && (
               <p className="text-red-500 text-sm mt-1">{invoiceDateError}</p>
@@ -733,6 +753,7 @@ export default function EditInvoiceModal({
               className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 ${
                 dateError ? "border-red-500" : "border-gray-300"
               }`}
+              required
             />
             {dateError && (
               <p className="text-red-500 text-sm mt-1">{dateError}</p>
@@ -1129,6 +1150,7 @@ export default function EditInvoiceModal({
               discountType={discountType}
               shippingFee={shippingFee}
               insuranceAmount={insuranceAmount}
+              layawayFee={calculateLayawayFeeAmount()}
               total={calculateTotal()}
             />
 

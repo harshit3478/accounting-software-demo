@@ -139,6 +139,7 @@ export default function CreateInvoiceModal({
         if (defaults.defaultMonths) setLayawayMonths(defaults.defaultMonths);
         if (defaults.defaultFrequency)
           setLayawayFrequency(defaults.defaultFrequency);
+        if (defaults.basisUnit) setLayawayBasisUnit(defaults.basisUnit);
       }
     } catch {
       // ignore
@@ -313,6 +314,7 @@ export default function CreateInvoiceModal({
   const [layawayFrequency, setLayawayFrequency] = useState<
     "monthly" | "bi-weekly" | "weekly"
   >("monthly");
+  const [layawayBasisUnit, setLayawayBasisUnit] = useState("grams");
   const [layawayDownPayment, setLayawayDownPayment] = useState(0);
   const [layawayNotes, setLayawayNotes] = useState("");
   const [termsOptions, setTermsOptions] = useState<TermOption[]>([]);
@@ -374,6 +376,7 @@ export default function CreateInvoiceModal({
       items as any,
       layawayMonths || 3,
       layawayFeeRates,
+      layawayBasisUnit,
     );
   };
 
@@ -488,7 +491,21 @@ export default function CreateInvoiceModal({
   };
 
   const handleCreateNewCustomer = async () => {
-    if (!newCustomerData.name.trim()) return;
+    if (!newCustomerData.name.trim()) {
+      onError?.("Client name is required");
+      return;
+    }
+
+    if (!newCustomerData.email.trim()) {
+      onError?.("Email is required for a new client");
+      return;
+    }
+
+    if (!newCustomerData.address.trim()) {
+      onError?.("Address is required for a new client");
+      return;
+    }
+
     setCreatingCustomer(true);
     try {
       const res = await fetch("/api/customers", {
@@ -676,7 +693,9 @@ export default function CreateInvoiceModal({
 
     if (
       items.length === 0 ||
-      items.some((item) => !item.name.trim() || item.price <= 0)
+      items.some(
+        (item) => !item.name.trim() || item.quantity <= 0 || item.price <= 0,
+      )
     ) {
       onError?.("Please add at least one valid item");
       return;
@@ -835,6 +854,7 @@ export default function CreateInvoiceModal({
                 onFocus={() => setShowCustomerDropdown(true)}
                 className="w-full px-4 py-2 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 placeholder="Search or enter client name"
+                required
               />
               {showCustomerDropdown &&
                 clientName &&
@@ -885,6 +905,7 @@ export default function CreateInvoiceModal({
                     onChange={(e) => setCustomerAddress(e.target.value)}
                     className="w-full px-4 py-2 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     placeholder="Enter customer address"
+                    required
                   />
                   <p className="text-xs text-amber-600 mt-1">
                     This customer record does not have an address yet.
@@ -925,6 +946,7 @@ export default function CreateInvoiceModal({
                       }
                       placeholder="Client name"
                       className="w-full px-3 py-1.5 border border-gray-300 rounded text-sm text-gray-900"
+                      required
                     />
                     <input
                       type="email"
@@ -935,8 +957,9 @@ export default function CreateInvoiceModal({
                           email: e.target.value,
                         })
                       }
-                      placeholder="Email (optional)"
+                      placeholder="Email"
                       className="w-full px-3 py-1.5 border border-gray-300 rounded text-sm text-gray-900"
+                      required
                     />
                     <input
                       type="text"
@@ -961,6 +984,7 @@ export default function CreateInvoiceModal({
                       }
                       placeholder="Address"
                       className="w-full px-3 py-1.5 border border-gray-300 rounded text-sm text-gray-900"
+                      required
                     />
                   </div>
                   <div className="flex gap-2 mt-2">
@@ -968,7 +992,10 @@ export default function CreateInvoiceModal({
                       type="button"
                       onClick={handleCreateNewCustomer}
                       disabled={
-                        creatingCustomer || !newCustomerData.name.trim()
+                        creatingCustomer ||
+                        !newCustomerData.name.trim() ||
+                        !newCustomerData.email.trim() ||
+                        !newCustomerData.address.trim()
                       }
                       className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 disabled:opacity-50"
                     >
@@ -996,6 +1023,7 @@ export default function CreateInvoiceModal({
                 className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 ${
                   invoiceDateError ? "border-red-500" : "border-gray-300"
                 }`}
+                required
               />
               {invoiceDateError && (
                 <p className="text-red-500 text-sm mt-1">{invoiceDateError}</p>
@@ -1011,6 +1039,7 @@ export default function CreateInvoiceModal({
                 className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 ${
                   dateError ? "border-red-500" : "border-gray-300"
                 }`}
+                required
               />
               {dateError && (
                 <p className="text-red-500 text-sm mt-1">{dateError}</p>

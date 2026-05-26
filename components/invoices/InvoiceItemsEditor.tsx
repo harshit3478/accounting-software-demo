@@ -156,7 +156,8 @@ export default function InvoiceItemsEditor({
               <div className="w-24">
                 <input
                   type="number"
-                  min="1"
+                  min="0.01"
+                  step="any"
                   value={item.quantity || ""}
                   onChange={(e) =>
                     updateItem(
@@ -166,7 +167,7 @@ export default function InvoiceItemsEditor({
                     )
                   }
                   onBlur={(e) => {
-                    const val = parseInt(e.target.value);
+                    const val = parseFloat(e.target.value);
                     if (!isNaN(val) && val > 0) {
                       updateItem(index, "quantity", val);
                     } else {

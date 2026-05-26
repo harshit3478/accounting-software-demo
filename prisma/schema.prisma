@@ -435,13 +435,15 @@ model InvoiceUnit {
 
 model LayawayFeeSetting {
   id          Int      @id @default(autoincrement())
-  months      Int      @unique
+  unitName    String   @default("grams")
+  months      Int
   ratePerGram Decimal  @db.Decimal(10, 2)
   isActive    Boolean  @default(true)
   sortOrder   Int      @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  @@unique([unitName, months])
   @@index([isActive, sortOrder])
   @@map("layaway_fee_settings")
 }
@@ -572,8 +574,8 @@ model ChequeVault {
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 
-  uploadedBy        User                 @relation("ChequeUploadedBy", fields: [uploadedById], references: [id], onDelete: Cascade)
-  approvedBy        User?                @relation("ChequeApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  uploadedBy         User                 @relation("ChequeUploadedBy", fields: [uploadedById], references: [id], onDelete: Cascade)
+  approvedBy         User?                @relation("ChequeApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
   invoiceAllocations ChequeVaultInvoice[]
 
   @@index([chequeNumber])

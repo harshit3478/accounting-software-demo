@@ -157,7 +157,7 @@ export default function InvoiceTableRow({
         )}
       </td>
       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 hidden lg:table-cell">
-        {formatDate(invoice.createdAt)}
+        {formatDate(invoice.invoiceDate || invoice.createdAt)}
       </td>
       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
         {formatDate(invoice.dueDate)}

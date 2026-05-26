@@ -48,7 +48,7 @@ export async function sendPaymentConfirmation(
     name: businessName,
     tagline,
     website,
-    email: bizEmail,
+    email: emailNew,
     phone,
     colors,
   } = BUSINESS_CONFIG;
@@ -72,7 +72,8 @@ export async function sendPaymentConfirmation(
       text: [
         `${businessName} — Payment Confirmation`,
         `Dear ${customer.name},`,
-        `Your payment has been received for invoice ${invoice.invoiceNumber}.`,
+        `Your payment has been received and recorded for invoice ${invoice.invoiceNumber}.`,
+        `Invoice Number: ${invoice.invoiceNumber}`,
         `Receipt: ${receiptRef}  |  Date: ${paymentDate}`,
         `Amount Paid: $${payment.amount.toFixed(2)}`,
         `Invoice Total: $${invoice.amount.toFixed(2)}`,
@@ -97,6 +98,10 @@ export async function sendPaymentConfirmation(
               <p style="margin:0;font-size:28px;font-weight:bold;">$${payment.amount.toFixed(2)}</p>
             </div>
             <table style="width:100%;border-collapse:collapse;font-size:13px;color:#374151;">
+              <tr>
+                <td style="padding:7px 0;border-bottom:1px solid #f3f4f6;color:#6b7280;">Invoice Number</td>
+                <td style="padding:7px 0;border-bottom:1px solid #f3f4f6;text-align:right;font-weight:bold;">${invoice.invoiceNumber}</td>
+              </tr>
               <tr>
                 <td style="padding:7px 0;border-bottom:1px solid #f3f4f6;color:#6b7280;">Receipt #</td>
                 <td style="padding:7px 0;border-bottom:1px solid #f3f4f6;text-align:right;font-weight:bold;">${receiptRef}</td>
@@ -125,8 +130,7 @@ export async function sendPaymentConfirmation(
           <div style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:16px 32px;text-align:center;">
             <p style="margin:0 0 4px;font-size:12px;color:${gold};font-weight:bold;">Thank you for choosing ${businessName}</p>
             ${website ? `<p style="margin:0 0 2px;font-size:11px;color:#9ca3af;">${website}</p>` : ""}
-            ${bizEmail ? `<p style="margin:0 0 2px;font-size:11px;color:#9ca3af;">${bizEmail}</p>` : ""}
-            ${phone ? `<p style="margin:0;font-size:11px;color:#9ca3af;">${phone}</p>` : ""}
+            ${emailNew ? `<p style="margin:0 0 2px;font-size:11px;color:#9ca3af;">${emailNew}</p>` : ""}
           </div>
           <div style="background:${gold};height:2px;border-radius:0 0 2px 2px;"></div>
         </div>
@@ -163,7 +167,15 @@ export async function sendChequeStatusNotification(params: {
   } = BUSINESS_CONFIG;
   const { gold, cream, charcoal } = colors;
 
-  const { recipientEmail, recipientName, chequeNumber, amount, status, reason, paymentRef } = params;
+  const {
+    recipientEmail,
+    recipientName,
+    chequeNumber,
+    amount,
+    status,
+    reason,
+    paymentRef,
+  } = params;
 
   const statusConfig = {
     APPROVED: {
@@ -173,7 +185,9 @@ export async function sendChequeStatusNotification(params: {
       bgColor: "#f0fdf4",
       borderColor: "#86efac",
       message: `Your cheque #${chequeNumber} for $${amount.toFixed(2)} has been approved and the payment has been recorded.`,
-      extra: paymentRef ? `Payment Reference: <strong>${paymentRef}</strong>` : "",
+      extra: paymentRef
+        ? `Payment Reference: <strong>${paymentRef}</strong>`
+        : "",
     },
     REJECTED: {
       subject: `Cheque #${chequeNumber} Rejected`,

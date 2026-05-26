@@ -24,6 +24,7 @@ export interface Invoice {
   amount: number;
   paidAmount: number;
   dueDate: string;
+  invoiceDate: string;
   dueDateReason?: string | null;
   status: "paid" | "pending" | "overdue" | "partial" | "abandoned" | "inactive";
   isLayaway: boolean;
@@ -499,6 +500,9 @@ export function useInvoices(
         setInvoices(
           data.invoices.map((inv: any) => ({
             ...inv,
+            invoiceDate: new Date(inv.invoiceDate || inv.createdAt)
+              .toISOString()
+              .split("T")[0],
             dueDate: new Date(inv.dueDate).toISOString().split("T")[0],
             createdAt: new Date(inv.createdAt).toISOString().split("T")[0],
           })),

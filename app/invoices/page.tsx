@@ -274,6 +274,7 @@ function InvoicesPageContent() {
           fetchInvoices();
           showSuccess("Invoice updated successfully!");
         }}
+        onError={showError}
         invoice={editingInvoice}
       />
 

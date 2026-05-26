@@ -177,7 +177,7 @@ export default function InvoiceTable({
                 className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors bg-gray-50 hidden lg:table-cell"
               >
                 <div className="flex items-center gap-1">
-                  Date {getSortIcon("date")}
+                  Invoice Date {getSortIcon("date")}
                 </div>
               </th>
               <th

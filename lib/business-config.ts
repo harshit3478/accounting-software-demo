@@ -8,6 +8,7 @@ export const BUSINESS_CONFIG = {
   address: "PO Box 162357, Fort Worth TX 76161",
   websiteAdress: "www.goldconnectionsbyapple.com/",
   footerText:"Gold Connections by Apple is a DBA of Cooper Creek LLC",
+  emailNew:"contactus@goldconnectionsbyapple.com",
   colors: {
     gold: "#D4AF37",
     goldRGB: [212, 175, 55] as [number, number, number],

@@ -1,13 +1,24 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { FiCheck, FiEdit2, FiX } from "react-icons/fi";
+import { FiCheck, FiEdit2 } from "react-icons/fi";
+import {
+  DEFAULT_LAYAWAY_FEE_CONFIGS,
+  flattenLayawayFeeConfigs,
+  groupLayawayFeeRatesByUnit,
+} from "../../lib/layaway-fees";
 
 interface LayawayFeeRate {
   months: number;
   ratePerGram: number;
+  unitName?: string;
   isActive?: boolean;
   sortOrder?: number;
+}
+
+interface LayawayUnitConfig {
+  unitName: string;
+  rates: LayawayFeeRate[];
 }
 
 interface LayawayDefaults {
@@ -17,6 +28,13 @@ interface LayawayDefaults {
   minMonths: number;
   maxMonths: number;
   policyText: string;
+}
+
+interface InvoiceUnit {
+  id: number;
+  name: string;
+  isActive: boolean;
+  isDefault: boolean;
 }
 
 const DEFAULT_SETTINGS: LayawayDefaults = {
@@ -31,12 +49,12 @@ const DEFAULT_SETTINGS: LayawayDefaults = {
 const STORAGE_KEY = "layaway-defaults";
 
 const FALLBACK_FEE_RATES: LayawayFeeRate[] = [
-  { months: 1, ratePerGram: 3 },
-  { months: 2, ratePerGram: 4 },
-  { months: 3, ratePerGram: 5 },
-  { months: 4, ratePerGram: 8 },
-  { months: 5, ratePerGram: 9 },
-  { months: 6, ratePerGram: 10 },
+  { unitName: "grams", months: 1, ratePerGram: 3 },
+  { unitName: "grams", months: 2, ratePerGram: 4 },
+  { unitName: "grams", months: 3, ratePerGram: 5 },
+  { unitName: "grams", months: 4, ratePerGram: 8 },
+  { unitName: "grams", months: 5, ratePerGram: 9 },
+  { unitName: "grams", months: 6, ratePerGram: 10 },
 ];
 
 interface LayawaySettingsTabProps {
@@ -46,11 +64,12 @@ interface LayawaySettingsTabProps {
 
 export default function LayawaySettingsTab({
   showSuccess,
+  showError,
 }: LayawaySettingsTabProps) {
   const [settings, setSettings] = useState<LayawayDefaults>(DEFAULT_SETTINGS);
   const [hasChanges, setHasChanges] = useState(false);
-  const [feeRates, setFeeRates] =
-    useState<LayawayFeeRate[]>(FALLBACK_FEE_RATES);
+  const [units, setUnits] = useState<InvoiceUnit[]>([]);
+  const [feeRates, setFeeRates] = useState<LayawayFeeRate[]>(FALLBACK_FEE_RATES);
   const [feeRatesLoading, setFeeRatesLoading] = useState(true);
   const [feeRatesSaving, setFeeRatesSaving] = useState(false);
   const [feeRatesChanged, setFeeRatesChanged] = useState(false);
@@ -67,6 +86,34 @@ export default function LayawaySettingsTab({
   }, []);
 
   useEffect(() => {
+    const loadUnits = async () => {
+      try {
+        const res = await fetch("/api/units?all=true");
+        if (!res.ok) {
+          throw new Error("Failed to load units");
+        }
+
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          setUnits(
+            data.map((unit: any) => ({
+              id: Number(unit.id),
+              name: String(unit.name || "grams"),
+              isActive: !!unit.isActive,
+              isDefault: !!unit.isDefault,
+            })),
+          );
+        }
+      } catch (error: any) {
+        setUnits([]);
+        showError(error.message || "Failed to load units");
+      }
+    };
+
+    loadUnits();
+  }, [showError]);
+
+  useEffect(() => {
     const loadRates = async () => {
       setFeeRatesLoading(true);
       try {
@@ -77,18 +124,19 @@ export default function LayawaySettingsTab({
 
         const data = await res.json();
         if (Array.isArray(data) && data.length > 0) {
-          const normalized = FALLBACK_FEE_RATES.map((fallback) => {
-            const match = data.find(
-              (rate: any) => Number(rate.months) === fallback.months,
-            );
-            return {
-              months: fallback.months,
-              ratePerGram: Number(match?.ratePerGram ?? fallback.ratePerGram),
-              isActive: match?.isActive ?? true,
-              sortOrder: match?.sortOrder ?? fallback.months,
-            };
-          });
-          setFeeRates(normalized);
+          setFeeRates(
+            data
+              .map((rate: any) => ({
+                unitName: String(rate.unitName || "grams"),
+                months: Number(rate.months),
+                ratePerGram: Number(rate.ratePerGram),
+                isActive: rate.isActive ?? true,
+                sortOrder: Number(rate.sortOrder ?? rate.months),
+              }))
+              .filter((rate) => Number.isFinite(rate.months) && rate.months > 0),
+          );
+        } else {
+          setFeeRates(FALLBACK_FEE_RATES);
         }
       } catch {
         setFeeRates(FALLBACK_FEE_RATES);
@@ -143,9 +191,14 @@ export default function LayawaySettingsTab({
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          rates: [...feeRates]
-            .sort((left, right) => left.months - right.months)
+          rates: flattenLayawayFeeConfigs(groupLayawayFeeRatesByUnit(feeRates))
+            .sort((left, right) => {
+              const unitCompare =
+                String(left.unitName || "").localeCompare(String(right.unitName || ""));
+              return unitCompare !== 0 ? unitCompare : left.months - right.months;
+            })
             .map((rate, index) => ({
+              unitName: rate.unitName || "grams",
               months: rate.months,
               ratePerGram: rate.ratePerGram,
               isActive: rate.isActive ?? true,
@@ -164,12 +217,18 @@ export default function LayawaySettingsTab({
         setFeeRates(
           data
             .map((rate: any) => ({
+              unitName: String(rate.unitName || "grams"),
               months: Number(rate.months),
               ratePerGram: Number(rate.ratePerGram),
               isActive: rate.isActive ?? true,
               sortOrder: Number(rate.sortOrder ?? rate.months),
             }))
-            .sort((left, right) => left.months - right.months),
+            .sort((left, right) => {
+              const unitCompare = String(left.unitName || "").localeCompare(
+                String(right.unitName || ""),
+              );
+              return unitCompare !== 0 ? unitCompare : left.months - right.months;
+            }),
         );
       }
 
@@ -183,6 +242,103 @@ export default function LayawaySettingsTab({
   };
 
   const sampleWeight = 1000;
+  const activeUnits = units.filter((unit) => unit.isActive);
+  const unitOptions = activeUnits.length > 0 ? activeUnits : units;
+  const feeConfigs = groupLayawayFeeRatesByUnit(feeRates);
+  const defaultMonthRows = DEFAULT_LAYAWAY_FEE_CONFIGS[0]?.rates || FALLBACK_FEE_RATES;
+
+  const normalizeName = (value: string) => value.trim().toLowerCase();
+
+  const isUnitInUse = (unitName: string, ignoreUnitName?: string) => {
+    const normalizedUnitName = normalizeName(unitName);
+    const normalizedIgnore = ignoreUnitName ? normalizeName(ignoreUnitName) : "";
+
+    return feeConfigs.some((config) => {
+      const currentUnit = normalizeName(config.unitName);
+      return currentUnit === normalizedUnitName && currentUnit !== normalizedIgnore;
+    });
+  };
+
+  const getNextAvailableUnitName = () => {
+    const chosen = unitOptions.find((unit) => !isUnitInUse(unit.name));
+    return chosen?.name || null;
+  };
+
+  const handleAddUnitConfig = () => {
+    const nextUnit = getNextAvailableUnitName();
+    if (!nextUnit) {
+      showError("No available unit left to add a layaway config");
+      return;
+    }
+
+    const rowsToAdd = defaultMonthRows.map((rate, index) => ({
+      unitName: nextUnit,
+      months: rate.months,
+      ratePerGram: rate.ratePerGram,
+      isActive: rate.isActive ?? true,
+      sortOrder: rate.sortOrder ?? index + 1,
+    }));
+
+    setFeeRates((prev) => [...prev, ...rowsToAdd]);
+    setFeeRatesChanged(true);
+  };
+
+  const updateConfigUnitName = (currentUnitName: string, nextUnitName: string) => {
+    if (isUnitInUse(nextUnitName, currentUnitName)) {
+      showError(`A layaway config already exists for ${nextUnitName}`);
+      return;
+    }
+
+    setFeeRates((prev) =>
+      prev.map((rate) =>
+        normalizeName(rate.unitName || "grams") === normalizeName(currentUnitName)
+          ? { ...rate, unitName: nextUnitName }
+          : rate,
+      ),
+    );
+    setFeeRatesChanged(true);
+  };
+
+  const updateFeeRate = (
+    unitName: string,
+    months: number,
+    value: string,
+  ) => {
+    const parsed = Number(value);
+    setFeeRates((prev) =>
+      prev.map((rate) =>
+        normalizeName(rate.unitName || "grams") === normalizeName(unitName) &&
+        rate.months === months
+          ? {
+              ...rate,
+              ratePerGram: Number.isFinite(parsed) ? parsed : 0,
+            }
+          : rate,
+      ),
+    );
+    setFeeRatesChanged(true);
+  };
+
+  const removeConfig = (unitName: string) => {
+    if (feeConfigs.length === 1) {
+      showError("At least one layaway config is required");
+      return;
+    }
+
+    setFeeRates((prev) =>
+      prev.filter(
+        (rate) => normalizeName(rate.unitName || "grams") !== normalizeName(unitName),
+      ),
+    );
+    setFeeRatesChanged(true);
+  };
+
+  const getSampleFee = (config: LayawayUnitConfig) => {
+    const sampleRates = config.rates.length > 0 ? config.rates : defaultMonthRows;
+    return sampleRates[0]
+      ? Number((sampleWeight * Number(sampleRates[0].ratePerGram || 0)).toFixed(2))
+      : 0;
+  };
 
   // Compute preview
   const sampleTotal = 1000;
@@ -278,6 +434,7 @@ export default function LayawaySettingsTab({
               Percentage of invoice total used as default down payment
             </p>
           </div>
+
         </div>
       </div>
 
@@ -334,10 +491,140 @@ export default function LayawaySettingsTab({
               Layaway Fee Schedule
             </h3>
             <p className="text-xs text-gray-500 mt-1">
-              Fixed 1-6 month rows. You can edit the rates, but cannot add or
-              remove rows.
+              Create one fee schedule per unit. Each unit uses the same 1-6
+              month structure, but with its own rates.
             </p>
           </div>
+          <button
+            onClick={handleAddUnitConfig}
+            disabled={feeRatesLoading || unitOptions.length === 0}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 text-sm disabled:opacity-50"
+          >
+            <FiEdit2 />
+            Add Unit Config
+          </button>
+        </div>
+
+        {feeConfigs.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-gray-300 bg-white p-6 text-sm text-gray-500">
+            No unit-specific layaway config exists yet.
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {feeConfigs.map((config) => {
+              const editableOptions = unitOptions.filter(
+                (unit) =>
+                  !isUnitInUse(unit.name, config.unitName) ||
+                  normalizeName(unit.name) === normalizeName(config.unitName),
+              );
+
+              return (
+                <div
+                  key={config.unitName}
+                  className="rounded-lg border border-gray-200 bg-white p-4 space-y-4"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <h4 className="text-sm font-semibold text-gray-900">
+                        {config.unitName}
+                      </h4>
+                      <p className="text-xs text-gray-500">
+                        Layaway rate schedule for this unit.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={config.unitName}
+                        onChange={(e) =>
+                          updateConfigUnitName(config.unitName, e.target.value)
+                        }
+                        className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                      >
+                        {editableOptions.map((unit) => (
+                          <option key={unit.id} value={unit.name}>
+                            {unit.name}
+                            {unit.isDefault ? " (Default)" : ""}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => removeConfig(config.unitName)}
+                        className="rounded-lg border border-red-200 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="overflow-hidden rounded-lg border border-gray-200 bg-gray-50">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-100">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+                            Month
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+                            Rate / {config.unitName}
+                          </th>
+                          <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500">
+                            Sample Fee on 1000 {config.unitName}
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200 bg-white">
+                        {defaultMonthRows.map((monthRow) => {
+                          const row = config.rates.find(
+                            (rate) => rate.months === monthRow.months,
+                          ) || {
+                            months: monthRow.months,
+                            ratePerGram: 0,
+                          };
+
+                          return (
+                            <tr key={`${config.unitName}-${monthRow.months}`}>
+                              <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                                {monthRow.months}{" "}
+                                {monthRow.months === 1 ? "Month" : "Months"}
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="flex items-center gap-2 max-w-xs">
+                                  <span className="text-xs text-gray-500">$</span>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={row.ratePerGram}
+                                    onChange={(e) =>
+                                      updateFeeRate(
+                                        config.unitName,
+                                        monthRow.months,
+                                        e.target.value,
+                                      )
+                                    }
+                                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                                  />
+                                  <span className="whitespace-nowrap text-xs text-gray-500">
+                                    per {config.unitName}
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 text-right text-sm font-medium text-gray-900">
+                                ${(sampleWeight * Number(row.ratePerGram || 0)).toFixed(2)}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="flex items-center justify-end gap-3">
           <button
             onClick={handleSaveFeeRates}
             disabled={feeRatesSaving || feeRatesLoading || !feeRatesChanged}
@@ -348,62 +635,10 @@ export default function LayawaySettingsTab({
           </button>
         </div>
 
-        <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Month
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Rate / Gram
-                </th>
-                <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Sample Fee on 1000g
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {feeRates
-                .slice()
-                .sort((left, right) => left.months - right.months)
-                .map((rate) => (
-                  <tr key={rate.months}>
-                    <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                      {rate.months} {rate.months === 1 ? "Month" : "Months"}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2 max-w-xs">
-                        <span className="text-xs text-gray-500">$</span>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={rate.ratePerGram}
-                          onChange={(e) =>
-                            handleFeeRateChange(rate.months, e.target.value)
-                          }
-                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
-                        />
-                        <span className="whitespace-nowrap text-xs text-gray-500">
-                          per gram
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-right text-sm font-medium text-gray-900">
-                      ${(sampleWeight * rate.ratePerGram).toFixed(2)}
-                    </td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
-        </div>
-
         <div className="flex items-center gap-2 text-xs text-gray-500">
           <FiEdit2 />
           <span>
-            The fee is calculated as total grams multiplied by the rate for the
-            selected layaway month.
+            The fee is calculated per item using the matching unit schedule.
           </span>
         </div>
       </div>

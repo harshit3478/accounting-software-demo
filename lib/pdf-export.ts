@@ -9,6 +9,7 @@ interface Invoice {
   amount: number;
   paidAmount: number;
   dueDate: string;
+  invoiceDate?: string | null;
   status: string;
   createdAt: string;
   description?: string | null;
@@ -752,6 +753,11 @@ export function buildSingleInvoicePdfBuffer(
   const defaultTermLines = Array.isArray(options?.defaultTermLines)
     ? options?.defaultTermLines
     : [];
+  const invoiceTermLines = Array.isArray(invoice.termsSnapshot)
+    ? invoice.termsSnapshot.filter((line) => String(line || "").trim())
+    : [];
+  const effectiveTermLines =
+    defaultTermLines.length > 0 ? defaultTermLines : invoiceTermLines;
 
   let logoW = 62;
   let logoH = 46;
@@ -832,7 +838,9 @@ export function buildSingleInvoicePdfBuffer(
     day: "numeric",
     year: "numeric",
   });
-  const invoiceDate = new Date(invoice.createdAt).toLocaleDateString("en-US", {
+  const invoiceDate = new Date(
+    invoice.invoiceDate || invoice.createdAt,
+  ).toLocaleDateString("en-US", {
     month: "long",
     day: "numeric",
     year: "numeric",
@@ -979,7 +987,7 @@ export function buildSingleInvoicePdfBuffer(
 
   const hasDescription = !!invoice.description;
   const hasLayaway = !!(invoice.isLayaway && invoice.layawayPlan);
-  const hasTerms = defaultTermLines.length > 0;
+  const hasTerms = effectiveTermLines.length > 0;
 
   if (hasDescription || hasLayaway || hasTerms) {
     if (y > 230) {
@@ -1038,7 +1046,7 @@ export function buildSingleInvoicePdfBuffer(
         doc.addPage();
         y = 20;
       }
-      defaultTermLines.forEach((termLine) => {
+      effectiveTermLines.forEach((termLine) => {
         doc.setFontSize(8);
         doc.setFont("helvetica", "normal");
         doc.setTextColor(60, 60, 60);
