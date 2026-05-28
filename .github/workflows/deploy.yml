@@ -1,7 +1,8 @@
 name: Deploy to DigitalOcean
 on:
   push:
-    branches: [ main ] 
+    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -23,7 +24,7 @@ jobs:
             fi
 
             cd /var/www/accounting
-            
+
             # 2. Add safe directory exception to avoid permission issues
             git config --global --add safe.directory /var/www/accounting
 
@@ -31,22 +32,67 @@ jobs:
             echo "🔵 Pulling latest code..."
             git fetch origin main
             git reset --hard origin/main
-            
+
             # 4. Install & Build
             echo "🔵 Installing dependencies..."
             npm install
-            
+
             # 5. Database Migrations
+            # MySQL DDL is non-transactional — if a migration is interrupted mid-way,
+            # Prisma records it as failed (P3009) even though most statements were applied.
+            # We detect this state and auto-resolve by checking if the schema diff is empty.
             echo "🔵 Running migrations..."
-            npx prisma migrate deploy
-            
+            MIGRATE_OUT=$(npx prisma migrate deploy 2>&1)
+            MIGRATE_EXIT=$?
+            echo "$MIGRATE_OUT"
+
+            if [ $MIGRATE_EXIT -ne 0 ] && echo "$MIGRATE_OUT" | grep -q "P3009"; then
+              echo "⚠️  P3009 detected: a migration was interrupted. Checking schema drift..."
+
+              # Extract the name of the failed migration from Prisma's output
+              FAILED_MIG=$(echo "$MIGRATE_OUT" | grep -oP 'The `\K[^`]+(?=` migration)')
+
+              if [ -z "$FAILED_MIG" ]; then
+                echo "🔴 Could not parse failed migration name. Manual intervention required."
+                echo "   Run: npx prisma migrate status"
+                exit 1
+              fi
+
+              echo "   Failed migration: $FAILED_MIG"
+
+              # Compare the live DB against the target schema.
+              # With --exit-code: exit 0 = no diff (DB matches schema), exit 2 = diff exists.
+              npx prisma migrate diff \
+                --from-url "$DATABASE_URL" \
+                --to-schema-datamodel prisma/schema.prisma \
+                --exit-code > /dev/null 2>&1
+              DIFF_EXIT=$?
+
+              if [ $DIFF_EXIT -eq 0 ]; then
+                echo "✅ Schema is fully applied. Marking migration as applied in Prisma..."
+                npx prisma migrate resolve --applied "$FAILED_MIG"
+                npx prisma migrate deploy
+              else
+                echo "🔴 Schema drift detected — the failed migration was only partially applied (exit $DIFF_EXIT)."
+                echo "   Manual resolution required:"
+                echo "   1. SSH into the server: ssh barleylux"
+                echo "   2. cd /var/www/accounting"
+                echo "   3. npx prisma migrate status"
+                echo "   4. Manually apply the missing SQL, then run:"
+                echo "      npx prisma migrate resolve --applied $FAILED_MIG"
+                exit 1
+              fi
+            elif [ $MIGRATE_EXIT -ne 0 ]; then
+              exit $MIGRATE_EXIT
+            fi
+
             # 6. Build Next.js
             echo "🔵 Building application..."
             npm run build
-            
+
             # 7. Restart PM2
             echo "🔵 Restarting PM2..."
             pm2 restart ecosystem.config.js --env production
             pm2 save
-            
+
             echo "✅ Deployment Successful!"
