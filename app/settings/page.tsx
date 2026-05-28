@@ -9,6 +9,7 @@ import UserManagementTab from "../../components/settings/UserManagementTab";
 import RegularizationsTab from "../../components/settings/RegularizationsTab";
 import UnitsTab from "../../components/settings/UnitsTab";
 import CustomersTab from "../../components/settings/CustomersTab";
+import LiveTypesTab from "../../components/settings/LiveTypesTab";
 import TermsConditionsTab from "../../components/settings/TermsConditionsTab";
 import ShippingFeeRulesTab from "../../components/settings/ShippingFeeRulesTab";
 import InsuranceRulesTab from "../../components/settings/InsuranceRulesTab";
@@ -27,6 +28,7 @@ import {
   Truck,
   CalendarClock,
   Shield,
+  MapPinned,
 } from "lucide-react";
 
 const TABS = [
@@ -35,6 +37,7 @@ const TABS = [
   { id: "regularizations", label: "Regularizations", icon: CalendarCheck2 },
   { id: "customers", label: "Clients", icon: UsersRound },
   { id: "units", label: "Units", icon: Ruler },
+  { id: "live-types", label: "Live Types", icon: MapPinned },
   { id: "terms", label: "Terms & Conditions", icon: FileText },
   { id: "shipping-fee-rules", label: "Shipping Fee Rules", icon: Truck },
   { id: "insurance-rules", label: "Insurance Rules", icon: Shield },
@@ -74,6 +77,8 @@ function SettingsContent() {
         return <CustomersTab showSuccess={showSuccess} showError={showError} />;
       case "units":
         return <UnitsTab showSuccess={showSuccess} showError={showError} />;
+      case "live-types":
+        return <LiveTypesTab showSuccess={showSuccess} showError={showError} />;
       case "terms":
         return (
           <TermsConditionsTab showSuccess={showSuccess} showError={showError} />

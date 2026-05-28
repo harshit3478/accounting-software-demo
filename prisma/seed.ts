@@ -179,7 +179,12 @@ async function main() {
 
   for (const rate of layawayFeeRates) {
     await (prisma as any).layawayFeeSetting.upsert({
-      where: { months: rate.months },
+      where: {
+        unitName_months: {
+          unitName: rate.unitName,
+          months: rate.months,
+        },
+      },
       update: { ...rate },
       create: rate,
     });

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "../../../../../lib/auth";
 import prisma from "../../../../../lib/prisma";
 import {
+  groupInvoiceSpreadsheetRows,
   parseInvoiceSpreadsheet,
   validateInvoiceSheetRows,
 } from "../../../../../lib/invoice-bulk-sheet";
@@ -16,6 +17,26 @@ export async function POST(request: NextRequest) {
 
     const formData = await request.formData();
     const file = formData.get("file") as File;
+    const skipMissingCustomers =
+      String(formData.get("skipMissingCustomers") || "false") === "true";
+    const customerEmailOverridesRaw = String(
+      formData.get("customerEmailOverrides") || "{}",
+    );
+    let customerEmailOverrides: Record<string, string> = {};
+
+    try {
+      const parsedOverrides = JSON.parse(customerEmailOverridesRaw);
+      if (parsedOverrides && typeof parsedOverrides === "object") {
+        customerEmailOverrides = Object.fromEntries(
+          Object.entries(parsedOverrides).map(([key, value]) => [
+            key,
+            String(value || "").trim(),
+          ]),
+        );
+      }
+    } catch {
+      customerEmailOverrides = {};
+    }
 
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
@@ -32,14 +53,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { invalidRows, duplicates } = validateInvoiceSheetRows(rows);
+    const { invalidRows } = validateInvoiceSheetRows(rows);
 
-    if (invalidRows.length > 0 || duplicates.length > 0) {
+    if (invalidRows.length > 0) {
       return NextResponse.json(
         {
           error: "Validation failed. All rows must be valid before upload.",
           validationErrors: invalidRows,
-          duplicates,
         },
         { status: 400 },
       );
@@ -48,6 +68,9 @@ export async function POST(request: NextRequest) {
     // Create all invoices in a transaction
     const createdInvoices = await prisma.$transaction(async (tx) => {
       const invoices = [];
+      const groupedRows = groupInvoiceSpreadsheetRows(rows, {
+        emailOverrides: customerEmailOverrides,
+      });
 
       // Get starting invoice number
       const year = new Date().getFullYear();
@@ -68,65 +91,140 @@ export async function POST(request: NextRequest) {
         nextNumber = lastNumber + 1;
       }
 
-      for (const row of rows) {
-        const email = row.email?.trim() || null;
+      for (const group of groupedRows) {
+        const representativeRow = group.rows[0];
+        const email = group.email || representativeRow?.email?.trim() || null;
         let customerId: number | null = null;
+        let customerName = representativeRow?.name || "Bulk Imported Customer";
 
         if (email) {
           const existingCustomer = await tx.customer.findFirst({
             where: { email },
-            select: { id: true },
+            select: { id: true, name: true },
           });
 
           if (existingCustomer) {
             customerId = existingCustomer.id;
+            customerName = existingCustomer.name;
+          } else if (skipMissingCustomers) {
+            continue;
           } else {
             const createdCustomer = await tx.customer.create({
               data: {
-                name: row.name,
+                name: customerName,
                 email,
               },
-              select: { id: true },
+              select: { id: true, name: true },
             });
             customerId = createdCustomer.id;
+            customerName = createdCustomer.name;
           }
         } else {
-          const createdCustomer = await tx.customer.create({
-            data: {
-              name: row.name,
-            },
-            select: { id: true },
-          });
-          customerId = createdCustomer.id;
+          continue;
         }
 
-        const subtotal = Number(row.amount);
-        const insuranceAmount = Number(row.insurance || 0);
-        const shippingFee = Number(row.shipping || 0);
+        const subtotal = group.rows.reduce(
+          (sum, row) => sum + Number(row.amount || 0),
+          0,
+        );
+        const insuranceAmount = group.rows.reduce(
+          (sum, row) => sum + Number(row.insurance || 0),
+          0,
+        );
+        const shippingFee = group.rows.reduce(
+          (sum, row) => sum + Number(row.shipping || 0),
+          0,
+        );
         const tax = 0;
         const discount = 0;
         const amount = subtotal + insuranceAmount + shippingFee;
-        const dueDate = row.dueDate
-          ? new Date(row.dueDate)
+        const dueDateRow = group.rows.find((row) => row.dueDate);
+        const dueDate = dueDateRow?.dueDate
+          ? new Date(dueDateRow.dueDate)
           : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-        const isLayaway = row.isLayaway === true;
-        const externalInvoiceNumber = row.externalInvoiceNumber?.trim() || null;
+        const isLayaway = group.rows.some((row) => row.isLayaway === true);
+        const externalInvoiceNumber =
+          group.rows
+            .find((row) => row.externalInvoiceNumber?.trim())
+            ?.externalInvoiceNumber?.trim() || null;
+
+        const liveTypeName =
+          group.rows.find((row) => row.liveType?.trim())?.liveType?.trim() ||
+          undefined;
+        const liveTypeCountry =
+          group.rows.find((row) => row.country?.trim())?.country?.trim() ||
+          undefined;
+        let liveTypeId: number | null = null;
+        let liveTypeSnapshot: string | null = null;
+
+        if (liveTypeName) {
+          const liveTypeModel = (tx as any).liveType;
+          if (liveTypeModel) {
+            let foundLiveType = await liveTypeModel.findFirst({
+              where: {
+                name: liveTypeName,
+                ...(liveTypeCountry ? { country: liveTypeCountry } : {}),
+              },
+              orderBy: { id: "asc" },
+            });
+
+            if (!foundLiveType) {
+              foundLiveType = await liveTypeModel.findUnique({
+                where: { name: liveTypeName },
+              });
+            }
+
+            if (!foundLiveType) {
+              try {
+                foundLiveType = await liveTypeModel.create({
+                  data: {
+                    name: liveTypeName,
+                    country: liveTypeCountry || "",
+                    isActive: true,
+                    isDefault: false,
+                    sortOrder: 0,
+                    createdBy: user.id,
+                  },
+                });
+              } catch (createError: any) {
+                if (createError?.code === "P2002") {
+                  foundLiveType = await liveTypeModel.findUnique({
+                    where: { name: liveTypeName },
+                  });
+                } else {
+                  throw createError;
+                }
+              }
+            }
+
+            if (foundLiveType) {
+              liveTypeId = foundLiveType.id;
+              liveTypeSnapshot = `${foundLiveType.name} (${foundLiveType.country})`;
+            }
+          }
+
+          if (!liveTypeSnapshot) {
+            liveTypeSnapshot = liveTypeCountry
+              ? `${liveTypeName} (${liveTypeCountry})`
+              : liveTypeName;
+          }
+        }
 
         // Generate sequential invoice number
         const invoiceNumber = `INV-${year}-${nextNumber.toString().padStart(4, "0")}`;
         nextNumber++;
 
-        const description = row.description?.trim() || "Bulk imported item";
-        const items = [
-          {
-            name: description,
-            quantity: 1,
-            price: subtotal,
-            vca116g: Number(row.vca116g || 0),
-            k18_121g: Number(row.k18_121g || 0),
-            vca118g: Number(row.vca118g || 0),
-          },
-        ];
+        const items = group.rows.map((row) => ({
+          name: row.description?.trim() || "Bulk imported item",
+          quantity: 1,
+          price: Number(row.amount || 0),
+          unit: row.unit?.trim() || undefined,
+          liveType: row.liveType?.trim() || undefined,
+          country: row.country?.trim() || undefined,
+          vca116g: Number(row.vca116g || 0),
+          k18_121g: Number(row.k18_121g || 0),
+          vca118g: Number(row.vca118g || 0),
+        }));
 
         // Calculate initial status
         const status = calculateInvoiceStatus(amount, 0, dueDate);
@@ -135,7 +233,7 @@ export async function POST(request: NextRequest) {
         const invoice = await tx.invoice.create({
           data: {
             invoiceNumber,
-            clientName: row.name,
+            clientName: customerName,
             customerId,
             items,
             subtotal,
@@ -152,6 +250,8 @@ export async function POST(request: NextRequest) {
             userId: user.id,
             externalInvoiceNumber,
             source: "xlsx_upload",
+            liveTypeId,
+            liveTypeSnapshot,
           },
         });
 

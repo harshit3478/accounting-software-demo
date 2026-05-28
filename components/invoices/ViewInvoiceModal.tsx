@@ -87,6 +87,15 @@ interface Invoice {
   description?: string | null;
   termsId?: number | null;
   termsSnapshot?: string[] | null;
+  liveTypeId?: number | null;
+  liveTypeSnapshot?: string | null;
+  liveType?: {
+    id: number;
+    name: string;
+    country: string;
+    isActive: boolean;
+    sortOrder: number;
+  } | null;
   terms?: {
     id: number;
     title?: string | null;
@@ -876,6 +885,18 @@ export default function ViewInvoiceModal({
                   </p>
                   <p className="text-sm font-mono text-gray-700">
                     {invoice.externalInvoiceNumber}
+                  </p>
+                </div>
+              )}
+              {(invoice.liveType?.name || invoice.liveTypeSnapshot) && (
+                <div>
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
+                    Live Type
+                  </p>
+                  <p className="text-sm font-medium text-gray-700">
+                    {invoice.liveType
+                      ? `${invoice.liveType.name} (${invoice.liveType.country})`
+                      : invoice.liveTypeSnapshot}
                   </p>
                 </div>
               )}

@@ -136,6 +136,27 @@ export default function InvoiceTableRow({
         )}
       </td>
       <td
+        className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 hidden lg:table-cell max-w-[160px] truncate"
+        title={
+          invoice.liveType?.name
+            ? `${invoice.liveType.name} (${invoice.liveType.country})`
+            : invoice.liveTypeSnapshot || ""
+        }
+      >
+        {invoice.liveType?.name ? (
+          <span>
+            {invoice.liveType.name}
+            <span className="text-xs text-gray-400 ml-1">
+              ({invoice.liveType.country})
+            </span>
+          </span>
+        ) : invoice.liveTypeSnapshot ? (
+          invoice.liveTypeSnapshot
+        ) : (
+          <span className="text-gray-400">-</span>
+        )}
+      </td>
+      <td
         className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 max-w-[120px] truncate hidden xl:table-cell"
         title={invoice.items?.map((i) => i.name).join(", ")}
       >

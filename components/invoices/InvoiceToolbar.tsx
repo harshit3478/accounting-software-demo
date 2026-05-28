@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Search,
   Filter,
@@ -20,14 +20,25 @@ import { format } from "date-fns";
 import type {
   InvoiceStatusFilter,
   InvoiceTypeFilter,
+  InvoiceLiveTypeFilter,
   InvoiceShipmentFilter,
 } from "../../hooks/useInvoices";
+
+interface LiveTypeOption {
+  id: number;
+  name: string;
+  country: string;
+  isActive: boolean;
+  sortOrder: number;
+}
 
 interface InvoiceToolbarProps {
   statusFilter: InvoiceStatusFilter;
   onStatusFilterChange: (filter: InvoiceStatusFilter) => void;
   typeFilter: InvoiceTypeFilter;
   onTypeFilterChange: (filter: InvoiceTypeFilter) => void;
+  liveTypeFilter: InvoiceLiveTypeFilter;
+  onLiveTypeFilterChange: (filter: InvoiceLiveTypeFilter) => void;
   shipmentFilter: InvoiceShipmentFilter;
   onShipmentFilterChange: (filter: InvoiceShipmentFilter) => void;
   layawayOverdue: boolean;
@@ -48,6 +59,8 @@ export default function InvoiceToolbar({
   onStatusFilterChange,
   typeFilter,
   onTypeFilterChange,
+  liveTypeFilter,
+  onLiveTypeFilterChange,
   shipmentFilter,
   onShipmentFilterChange,
   layawayOverdue,
@@ -63,12 +76,20 @@ export default function InvoiceToolbar({
   onClearSelection,
 }: InvoiceToolbarProps) {
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [liveTypes, setLiveTypes] = useState<LiveTypeOption[]>([]);
   const [dateFrom, setDateFrom] = useState<Date | undefined>(
     dateRange?.start ? new Date(dateRange.start) : undefined,
   );
   const [dateTo, setDateTo] = useState<Date | undefined>(
     dateRange?.end ? new Date(dateRange.end) : undefined,
   );
+
+  useEffect(() => {
+    fetch("/api/live-types?all=true")
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => setLiveTypes(Array.isArray(data) ? data : []))
+      .catch(() => setLiveTypes([]));
+  }, []);
 
   const handleApplyDateRange = () => {
     if (dateFrom && dateTo) {
@@ -178,6 +199,53 @@ export default function InvoiceToolbar({
                     }
                   >
                     {type}
+                  </div>
+                ))}
+              </div>
+            </PopoverContent>
+          </Popover>
+
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className="h-9 border-dashed">
+                <Filter className="mr-2 h-4 w-4" />
+                Live Type
+                {liveTypeFilter !== "all" && (
+                  <>
+                    <span className="mx-2 h-4 w-[1px] bg-gray-200" />
+                    <span className="text-blue-600 max-w-[120px] truncate">
+                      {(() => {
+                        const selected = liveTypes.find(
+                          (item) => String(item.id) === liveTypeFilter,
+                        );
+                        return selected
+                          ? `${selected.name} (${selected.country})`
+                          : liveTypeFilter;
+                      })()}
+                    </span>
+                  </>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[240px] p-0" align="start">
+              <div className="p-2">
+                {[
+                  ["all", "All live types"],
+                  ...liveTypes.map((item) => [
+                    String(item.id),
+                    `${item.name} (${item.country})`,
+                  ]),
+                ].map(([value, label]) => (
+                  <div
+                    key={value}
+                    className={`px-3 py-2 text-sm rounded-md cursor-pointer hover:bg-gray-100 ${
+                      liveTypeFilter === value
+                        ? "bg-blue-50 text-blue-700 font-medium"
+                        : "text-gray-700"
+                    }`}
+                    onClick={() => onLiveTypeFilterChange(value)}
+                  >
+                    {label}
                   </div>
                 ))}
               </div>

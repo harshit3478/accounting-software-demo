@@ -5,6 +5,9 @@ export interface SpreadsheetInvoiceRow {
   name: string;
   email?: string;
   description: string;
+  unit?: string;
+  liveType?: string;
+  country?: string;
   vca116g: number;
   k18_121g: number;
   vca118g: number;
@@ -32,6 +35,9 @@ const HEADER_ALIASES: Record<string, string[]> = {
   name: ["NAME", "CLIENT", "CLIENTNAME", "CUSTOMER", "CUSTOMERNAME"],
   email: ["EMAIL", "E-MAIL", "CLIENTEMAIL", "CUSTOMEREMAIL"],
   description: ["DESCRIPTION", "DESC", "ITEM", "ITEMS"],
+  unit: ["UNIT", "UNITS", "QTYUNIT"],
+  liveType: ["LIVETYPE", "LIVE TYPE", "LIVETYPENAME"],
+  country: ["COUNTRY", "LIVETYPECOUNTRY"],
   vca116g: ["VCA116G", "VCA116/G"],
   k18_121g: ["18K121/G", "18K121G"],
   vca118g: ["VCA118G", "VCA118/G"],
@@ -165,6 +171,9 @@ export async function parseInvoiceSpreadsheet(
     name: findColumnIndex(normalizedHeaders, HEADER_ALIASES.name),
     email: findColumnIndex(normalizedHeaders, HEADER_ALIASES.email),
     description: findColumnIndex(normalizedHeaders, HEADER_ALIASES.description),
+    unit: findColumnIndex(normalizedHeaders, HEADER_ALIASES.unit),
+    liveType: findColumnIndex(normalizedHeaders, HEADER_ALIASES.liveType),
+    country: findColumnIndex(normalizedHeaders, HEADER_ALIASES.country),
     vca116g: findColumnIndex(normalizedHeaders, HEADER_ALIASES.vca116g),
     k18_121g: findColumnIndex(normalizedHeaders, HEADER_ALIASES.k18_121g),
     vca118g: findColumnIndex(normalizedHeaders, HEADER_ALIASES.vca118g),
@@ -197,6 +206,14 @@ export async function parseInvoiceSpreadsheet(
       columnMap.description >= 0
         ? String(row[columnMap.description] ?? "").trim()
         : "";
+    const unitValue =
+      columnMap.unit >= 0 ? String(row[columnMap.unit] ?? "").trim() : "";
+    const liveTypeValue =
+      columnMap.liveType >= 0
+        ? String(row[columnMap.liveType] ?? "").trim()
+        : "";
+    const countryValue =
+      columnMap.country >= 0 ? String(row[columnMap.country] ?? "").trim() : "";
 
     const amountNumber = parseNumber(row[columnMap.amount]);
     const vca116g =
@@ -227,6 +244,9 @@ export async function parseInvoiceSpreadsheet(
       name: nameValue,
       email: emailValue,
       description: descriptionValue,
+      unit: unitValue || undefined,
+      liveType: liveTypeValue || undefined,
+      country: countryValue || undefined,
       vca116g: Number.isFinite(vca116g) ? vca116g : 0,
       k18_121g: Number.isFinite(k18_121g) ? k18_121g : 0,
       vca118g: Number.isFinite(vca118g) ? vca118g : 0,
@@ -327,6 +347,9 @@ export interface InvoiceSheetExportRow {
   name: string;
   email?: string;
   description: string;
+  unit?: string;
+  liveType?: string;
+  country?: string;
   vca116g?: number;
   k18_121g?: number;
   vca118g?: number;
@@ -354,6 +377,9 @@ export function buildInvoiceSheetWorkbook(
       "NAME",
       "EMAIL",
       "DESCRIPTION",
+      "UNIT",
+      "LIVE TYPE",
+      "COUNTRY",
       "VCA 116/G",
       "18K 121/G",
       "VCA 118/G",
@@ -390,6 +416,9 @@ export function buildInvoiceSheetWorkbook(
       row.name,
       row.email || "",
       row.description,
+      row.unit || "",
+      row.liveType || "",
+      row.country || "",
       vca116g,
       k18_121g,
       vca118g,
@@ -414,14 +443,17 @@ export function buildInvoiceSheetWorkbook(
 
   const worksheet = XLSX.utils.aoa_to_sheet(aoa);
   worksheet["!merges"] = [
-    { s: { r: 0, c: 1 }, e: { r: 0, c: 9 } },
-    { s: { r: 1, c: 1 }, e: { r: 1, c: 9 } },
+    { s: { r: 0, c: 1 }, e: { r: 0, c: 12 } },
+    { s: { r: 1, c: 1 }, e: { r: 1, c: 12 } },
   ];
   worksheet["!cols"] = [
     { wch: 5 },
     { wch: 28 },
     { wch: 30 },
     { wch: 38 },
+    { wch: 12 },
+    { wch: 18 },
+    { wch: 18 },
     { wch: 12 },
     { wch: 12 },
     { wch: 12 },
@@ -441,4 +473,41 @@ export function workbookToBuffer(workbook: XLSX.WorkBook): Buffer {
     type: "buffer",
     bookType: "xlsx",
   }) as Buffer;
+}
+
+export function groupInvoiceSpreadsheetRows(
+  rows: SpreadsheetInvoiceRow[],
+  options?: {
+    emailOverrides?: Record<string, string>;
+  },
+) {
+  const groups = new Map<
+    string,
+    {
+      key: string;
+      email?: string;
+      rows: SpreadsheetInvoiceRow[];
+    }
+  >();
+
+  rows.forEach((row) => {
+    const overrideEmail = options?.emailOverrides?.[String(row.rowNumber)]
+      ?.trim()
+      .toLowerCase();
+    const normalizedEmail =
+      row.email?.trim().toLowerCase() || overrideEmail || "";
+    const groupKey = normalizedEmail || `row-${row.rowNumber}`;
+
+    if (!groups.has(groupKey)) {
+      groups.set(groupKey, {
+        key: groupKey,
+        email: normalizedEmail || undefined,
+        rows: [],
+      });
+    }
+
+    groups.get(groupKey)!.rows.push(row);
+  });
+
+  return Array.from(groups.values());
 }

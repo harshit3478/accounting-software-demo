@@ -20,6 +20,7 @@ interface InvoiceTableProps {
   searchTerm: string;
   statusFilter: string;
   typeFilter: string;
+  liveTypeFilter: string;
   shipmentFilter: string;
   sortBy: string;
   sortDirection: "asc" | "desc";
@@ -46,6 +47,7 @@ export default function InvoiceTable({
   searchTerm,
   statusFilter,
   typeFilter,
+  liveTypeFilter,
   shipmentFilter,
   sortBy,
   sortDirection,
@@ -102,6 +104,7 @@ export default function InvoiceTable({
             {searchTerm ||
             statusFilter !== "all" ||
             typeFilter !== "all" ||
+            liveTypeFilter !== "all" ||
             shipmentFilter !== "all"
               ? "Try adjusting your search or filter to find what you're looking for."
               : "Get started by creating your first invoice."}
@@ -157,6 +160,9 @@ export default function InvoiceTable({
                 <div className="flex items-center gap-1">
                   Client {getSortIcon("client")}
                 </div>
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 hidden lg:table-cell min-w-[150px]">
+                Live Type
               </th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 hidden xl:table-cell">
                 Items

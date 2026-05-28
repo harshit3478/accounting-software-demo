@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
+import ConfirmModal from "./ConfirmModal";
 
 interface ValidationResult {
   valid: boolean;
@@ -13,6 +14,17 @@ interface ValidationResult {
   duplicates: Array<{
     rows: number[];
     reason: string;
+  }>;
+  missingEmailRows?: Array<{
+    name: string;
+    rows: number[];
+    rowCount: number;
+  }>;
+  missingCustomers?: Array<{
+    email: string;
+    name: string;
+    rows: number[];
+    rowCount: number;
   }>;
 }
 
@@ -74,6 +86,12 @@ export default function CSVUploadModal({
   const [isUploading, setIsUploading] = useState(false);
   const [validationResult, setValidationResult] =
     useState<ValidationResult | null>(null);
+  const [showMissingEmailPrompt, setShowMissingEmailPrompt] = useState(false);
+  const [showMissingCustomerPrompt, setShowMissingCustomerPrompt] =
+    useState(false);
+  const [customerEmailOverrides, setCustomerEmailOverrides] = useState<
+    Record<string, string>
+  >({});
   const [error, setError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -82,6 +100,9 @@ export default function CSVUploadModal({
   const handleClose = () => {
     setFile(null);
     setValidationResult(null);
+    setShowMissingEmailPrompt(false);
+    setShowMissingCustomerPrompt(false);
+    setCustomerEmailOverrides({});
     setError("");
     onClose();
   };
@@ -131,6 +152,9 @@ export default function CSVUploadModal({
     setFile(selectedFile);
     setError("");
     setValidationResult(null);
+    setShowMissingEmailPrompt(false);
+    setShowMissingCustomerPrompt(false);
+    setCustomerEmailOverrides({});
 
     // Auto-validate
     await validateFile(selectedFile);
@@ -164,7 +188,10 @@ export default function CSVUploadModal({
     }
   };
 
-  const handleUpload = async () => {
+  const performUpload = async (
+    skipMissingCustomers = false,
+    emailOverrides: Record<string, string> = {},
+  ) => {
     if (!file || !validationResult?.valid) return;
 
     setIsUploading(true);
@@ -173,6 +200,8 @@ export default function CSVUploadModal({
     try {
       const formData = new FormData();
       formData.append("file", file);
+      formData.append("skipMissingCustomers", String(skipMissingCustomers));
+      formData.append("customerEmailOverrides", JSON.stringify(emailOverrides));
 
       const res = await fetch(uploadUrl, {
         method: "POST",
@@ -180,7 +209,7 @@ export default function CSVUploadModal({
       });
 
       if (res.ok) {
-        const result = await res.json();
+        await res.json();
         onSuccess();
         handleClose();
       } else {
@@ -193,6 +222,33 @@ export default function CSVUploadModal({
     } finally {
       setIsUploading(false);
     }
+  };
+
+  const handleUploadClick = () => {
+    if (!file || !validationResult?.valid) return;
+
+    if ((validationResult.missingEmailRows?.length || 0) > 0) {
+      setShowMissingEmailPrompt(true);
+      return;
+    }
+
+    if ((validationResult.missingCustomers?.length || 0) > 0) {
+      setShowMissingCustomerPrompt(true);
+      return;
+    }
+
+    void performUpload(false);
+  };
+
+  const continueFromMissingEmailPrompt = () => {
+    setShowMissingEmailPrompt(false);
+
+    if ((validationResult?.missingCustomers?.length || 0) > 0) {
+      setShowMissingCustomerPrompt(true);
+      return;
+    }
+
+    void performUpload(false, customerEmailOverrides);
   };
 
   const downloadTemplate = async () => {
@@ -463,6 +519,47 @@ export default function CSVUploadModal({
                             ))}
                           </div>
                         )}
+
+                        {(validationResult.missingEmailRows?.length || 0) >
+                          0 && (
+                          <div className="text-xs p-2 bg-sky-50 rounded border border-sky-200">
+                            <p className="font-semibold text-sky-900 mb-1">
+                              Rows without email:
+                            </p>
+                            {validationResult.missingEmailRows?.map(
+                              (item, idx) => (
+                                <p key={idx} className="text-sky-700">
+                                  • {item.name || "Unnamed customer"} (rows{" "}
+                                  {item.rows.join(", ")})
+                                </p>
+                              ),
+                            )}
+                            <p className="text-sky-700 mt-1">
+                              You will be asked to enter an email before upload.
+                            </p>
+                          </div>
+                        )}
+
+                        {(validationResult.missingCustomers?.length || 0) >
+                          0 && (
+                          <div className="text-xs p-2 bg-amber-50 rounded border border-amber-200">
+                            <p className="font-semibold text-amber-900 mb-1">
+                              Missing customers detected:
+                            </p>
+                            {validationResult.missingCustomers?.map(
+                              (customer, idx) => (
+                                <p key={idx} className="text-amber-700">
+                                  • {customer.email} ({customer.rowCount} row
+                                  {customer.rowCount !== 1 ? "s" : ""})
+                                </p>
+                              ),
+                            )}
+                            <p className="text-amber-700 mt-1">
+                              Upload will ask whether to create these customers
+                              or skip those rows.
+                            </p>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -530,7 +627,7 @@ export default function CSVUploadModal({
             Cancel
           </button>
           <button
-            onClick={handleUpload}
+            onClick={handleUploadClick}
             disabled={
               !file || !validationResult?.valid || isValidating || isUploading
             }
@@ -543,6 +640,85 @@ export default function CSVUploadModal({
           </button>
         </div>
       </div>
+
+      <ConfirmModal
+        isOpen={showMissingCustomerPrompt}
+        title="Missing customer records"
+        message={`There ${validationResult?.missingCustomers?.length === 1 ? "is" : "are"} ${validationResult?.missingCustomers?.length || 0} email${validationResult?.missingCustomers?.length === 1 ? "" : "s"} not found in Customers. Create them now, or skip those rows and continue with the rest?`}
+        confirmText="Create customers"
+        cancelText="Skip missing rows"
+        onConfirm={() => {
+          setShowMissingCustomerPrompt(false);
+          void performUpload(false, customerEmailOverrides);
+        }}
+        onCancel={() => {
+          setShowMissingCustomerPrompt(false);
+          void performUpload(true, customerEmailOverrides);
+        }}
+        isLoading={isUploading}
+      />
+
+      {showMissingEmailPrompt && validationResult?.missingEmailRows && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-xl rounded-xl bg-white shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-gray-200">
+              <h3 className="text-2xl font-bold text-gray-900">
+                Add emails for missing rows
+              </h3>
+              <p className="text-sm text-gray-500 mt-1">
+                Enter an email to attach these rows to an existing customer or
+                create a new one. Leave it blank to skip that row.
+              </p>
+            </div>
+            <div className="p-6 space-y-4">
+              {validationResult.missingEmailRows.map((item) => (
+                <div
+                  key={item.rows.join("-")}
+                  className="space-y-2 rounded-lg border border-gray-200 p-4"
+                >
+                  <div>
+                    <p className="font-medium text-gray-900">
+                      {item.name || "Unnamed customer"}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      Row{item.rowCount > 1 ? "s" : ""} {item.rows.join(", ")}
+                    </p>
+                  </div>
+                  <input
+                    type="email"
+                    value={customerEmailOverrides[item.rows[0]] || ""}
+                    onChange={(e) =>
+                      setCustomerEmailOverrides((current) => ({
+                        ...current,
+                        [item.rows[0]]: e.target.value,
+                      }))
+                    }
+                    placeholder="customer@email.com"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-end gap-3 border-t border-gray-200 p-6">
+              <button
+                onClick={() => {
+                  setShowMissingEmailPrompt(false);
+                  setCustomerEmailOverrides({});
+                }}
+                className="px-5 py-2 rounded-lg text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={continueFromMissingEmailPrompt}
+                className="px-5 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

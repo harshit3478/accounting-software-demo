@@ -27,6 +27,14 @@ interface DueDateReasonOption {
   sortOrder: number;
 }
 
+interface LiveTypeOption {
+  id: number;
+  name: string;
+  country: string;
+  isActive: boolean;
+  sortOrder: number;
+}
+
 interface TermOption {
   id: number;
   title: string | null;
@@ -81,6 +89,9 @@ interface Invoice {
   createdAt: string;
   termsId?: number | null;
   termsSnapshot?: string[] | null;
+  liveTypeId?: number | null;
+  liveTypeSnapshot?: string | null;
+  liveType?: LiveTypeOption | null;
   terms?: TermOption | null;
   layawayPlan?: LayawayPlan | null;
 }
@@ -111,6 +122,10 @@ export default function EditInvoiceModal({
   const [dueDateReason, setDueDateReason] = useState("");
   const [dueDateReasons, setDueDateReasons] = useState<DueDateReasonOption[]>(
     [],
+  );
+  const [liveTypes, setLiveTypes] = useState<LiveTypeOption[]>([]);
+  const [selectedLiveTypeId, setSelectedLiveTypeId] = useState<number | "none">(
+    "none",
   );
   const [items, setItems] = useState<InvoiceItem[]>([
     { name: "", quantity: 1, price: 0, unit: "grams" },
@@ -218,6 +233,22 @@ export default function EditInvoiceModal({
         })
         .catch(() => setTermsOptions([]));
 
+      fetch("/api/live-types?all=true")
+        .then((res) => (res.ok ? res.json() : []))
+        .then((data) => {
+          const normalized: LiveTypeOption[] = Array.isArray(data)
+            ? data.map((item: any) => ({
+                id: item.id,
+                name: item.name,
+                country: item.country,
+                isActive: !!item.isActive,
+                sortOrder: Number(item.sortOrder || 0),
+              }))
+            : [];
+          setLiveTypes(normalized);
+        })
+        .catch(() => setLiveTypes([]));
+
       fetch("/api/layaway-fees")
         .then((res) => (res.ok ? res.json() : []))
         .then((data) => {
@@ -295,6 +326,9 @@ export default function EditInvoiceModal({
       setShippingFee(Number(invoice.shippingFee || 0));
       setInsuranceAmount(Number(invoice.insuranceAmount || 0));
       setIsLayaway(invoice.isLayaway);
+      setSelectedLiveTypeId(
+        invoice.liveTypeId || invoice.liveType?.id || "none",
+      );
       setLayawayMonths(invoice.layawayPlan?.months || 3);
       setLayawayFrequency(invoice.layawayPlan?.paymentFrequency || "monthly");
       setLayawayDownPayment(Number(invoice.layawayPlan?.downPayment || 0));
@@ -521,6 +555,7 @@ export default function EditInvoiceModal({
           discount: calculateDiscountAmount(),
           shippingFee,
           insuranceAmount,
+          liveTypeId: selectedLiveTypeId === "none" ? null : selectedLiveTypeId,
           invoiceDate,
           dueDate,
           dueDateReason: requiresDueDateReason ? dueDateReason.trim() : null,
@@ -1057,6 +1092,56 @@ export default function EditInvoiceModal({
                   </div>
                 </div>
               )}
+
+              <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-lg mb-4 space-y-3">
+                <h4 className="text-sm font-semibold text-emerald-900">
+                  Live Type
+                </h4>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Select Live Type
+                  </label>
+                  <select
+                    value={String(selectedLiveTypeId)}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      if (value === "none") {
+                        setSelectedLiveTypeId("none");
+                        return;
+                      }
+                      const parsed = parseInt(value, 10);
+                      if (!Number.isNaN(parsed)) setSelectedLiveTypeId(parsed);
+                    }}
+                    className="w-full px-4 py-2 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  >
+                    <option value="none">No live type</option>
+                    {liveTypes.map((liveType) => (
+                      <option key={liveType.id} value={liveType.id}>
+                        {liveType.name} ({liveType.country})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {selectedLiveTypeId !== "none" && (
+                  <div className="rounded-lg border border-emerald-200 bg-white p-3 text-xs text-gray-700">
+                    <p className="font-semibold text-emerald-900 mb-1">
+                      Selected live type
+                    </p>
+                    <p>
+                      {
+                        liveTypes.find((item) => item.id === selectedLiveTypeId)
+                          ?.name
+                      }{" "}
+                      (
+                      {
+                        liveTypes.find((item) => item.id === selectedLiveTypeId)
+                          ?.country
+                      }
+                      )
+                    </p>
+                  </div>
+                )}
+              </div>
 
               <div className="border-b border-gray-200 pb-4 mb-4">
                 <h4 className="text-sm font-semibold text-gray-900 mb-3">

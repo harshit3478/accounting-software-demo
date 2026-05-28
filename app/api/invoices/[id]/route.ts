@@ -73,6 +73,7 @@ export async function PUT(
       layawayPlan,
       termsId,
       newTerms,
+      liveTypeId,
       editReason,
     } = await request.json();
 
@@ -99,6 +100,9 @@ export async function PUT(
     const existingInvoiceAny = existingInvoice as any;
     const existingTermsId = existingInvoice.termsId ?? null;
     const existingTermsSnapshot = existingInvoiceAny.termsSnapshot ?? null;
+    const existingLiveTypeId = existingInvoice.liveTypeId ?? null;
+    const existingLiveTypeSnapshot =
+      existingInvoiceAny.liveTypeSnapshot ?? null;
     const normalizedClientName =
       typeof clientName === "string"
         ? clientName.trim()
@@ -222,6 +226,8 @@ export async function PUT(
 
     let resolvedTermsId: number | null = existingTermsId;
     let resolvedTermsSnapshot: any = existingTermsSnapshot;
+    let resolvedLiveTypeId: number | null = existingLiveTypeId;
+    let resolvedLiveTypeSnapshot: string | null = existingLiveTypeSnapshot;
 
     if (termsId !== undefined) {
       if (termsId === null) {
@@ -262,6 +268,35 @@ export async function PUT(
         });
         resolvedTermsId = createdTerm.id;
         resolvedTermsSnapshot = createdTerm.lines;
+      }
+    }
+
+    if (liveTypeId !== undefined) {
+      if (liveTypeId === null) {
+        resolvedLiveTypeId = null;
+        resolvedLiveTypeSnapshot = null;
+      } else {
+        const parsedLiveTypeId = Number(liveTypeId);
+        if (!Number.isFinite(parsedLiveTypeId)) {
+          return NextResponse.json(
+            { error: "Invalid live type id" },
+            { status: 400 },
+          );
+        }
+
+        const foundLiveType = await (prisma as any).liveType.findUnique({
+          where: { id: parsedLiveTypeId },
+        });
+
+        if (!foundLiveType) {
+          return NextResponse.json(
+            { error: "Selected live type not found" },
+            { status: 404 },
+          );
+        }
+
+        resolvedLiveTypeId = foundLiveType.id;
+        resolvedLiveTypeSnapshot = `${foundLiveType.name} (${foundLiveType.country})`;
       }
     }
 
@@ -325,6 +360,8 @@ export async function PUT(
       isLayaway: isLayaway || false,
       termsId: resolvedTermsId,
       termsSnapshot: resolvedTermsSnapshot,
+      liveTypeId: resolvedLiveTypeId,
+      liveTypeSnapshot: resolvedLiveTypeSnapshot,
       customerId: resolvedCustomerId,
     };
 
@@ -387,6 +424,7 @@ export async function PUT(
     );
     trackChange("isLayaway", existingInvoice.isLayaway, nextData.isLayaway);
     trackChange("termsId", existingInvoice.termsId || null, nextData.termsId);
+    trackChange("liveTypeId", existingLiveTypeId || null, nextData.liveTypeId);
     trackChange(
       "customerId",
       existingInvoice.customerId || null,

@@ -102,6 +102,7 @@ export async function GET(request: NextRequest) {
     const showInactive = searchParams.get("showInactive") === "true";
     const customerId = searchParams.get("customerId");
     const shipment = searchParams.get("shipment") || "all";
+    const liveType = searchParams.get("liveType") || "all";
 
     // Sort params
     const sortBy = searchParams.get("sortBy") || "date";
@@ -163,6 +164,13 @@ export async function GET(request: NextRequest) {
     // Customer filter — see all invoices for a specific client
     if (customerId) {
       where.customerId = parseInt(customerId);
+    }
+
+    if (liveType !== "all") {
+      const parsedLiveTypeId = parseInt(liveType, 10);
+      if (Number.isFinite(parsedLiveTypeId)) {
+        where.liveTypeId = parsedLiveTypeId;
+      }
     }
 
     // Type filter
@@ -243,6 +251,7 @@ export async function GET(request: NextRequest) {
       payments: { include: { method: true } },
       paymentMatches: true,
       terms: true,
+      liveType: true,
       shippingFeeRule: true,
       customer: {
         select: {
@@ -340,6 +349,12 @@ export async function GET(request: NextRequest) {
           }
         : null,
       termsSnapshot: invoice.termsSnapshot || null,
+      liveTypeSnapshot: invoice.liveTypeSnapshot || null,
+      liveType: invoice.liveType
+        ? {
+            ...invoice.liveType,
+          }
+        : null,
       payments: (invoice.payments || []).map((payment: any) => ({
         ...payment,
         amount: payment.amount?.toNumber
@@ -413,6 +428,7 @@ export async function POST(request: NextRequest) {
       useDefaultTerms,
       termsId,
       newTerms,
+      liveTypeId,
       shippingFee,
       shippingFeeRuleId,
       insuranceAmount,
@@ -602,6 +618,8 @@ export async function POST(request: NextRequest) {
     // Handle terms: either attach default, attach existing terms by id, or create new terms
     let attachedTermsId: number | null = null;
     let termsSnapshot: any = null;
+    let resolvedLiveTypeId: number | null = null;
+    let resolvedLiveTypeSnapshot: string | null = null;
 
     if (useDefaultTerms) {
       const defaultTerm = await (prisma as any).term.findFirst({
@@ -630,6 +648,30 @@ export async function POST(request: NextRequest) {
       termsSnapshot = createdTerm.lines;
     }
 
+    if (liveTypeId !== undefined && liveTypeId !== null && liveTypeId !== "") {
+      const parsedLiveTypeId = Number(liveTypeId);
+      if (!Number.isFinite(parsedLiveTypeId)) {
+        return NextResponse.json(
+          { error: "Invalid live type id" },
+          { status: 400 },
+        );
+      }
+
+      const foundLiveType = await (prisma as any).liveType.findUnique({
+        where: { id: parsedLiveTypeId },
+      });
+
+      if (!foundLiveType) {
+        return NextResponse.json(
+          { error: "Selected live type not found" },
+          { status: 404 },
+        );
+      }
+
+      resolvedLiveTypeId = foundLiveType.id;
+      resolvedLiveTypeSnapshot = `${foundLiveType.name} (${foundLiveType.country})`;
+    }
+
     const invoice = await (prisma as any).invoice.create({
       data: {
         userId: user.id,
@@ -655,6 +697,8 @@ export async function POST(request: NextRequest) {
         source: source || "manual",
         termsId: attachedTermsId,
         termsSnapshot: termsSnapshot || null,
+        liveTypeId: resolvedLiveTypeId,
+        liveTypeSnapshot: resolvedLiveTypeSnapshot,
         shippingFeeRuleId: shippingFeeRuleId || null,
       },
     });

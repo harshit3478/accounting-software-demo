@@ -78,6 +78,7 @@ model User {
   creditTransactions         CustomerCreditTransaction[]
   shippingFeeRulesCreated    ShippingFeeRule[]
   dueDateReasonsCreated      DueDateReason[]
+  liveTypesCreated           LiveType[]
   chequesUploaded            ChequeVault[]               @relation("ChequeUploadedBy")
   chequesApproved            ChequeVault[]               @relation("ChequeApprovedBy")
 
@@ -126,6 +127,8 @@ model Invoice {
   // Terms and conditions attached to this invoice (snapshot stored for immutability)
   termsId           Int?
   termsSnapshot     Json?
+  liveTypeId        Int?
+  liveTypeSnapshot  String? @db.VarChar(255)
   shippingFeeRuleId Int?
 
   user               User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -135,11 +138,30 @@ model Invoice {
   editHistory        InvoiceEditHistory[]
   creditTransactions CustomerCreditTransaction[]
   terms              Term?                       @relation(fields: [termsId], references: [id], onDelete: SetNull)
+  liveType           LiveType?                   @relation(fields: [liveTypeId], references: [id], onDelete: SetNull)
   layawayPlan        LayawayPlan?
   shippingFeeRule    ShippingFeeRule?            @relation(fields: [shippingFeeRuleId], references: [id], onDelete: SetNull)
   chequeAllocations  ChequeVaultInvoice[]
 
   @@map("invoices")
+}
+
+model LiveType {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  country   String
+  isActive  Boolean  @default(true)
+  isDefault Boolean  @default(false)
+  sortOrder Int      @default(0)
+  createdBy Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  creator  User      @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+  invoices Invoice[]
+
+  @@index([isActive, sortOrder])
+  @@map("live_types")
 }
 
 model ShippingFeeRule {

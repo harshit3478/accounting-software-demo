@@ -32,6 +32,15 @@ export interface Invoice {
   description?: string | null;
   termsId?: number | null;
   termsSnapshot?: string[] | null;
+  liveTypeId?: number | null;
+  liveTypeSnapshot?: string | null;
+  liveType?: {
+    id: number;
+    name: string;
+    country: string;
+    isActive: boolean;
+    sortOrder: number;
+  } | null;
   terms?: {
     id: number;
     title?: string | null;
@@ -93,6 +102,7 @@ export type InvoiceStatusFilter =
   | "abandoned"
   | "inactive";
 export type InvoiceTypeFilter = "all" | "cash" | "layaway";
+export type InvoiceLiveTypeFilter = string;
 export type InvoiceShipmentFilter =
   | "all"
   | "none"
@@ -113,6 +123,8 @@ interface UseInvoicesReturn {
   setStatusFilter: (filter: InvoiceStatusFilter) => void;
   typeFilter: InvoiceTypeFilter;
   setTypeFilter: (filter: InvoiceTypeFilter) => void;
+  liveTypeFilter: InvoiceLiveTypeFilter;
+  setLiveTypeFilter: (filter: InvoiceLiveTypeFilter) => void;
   shipmentFilter: InvoiceShipmentFilter;
   setShipmentFilter: (filter: InvoiceShipmentFilter) => void;
   layawayOverdue: boolean;
@@ -225,6 +237,8 @@ export function useInvoices(
   const [typeFilter, setTypeFilterState] = useState<InvoiceTypeFilter>(
     (searchParams.get("type") as InvoiceTypeFilter) || "all",
   );
+  const [liveTypeFilter, setLiveTypeFilterState] =
+    useState<InvoiceLiveTypeFilter>(searchParams.get("liveType") || "all");
   const [shipmentFilter, setShipmentFilterState] =
     useState<InvoiceShipmentFilter>(
       (searchParams.get("shipment") as InvoiceShipmentFilter) || "all",
@@ -312,6 +326,12 @@ export function useInvoices(
     setTypeFilterState(type);
     setCurrentPage(1);
     updateUrl({ type, page: "1" });
+  };
+
+  const setLiveTypeFilter = (filter: InvoiceLiveTypeFilter) => {
+    setLiveTypeFilterState(filter);
+    setCurrentPage(1);
+    updateUrl({ liveType: filter, page: "1" });
   };
 
   const setShipmentFilter = (shipment: InvoiceShipmentFilter) => {
@@ -463,6 +483,7 @@ export function useInvoices(
   }, [
     statusFilter,
     typeFilter,
+    liveTypeFilter,
     shipmentFilter,
     layawayOverdue,
     debouncedSearchTerm,
@@ -482,6 +503,7 @@ export function useInvoices(
       params.set("limit", itemsPerPage.toString());
       if (statusFilter !== "all") params.set("status", statusFilter);
       if (typeFilter !== "all") params.set("type", typeFilter);
+      if (liveTypeFilter !== "all") params.set("liveType", liveTypeFilter);
       if (shipmentFilter !== "all") params.set("shipment", shipmentFilter);
       if (layawayOverdue) params.set("overdueDates", "2");
       if (debouncedSearchTerm) params.set("search", debouncedSearchTerm);
@@ -733,7 +755,8 @@ export function useInvoices(
     setStatusFilter,
     typeFilter,
     setTypeFilter,
-    shipmentFilter,
+    liveTypeFilter,
+    setLiveTypeFilter,
     setShipmentFilter,
     searchTerm,
     setSearchTerm,
