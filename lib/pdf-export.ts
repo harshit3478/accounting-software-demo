@@ -24,6 +24,7 @@ interface Invoice {
     quantity: number;
     price: number;
     unit?: string;
+    depositFee?: number | null;
   }> | null;
   termsSnapshot?: string[] | null;
   // Enriched data for branded PDF
@@ -506,7 +507,10 @@ export async function generateSingleInvoicePDF(
         .filter((part) => String(part || "").trim())
         .join("\n");
       return {
-        displayName,
+        displayName:
+          Number(item.depositFee || 0) > 0
+            ? `${displayName}\nDeposit fee: $${Number(item.depositFee || 0).toFixed(2)}`
+            : displayName,
         qty: item.quantity,
         unit: item.unit || "grams",
         price: Number(item.price),
@@ -908,7 +912,10 @@ export function buildSingleInvoicePdfBuffer(
         .filter((part) => String(part || "").trim())
         .join("\n");
       return {
-        displayName,
+        displayName:
+          Number(item.depositFee || 0) > 0
+            ? `${displayName}\nDeposit fee: $${Number(item.depositFee || 0).toFixed(2)}`
+            : displayName,
         qty: item.quantity,
         unit: item.unit || "grams",
         price: Number(item.price),

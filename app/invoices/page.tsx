@@ -82,6 +82,7 @@ function InvoicesPageContent() {
     handleOpenPaymentModal,
     handleDeleteClick,
     handleDeleteConfirm,
+    handleToggleHold,
     handleExportCSV,
     handleExportPDF,
     handlePageChange,
@@ -228,6 +229,7 @@ function InvoicesPageContent() {
             onPay={handleOpenPaymentModal}
             onLink={handleOpenLinkModal}
             onDelete={handleDeleteClick}
+            onToggleHold={handleToggleHold}
             onShip={handleShipAction}
             onFilterByClient={setCustomerIdFilter}
             onPrintPDF={handlePrintPDF}
@@ -336,7 +338,11 @@ function InvoicesPageContent() {
               targetStatus: "abandoned",
               editReason: payload.editReason,
               paymentAction: payload.paymentAction,
+              feeAction: payload.feeAction,
               targetInvoiceId: payload.targetInvoiceId || null,
+              refundProofDataUrl: payload.refundProof?.dataUrl,
+              refundProofFileName: payload.refundProof?.fileName,
+              refundProofMimeType: payload.refundProof?.mimeType,
             });
           }}
         />

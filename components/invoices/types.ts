@@ -3,6 +3,7 @@ export interface InvoiceItem {
   quantity: number;
   price: number;
   unit?: string;
+  depositFee?: number | null;
 }
 
 export interface Invoice {

@@ -5,6 +5,7 @@ import { updateInvoiceAfterPayment } from "../../../lib/invoice-utils";
 import { invalidateDashboard } from "../../../lib/cache-helpers";
 import { sendPaymentConfirmation } from "../../../lib/email";
 import { stampPaymentCode } from "../../../lib/payment-code";
+import { createLateFeePayment } from "../../../lib/late-fee";
 
 export async function GET(request: NextRequest) {
   try {
@@ -181,8 +182,16 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const user = await requireAuth();
-    const { invoiceId, amount, paymentDate, methodId, notes, source } =
-      await request.json();
+    const {
+      invoiceId,
+      amount,
+      paymentDate,
+      methodId,
+      notes,
+      source,
+      lateFeeAmount,
+      lateFeeWaivedReason,
+    } = await request.json();
 
     if (!methodId) {
       return NextResponse.json(
@@ -198,6 +207,10 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       );
     }
+
+    const normalizedLateFeeAmount = Number(lateFeeAmount ?? 0);
+    const normalizedLateFeeWaivedReason =
+      typeof lateFeeWaivedReason === "string" ? lateFeeWaivedReason.trim() : "";
 
     const roundMoney = (value: number) => Math.round(value * 100) / 100;
 
@@ -247,6 +260,15 @@ export async function POST(request: NextRequest) {
 
       const txResult = await prisma.$transaction(async (tx) => {
         let mainPayment: any = null;
+        const paymentNotes = [
+          typeof notes === "string" ? notes.trim() : "",
+          normalizedLateFeeWaivedReason
+            ? `Late fee waived: ${normalizedLateFeeWaivedReason}`
+            : "",
+        ]
+          .filter(Boolean)
+          .join(" | ")
+          .trim();
 
         if (appliedAmount > 0) {
           mainPayment = await tx.payment.create({
@@ -255,7 +277,7 @@ export async function POST(request: NextRequest) {
               amount: appliedAmount,
               paymentDate: paymentDate ? new Date(paymentDate) : new Date(),
               methodId: parseInt(methodId),
-              notes,
+              notes: paymentNotes || null,
               userId: user.id,
               isMatched: true,
               source: source || "manual",
@@ -266,6 +288,26 @@ export async function POST(request: NextRequest) {
           await stampPaymentCode(tx, mainPayment.id);
         }
 
+        if (mainPayment && normalizedLateFeeAmount > 0) {
+          await createLateFeePayment(tx, {
+            invoiceId: parsedInvoiceId,
+            methodId: parseInt(methodId),
+            paymentDate: paymentDate ? new Date(paymentDate) : new Date(),
+            amount: normalizedLateFeeAmount,
+            userId: user.id,
+            reason: normalizedLateFeeWaivedReason || null,
+          });
+
+          await (tx as any).invoice.update({
+            where: { id: parsedInvoiceId },
+            data: {
+              amount: {
+                increment: normalizedLateFeeAmount,
+              },
+            },
+          });
+        }
+
         if (excessAmount > 0) {
           const creditPayment = await tx.payment.create({
             data: {
@@ -273,7 +315,7 @@ export async function POST(request: NextRequest) {
               amount: excessAmount,
               paymentDate: paymentDate ? new Date(paymentDate) : new Date(),
               methodId: parseInt(methodId),
-              notes: `Store credit from excess payment on ${invoice.invoiceNumber}${notes ? ` | ${notes}` : ""}`,
+              notes: `Store credit from excess payment on ${invoice.invoiceNumber}${paymentNotes ? ` | ${paymentNotes}` : ""}`,
               userId: user.id,
               isMatched: false,
               source: "store_credit_excess",

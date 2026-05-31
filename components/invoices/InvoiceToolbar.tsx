@@ -104,7 +104,7 @@ export default function InvoiceToolbar({
   const handleClearDateRange = () => {
     setDateFrom(undefined);
     setDateTo(undefined);
-    onDateRangeChange(null);
+    ("hold", onDateRangeChange(null));
     setShowDatePicker(false);
   };
 
@@ -161,7 +161,7 @@ export default function InvoiceToolbar({
                       onStatusFilterChange(status as InvoiceStatusFilter)
                     }
                   >
-                    {status}
+                    {status === "hold" ? "Hold" : status}
                   </div>
                 ))}
               </div>

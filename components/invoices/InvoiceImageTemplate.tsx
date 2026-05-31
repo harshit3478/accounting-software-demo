@@ -447,6 +447,18 @@ export default function InvoiceImageTemplate({
                       }}
                     >
                       <div style={{ fontWeight: 700 }}>{mainName}</div>
+                      {Number(item.depositFee || 0) > 0 && (
+                        <div
+                          style={{
+                            fontSize: "11px",
+                            color: "#9a6b00",
+                            fontWeight: 600,
+                            marginTop: "2px",
+                          }}
+                        >
+                          Deposit fee: {fmt(Number(item.depositFee || 0))}
+                        </div>
+                      )}
                       {subtitle && (
                         <div
                           style={{

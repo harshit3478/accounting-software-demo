@@ -1015,7 +1015,13 @@ export default function ViewInvoiceModal({
                         className="hover:bg-gray-50 transition-colors"
                       >
                         <td className="px-4 py-3 text-sm text-gray-900">
-                          {item.name}
+                          <div className="font-medium">{item.name}</div>
+                          {Number(item.depositFee || 0) > 0 && (
+                            <div className="mt-1 text-xs text-amber-700">
+                              Deposit fee:{" "}
+                              {formatCurrency(Number(item.depositFee || 0))}
+                            </div>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-900 text-right">
                           {item.quantity} {item.unit || "grams"}

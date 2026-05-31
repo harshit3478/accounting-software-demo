@@ -21,6 +21,26 @@ export async function GET() {
         dueDate: true,
         status: true,
         customerId: true,
+        isLayaway: true,
+        layawayPlan: {
+          select: {
+            id: true,
+            invoiceId: true,
+            isCancelled: true,
+            installments: {
+              select: {
+                id: true,
+                label: true,
+                dueDate: true,
+                amount: true,
+                isPaid: true,
+              },
+              orderBy: {
+                dueDate: "asc",
+              },
+            },
+          },
+        },
       },
       orderBy: {
         dueDate: "asc", // Due soonest first

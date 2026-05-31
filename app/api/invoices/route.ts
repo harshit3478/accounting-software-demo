@@ -15,6 +15,10 @@ import {
   calculateLayawayFeeFromItems,
   normalizeLayawayFeeRates,
 } from "../../../lib/layaway-fees";
+import {
+  calculateDepositFeeForItem,
+  normalizeDepositFeeRules,
+} from "../../../lib/deposit-fees";
 import { invalidateDashboard } from "../../../lib/cache-helpers";
 
 async function getConfiguredInsuranceBands(): Promise<InsuranceBand[]> {
@@ -82,6 +86,40 @@ async function getConfiguredLayawayFeeRates() {
   }
 }
 
+async function getConfiguredDepositFeeRules() {
+  const ruleModel = (prisma as any)?.depositFeeRule;
+  if (!ruleModel) {
+    return [];
+  }
+
+  try {
+    const rows = await ruleModel.findMany({
+      where: { isActive: true },
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
+    });
+
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return [];
+    }
+
+    return normalizeDepositFeeRules(
+      rows.map((row: any) => ({
+        minAmount: row.minAmount?.toNumber
+          ? row.minAmount.toNumber()
+          : row.minAmount,
+        maxAmount: row.maxAmount?.toNumber
+          ? row.maxAmount.toNumber()
+          : row.maxAmount,
+        fee: row.fee?.toNumber ? row.fee.toNumber() : Number(row.fee || 0),
+        isActive: row.isActive,
+        sortOrder: row.sortOrder,
+      })),
+    );
+  } catch {
+    return [];
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const user = await requireAuth();
@@ -132,9 +170,13 @@ export async function GET(request: NextRequest) {
 
     // Build where clause
     const where: any = {};
+    const showHeldInvoices = status === "hold";
+    where.isHold = showHeldInvoices ? true : false;
 
     // By default, exclude inactive/abandoned invoices unless explicitly requested
-    if (
+    if (showHeldInvoices) {
+      // Hold is an overlay flag, not a billing status.
+    } else if (
       status === "inactive" ||
       (status === "abandoned" && supportsAbandonedStatus)
     ) {
@@ -383,6 +425,7 @@ export async function GET(request: NextRequest) {
             ),
           }
         : null,
+      isHold: !!invoice.isHold,
       editHistory: (invoice.editHistory || []).map((entry: any) => ({
         ...entry,
         createdAt: entry.createdAt?.toISOString
@@ -601,6 +644,7 @@ export async function POST(request: NextRequest) {
         ? Number(insuranceAmount)
         : calculateInsuranceAmount(insuranceCalculationBase, insuranceBands);
     const layawayFeeRates = await getConfiguredLayawayFeeRates();
+    const depositFeeRules = await getConfiguredDepositFeeRules();
     const layawayMonths = Number(layawayPlan?.months || 0);
     const layawayFeeAmount = isLayaway
       ? calculateLayawayFeeFromItems(
@@ -609,6 +653,12 @@ export async function POST(request: NextRequest) {
           layawayFeeRates,
         )
       : 0;
+    const normalizedItems = Array.isArray(items)
+      ? items.map((item: any) => ({
+          ...item,
+          depositFee: calculateDepositFeeForItem(item, depositFeeRules),
+        }))
+      : items || null;
     const totalAmount =
       preShippingTotal +
       parseFloat(shippingFeeAmount) +
@@ -677,7 +727,7 @@ export async function POST(request: NextRequest) {
         userId: user.id,
         invoiceNumber,
         clientName: normalizedClientName,
-        items: items || null,
+        items: normalizedItems,
         subtotal: parseFloat(subtotal),
         tax: parseFloat(taxAmount),
         discount: parseFloat(discountAmount),
