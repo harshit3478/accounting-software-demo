@@ -254,12 +254,12 @@ model Payment {
   isMatched Boolean @default(true)
 
   // Abandonment status & tracking (for security/audit)
-  isAbandoned   Boolean   @default(false)
-  abandonedAt   DateTime?
-  abandonedBy   Int?
-  abandonReason String?   @db.Text
-  refundProofUrl     String? @db.VarChar(500)
-  refundProofFileName String? @db.VarChar(255)
+  isAbandoned         Boolean   @default(false)
+  abandonedAt         DateTime?
+  abandonedBy         Int?
+  abandonReason       String?   @db.Text
+  refundProofUrl      String?   @db.VarChar(500)
+  refundProofFileName String?   @db.VarChar(255)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

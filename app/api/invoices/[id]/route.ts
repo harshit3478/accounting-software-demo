@@ -816,19 +816,21 @@ export async function DELETE(
     let movedAmount = 0;
     let feeAmount = 0;
     let resolvedTargetInvoiceId: number | null = null;
-    let normalizedPaymentAction:
-      | "credit"
-      | "transfer"
-      | "refund"
-      | "none" = paymentAction ?? "none";
+    let normalizedPaymentAction: "credit" | "transfer" | "refund" | "none" =
+      paymentAction ?? "none";
     let normalizedFeeAction: "restocking" | "deposit" | "none" =
       feeAction ?? "none";
 
     const updated = await prisma.$transaction(
       async (tx) => {
         if (targetStatus === "abandoned") {
-          if (normalizedFeeAction === "restocking" && !existingInvoice.isLayaway) {
-            throw new Error("Restocking fee can only be applied to layaway invoices.");
+          if (
+            normalizedFeeAction === "restocking" &&
+            !existingInvoice.isLayaway
+          ) {
+            throw new Error(
+              "Restocking fee can only be applied to layaway invoices.",
+            );
           }
 
           const directPayments = await tx.payment.findMany({
@@ -870,7 +872,9 @@ export async function DELETE(
               }, 0)
             : 0;
 
-          const restockingSetting = await (tx as any).restockingFeeSetting.findFirst({
+          const restockingSetting = await (
+            tx as any
+          ).restockingFeeSetting.findFirst({
             where: { isActive: true },
             orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
             select: { amount: true, isPercentage: true, isActive: true },
@@ -904,7 +908,9 @@ export async function DELETE(
               throw new Error("Refund proof image is required.");
             }
 
-            const match = refundProofDataUrl.match(/^data:([^;]+);base64,(.+)$/);
+            const match = refundProofDataUrl.match(
+              /^data:([^;]+);base64,(.+)$/,
+            );
             if (!match) {
               throw new Error("Refund proof image is invalid.");
             }
@@ -931,7 +937,10 @@ export async function DELETE(
           }
 
           if (movedAmount > 0.009) {
-            if (!normalizedPaymentAction || normalizedPaymentAction === "none") {
+            if (
+              !normalizedPaymentAction ||
+              normalizedPaymentAction === "none"
+            ) {
               throw new Error(
                 "This invoice has payments. Please choose how to handle them.",
               );

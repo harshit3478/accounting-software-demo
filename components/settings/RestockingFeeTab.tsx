@@ -35,7 +35,9 @@ export default function RestockingFeeTab({
         const res = await fetch("/api/restocking-fee");
         if (!res.ok) {
           const error = await res.json();
-          throw new Error(error.error || "Failed to load restocking fee setting");
+          throw new Error(
+            error.error || "Failed to load restocking fee setting",
+          );
         }
 
         const data = await res.json();

@@ -274,7 +274,9 @@ export default function AbandonInvoiceModal({
                   checked={feeAction === "restocking"}
                   onChange={() => setFeeAction("restocking")}
                   className="mt-0.5"
-                  disabled={loadingFeeSetting || !restockingFeeSetting?.isActive}
+                  disabled={
+                    loadingFeeSetting || !restockingFeeSetting?.isActive
+                  }
                 />
                 Apply restocking fee
                 {restockingFeeSetting?.isActive && (

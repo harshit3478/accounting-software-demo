@@ -14,7 +14,11 @@ export async function GET() {
 
     const rateModel = (prisma as any)?.restockingFeeSetting;
     if (!rateModel) {
-      return NextResponse.json({ amount: 0, isPercentage: false, isActive: false });
+      return NextResponse.json({
+        amount: 0,
+        isPercentage: false,
+        isActive: false,
+      });
     }
 
     const row = await rateModel.findFirst({ orderBy: { updatedAt: "desc" } });
