@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "../lib/AuthContext";
+import { NumberInputWheelGuard } from "./NumberInputWheelGuard";
 // import { Analytics } from '@vercel/analytics/next';
 // import { SpeedInsights } from "@vercel/speed-insights/next"
 
@@ -12,7 +13,8 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: "FinanceFlow - Accounting Dashboard",
-  description: "Centralized invoice management, automated payment processing, and intelligent duplicate detection.",
+  description:
+    "Centralized invoice management, automated payment processing, and intelligent duplicate detection.",
 };
 
 export default function RootLayout({
@@ -22,14 +24,12 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body
-        className={`${inter.variable} antialiased font-sans`}
-      >
+      <body className={`${inter.variable} antialiased font-sans`}>
         <AuthProvider>
+          <NumberInputWheelGuard />
           {children}
           {/* <Analytics /> */}
           {/* <SpeedInsights /> */}
-
         </AuthProvider>
       </body>
     </html>

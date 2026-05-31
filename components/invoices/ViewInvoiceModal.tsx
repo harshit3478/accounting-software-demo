@@ -7,6 +7,7 @@ import { InvoiceItem } from "./types";
 import { generateSingleInvoicePDF } from "../../lib/pdf-export";
 import { exportElementAsJPEG } from "../../lib/image-export";
 import InvoiceImageTemplate from "./InvoiceImageTemplate";
+import { getVisibleLayawayFee } from "../../lib/invoice-display";
 
 interface Payment {
   id: number;
@@ -661,6 +662,7 @@ export default function ViewInvoiceModal({
       : null);
   const shippingFee = Number(invoice.shippingFee || 0);
   const insuranceAmount = Number(invoice.insuranceAmount || 0);
+  const layawayFee = getVisibleLayawayFee(invoice);
   const amountDue = Math.max(Number(invoice.amount || 0) - localPaidAmount, 0);
   const localStatus =
     invoice.status === "inactive" || invoice.status === "abandoned"
@@ -1069,6 +1071,14 @@ export default function ViewInvoiceModal({
                   <span className="text-gray-600">Insurance:</span>
                   <span className="font-medium text-gray-900">
                     {formatCurrency(insuranceAmount)}
+                  </span>
+                </div>
+              )}
+              {layawayFee > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Layaway Fee:</span>
+                  <span className="font-medium text-gray-900">
+                    {formatCurrency(layawayFee)}
                   </span>
                 </div>
               )}

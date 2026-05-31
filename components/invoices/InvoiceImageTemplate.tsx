@@ -1,6 +1,11 @@
 "use client";
 
 import { BUSINESS_CONFIG } from "../../lib/business-config";
+import {
+  getVisibleLayawayFee,
+  resolveLiveTypeLabel,
+  resolveInvoiceDate,
+} from "../../lib/invoice-display";
 import { InvoiceItem } from "./types";
 
 interface Payment {
@@ -44,10 +49,21 @@ interface Invoice {
   amount: number;
   paidAmount: number;
   dueDate: string;
+  invoiceDate?: string | null;
   createdAt: string;
+  layawayFee?: number;
   status: "paid" | "pending" | "overdue" | "partial" | "abandoned" | "inactive";
   isLayaway: boolean;
   description?: string | null;
+  liveTypeId?: number | null;
+  liveTypeSnapshot?: string | null;
+  liveType?: {
+    id: number;
+    name: string;
+    country: string;
+    isActive: boolean;
+    sortOrder: number;
+  } | null;
   customer?: {
     id: number;
     name: string;
@@ -96,6 +112,12 @@ export default function InvoiceImageTemplate({
   const biz = BUSINESS_CONFIG;
   const shippingFee = Number(invoice.shippingFee || 0);
   const insuranceAmount = Number(invoice.insuranceAmount || 0);
+  const layawayFee = getVisibleLayawayFee(invoice);
+  const invoiceDate = resolveInvoiceDate(
+    invoice.invoiceDate,
+    invoice.createdAt,
+  );
+  const liveTypeLabel = resolveLiveTypeLabel(invoice);
 
   const hasDescription = !!invoice.description;
   const hasLayaway = !!(invoice.isLayaway && invoice.layawayPlan);
@@ -277,7 +299,7 @@ export default function InvoiceImageTemplate({
               Invoice Date:
             </span>
             <span style={{ fontSize: "12px", color: "#333333" }}>
-              {fmtDate(invoice.createdAt)}
+              {fmtDate(invoiceDate)}
             </span>
           </div>
           {/* Payment Due */}
@@ -330,6 +352,25 @@ export default function InvoiceImageTemplate({
               {invoice.isLayaway ? "Layaway" : "Cash"}
             </span>
           </div>
+          {liveTypeLabel && (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                padding: "6px 0",
+                borderBottom: "1px solid #eeeeee",
+              }}
+            >
+              <span
+                style={{ fontSize: "12px", fontWeight: 700, color: "#1a1a1a" }}
+              >
+                Live Type:
+              </span>
+              <span style={{ fontSize: "12px", color: "#333333" }}>
+                {liveTypeLabel}
+              </span>
+            </div>
+          )}
           {/* Amount Due — highlighted */}
           <div
             style={{
@@ -526,6 +567,19 @@ export default function InvoiceImageTemplate({
             >
               <span style={{ color: "#333333" }}>Insurance:</span>
               <span style={{ fontWeight: 600 }}>{fmt(insuranceAmount)}</span>
+            </div>
+          )}
+          {layawayFee > 0 && (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                padding: "5px 0",
+                fontSize: "13px",
+              }}
+            >
+              <span style={{ color: "#333333" }}>Layaway Fee:</span>
+              <span style={{ fontWeight: 600 }}>{fmt(layawayFee)}</span>
             </div>
           )}
           <div

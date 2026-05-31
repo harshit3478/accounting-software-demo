@@ -1,6 +1,11 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { BUSINESS_CONFIG } from "./business-config";
+import {
+  getVisibleLayawayFee,
+  resolveInvoiceDate,
+  resolveLiveTypeLabel,
+} from "./invoice-display";
 
 interface Invoice {
   id: number;
@@ -12,6 +17,7 @@ interface Invoice {
   invoiceDate?: string | null;
   status: string;
   createdAt: string;
+  layawayFee?: number;
   description?: string | null;
   items?: Array<{
     name: string;
@@ -51,6 +57,12 @@ interface Invoice {
     paymentDate: string;
     method?: { name: string } | null;
   }> | null;
+  liveTypeId?: number | null;
+  liveTypeSnapshot?: string | null;
+  liveType?: {
+    name?: string | null;
+    country?: string | null;
+  } | null;
 }
 
 const { colors } = BUSINESS_CONFIG;
@@ -315,6 +327,12 @@ export async function generateSingleInvoicePDF(
     }
   } catch {}
 
+  const invoiceTermLines = Array.isArray(invoice.termsSnapshot)
+    ? invoice.termsSnapshot.filter((line) => String(line || "").trim())
+    : [];
+  const effectiveTermLines =
+    invoiceTermLines.length > 0 ? invoiceTermLines : defaultTermLines;
+
   // ── 3. HEADER: Logo (left) + INVOICE + Business info (right) ─────────────
   let y = 10;
 
@@ -403,11 +421,18 @@ export async function generateSingleInvoicePDF(
   // Right column: invoice metadata
   const metaLabelX = rightColX + 55; // right-aligned labels end here
   let metaY = metaStartY + 6; // skip past the BILL TO label row
+  const invoiceDate = resolveInvoiceDate(
+    invoice.invoiceDate,
+    invoice.createdAt,
+  );
+  const layawayFee = getVisibleLayawayFee(invoice);
+  const liveTypeLabel = resolveLiveTypeLabel(invoice);
+
   const metaRows = [
     { label: "Invoice Number:", value: invoice.invoiceNumber },
     {
       label: "Invoice Date:",
-      value: new Date(invoice.createdAt).toLocaleDateString("en-US", {
+      value: new Date(invoiceDate).toLocaleDateString("en-US", {
         month: "long",
         day: "numeric",
         year: "numeric",
@@ -425,6 +450,7 @@ export async function generateSingleInvoicePDF(
       label: "Invoice Type:",
       value: invoice.isLayaway ? "Layaway" : "Cash",
     },
+    ...(liveTypeLabel ? [{ label: "Live Type:", value: liveTypeLabel }] : []),
   ];
 
   metaRows.forEach((row) => {
@@ -476,10 +502,11 @@ export async function generateSingleInvoicePDF(
     // Build body — split item.name on '\n' to get name + subtitle
     const bodyData = invoice.items.map((item) => {
       const parts = item.name.split("\n");
+      const displayName = [parts[0], parts.slice(1).join(" ")]
+        .filter((part) => String(part || "").trim())
+        .join("\n");
       return {
-        raw: item.name,
-        displayName: parts[0],
-        subtitle: parts.slice(1).join(" "),
+        displayName,
         qty: item.quantity,
         unit: item.unit || "grams",
         price: Number(item.price),
@@ -503,35 +530,33 @@ export async function generateSingleInvoicePDF(
         fontStyle: "bold",
         fontSize: 9,
       },
+      styles: {
+        fontSize: 8,
+        valign: "middle",
+        overflow: "linebreak",
+      },
       bodyStyles: {
         fontSize: 9,
         fontStyle: "bold",
         textColor: [26, 26, 26],
-        minCellHeight: bodyData.some((r) => r.subtitle) ? 12 : 8,
       },
       alternateRowStyles: { fillColor: [255, 255, 255] },
       columnStyles: {
-        0: { cellWidth: "auto" },
-        1: { halign: "center", cellWidth: 25 },
-        2: { halign: "right", cellWidth: 30 },
-        3: { halign: "right", cellWidth: 30 },
+        0: { cellWidth: 80, halign: "left" },
+        1: { cellWidth: 35, halign: "center" },
+        2: { cellWidth: 33, halign: "right" },
+        3: { cellWidth: 34, halign: "right" },
       },
+      tableWidth: 182,
       margin: { left: L, right: 14 },
       tableLineColor: [220, 220, 220],
       tableLineWidth: 0.2,
-      // Draw subtitle below first line in items column
-      didDrawCell: (data) => {
-        if (data.section === "body" && data.column.index === 0) {
-          const row = bodyData[data.row.index];
-          if (row?.subtitle) {
-            doc.setFont("helvetica", "normal");
-            doc.setFontSize(8);
-            doc.setTextColor(120, 120, 120);
-            doc.text(
-              row.subtitle,
-              data.cell.x + 2,
-              data.cell.y + data.cell.padding("top") + 6,
-            );
+      didParseCell: (data) => {
+        if (data.section === "head") {
+          if (data.column.index === 0) data.cell.styles.halign = "left";
+          if (data.column.index === 1) data.cell.styles.halign = "center";
+          if (data.column.index === 2 || data.column.index === 3) {
+            data.cell.styles.halign = "right";
           }
         }
       },
@@ -586,6 +611,7 @@ export async function generateSingleInvoicePDF(
     { label: "Subtotal:", value: Number(invoice.subtotal || 0) },
     { label: "Shipping Fee:", value: Number(invoice.shippingFee || 0) },
     { label: "Insurance:", value: Number(invoice.insuranceAmount || 0) },
+    { label: "Layaway Fee:", value: layawayFee },
   ].filter((row) => row.value !== 0);
 
   const summaryLabelX = 130;
@@ -616,7 +642,7 @@ export async function generateSingleInvoicePDF(
   // ── 8. NOTES / TERMS ──────────────────────────────────────────────────────
   const hasDescription = !!invoice.description;
   const hasLayaway = !!(invoice.isLayaway && invoice.layawayPlan);
-  const hasTerms = defaultTermLines.length > 0;
+  const hasTerms = effectiveTermLines.length > 0;
 
   if (hasDescription || hasLayaway || hasTerms) {
     if (y > 230) {
@@ -671,13 +697,13 @@ export async function generateSingleInvoicePDF(
       y += 3;
     }
 
-    // Standard terms from DB (each line is a separate block)
+    // Standard terms from DB or invoice snapshot (each line is a separate block)
     if (hasTerms) {
       if (y > 240) {
         doc.addPage();
         y = 20;
       }
-      defaultTermLines.forEach((termLine) => {
+      effectiveTermLines.forEach((termLine) => {
         doc.setFontSize(8);
         doc.setFont("helvetica", "normal");
         doc.setTextColor(60, 60, 60);
@@ -751,13 +777,13 @@ export function buildSingleInvoicePdfBuffer(
   const R = pageW - 14;
   const logoBase64 = options?.logoBase64 ?? null;
   const defaultTermLines = Array.isArray(options?.defaultTermLines)
-    ? options?.defaultTermLines
+    ? options?.defaultTermLines.filter((line) => String(line || "").trim())
     : [];
   const invoiceTermLines = Array.isArray(invoice.termsSnapshot)
     ? invoice.termsSnapshot.filter((line) => String(line || "").trim())
     : [];
   const effectiveTermLines =
-    defaultTermLines.length > 0 ? defaultTermLines : invoiceTermLines;
+    invoiceTermLines.length > 0 ? invoiceTermLines : defaultTermLines;
 
   let logoW = 62;
   let logoH = 46;
@@ -845,11 +871,14 @@ export function buildSingleInvoicePdfBuffer(
     day: "numeric",
     year: "numeric",
   });
+  const layawayFee = getVisibleLayawayFee(invoice);
+  const liveTypeLabel = resolveLiveTypeLabel(invoice);
   [
     ["Invoice Number:", invoice.invoiceNumber],
     ["Invoice Date:", invoiceDate],
     ["Payment Due:", dueDate],
     ["Invoice Type:", invoice.isLayaway ? "Layaway" : "Cash"],
+    ...(liveTypeLabel ? [["Live Type:", liveTypeLabel]] : []),
   ].forEach(([label, value]) => {
     doc.setFontSize(9);
     doc.setFont("helvetica", "bold");
@@ -875,9 +904,11 @@ export function buildSingleInvoicePdfBuffer(
   if (invoice.items && invoice.items.length > 0) {
     const bodyData = invoice.items.map((item) => {
       const parts = item.name.split("\n");
+      const displayName = [parts[0], parts.slice(1).join(" ")]
+        .filter((part) => String(part || "").trim())
+        .join("\n");
       return {
-        displayName: parts[0],
-        subtitle: parts.slice(1).join(" "),
+        displayName,
         qty: item.quantity,
         unit: item.unit || "grams",
         price: Number(item.price),
@@ -901,34 +932,33 @@ export function buildSingleInvoicePdfBuffer(
         fontStyle: "bold",
         fontSize: 9,
       },
+      styles: {
+        fontSize: 8,
+        valign: "middle",
+        overflow: "linebreak",
+      },
       bodyStyles: {
         fontSize: 9,
         fontStyle: "bold",
         textColor: [26, 26, 26],
-        minCellHeight: bodyData.some((r) => r.subtitle) ? 12 : 8,
       },
       alternateRowStyles: { fillColor: [255, 255, 255] },
       columnStyles: {
-        0: { cellWidth: "auto" },
-        1: { halign: "center", cellWidth: 25 },
-        2: { halign: "right", cellWidth: 30 },
-        3: { halign: "right", cellWidth: 30 },
+        0: { cellWidth: 80, halign: "left" },
+        1: { cellWidth: 35, halign: "center" },
+        2: { cellWidth: 33, halign: "right" },
+        3: { cellWidth: 34, halign: "right" },
       },
+      tableWidth: 182,
       margin: { left: L, right: 14 },
       tableLineColor: [220, 220, 220],
       tableLineWidth: 0.2,
-      didDrawCell: (data) => {
-        if (data.section === "body" && data.column.index === 0) {
-          const row = bodyData[data.row.index];
-          if (row?.subtitle) {
-            doc.setFont("helvetica", "normal");
-            doc.setFontSize(8);
-            doc.setTextColor(120, 120, 120);
-            doc.text(
-              row.subtitle,
-              data.cell.x + 2,
-              data.cell.y + data.cell.padding("top") + 6,
-            );
+      didParseCell: (data) => {
+        if (data.section === "head") {
+          if (data.column.index === 0) data.cell.styles.halign = "left";
+          if (data.column.index === 1) data.cell.styles.halign = "center";
+          if (data.column.index === 2 || data.column.index === 3) {
+            data.cell.styles.halign = "right";
           }
         }
       },
@@ -965,6 +995,7 @@ export function buildSingleInvoicePdfBuffer(
   const summaryRows = [
     { label: "Shipping Fee:", value: Number(invoice.shippingFee || 0) },
     { label: "Insurance:", value: Number(invoice.insuranceAmount || 0) },
+    { label: "Layaway Fee:", value: layawayFee },
   ].filter((row) => row.value !== 0);
 
   doc.setFontSize(9);
