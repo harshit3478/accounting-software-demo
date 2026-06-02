@@ -3,7 +3,10 @@
 import { useState, useEffect, useMemo } from "react";
 import Modal from "./Modal";
 import AddCustomerModal from "./AddCustomerModal";
-import { findOverdueLayawayInstallmentClient } from "../../lib/late-fee-client";
+import {
+  buildLateFeeReason,
+  findOverdueLayawayInstallmentClient,
+} from "../../lib/late-fee-client";
 
 interface Invoice {
   id: number;
@@ -62,7 +65,7 @@ export default function LinkPaymentModal({
     amount: 0,
     isActive: false,
   });
-  const [applyLateFee, setApplyLateFee] = useState(true);
+  const [applyLateFee, setApplyLateFee] = useState<boolean | null>(null);
   const [lateFeeWaivedReason, setLateFeeWaivedReason] = useState("");
 
   // Fetch unmatched payments when modal opens
@@ -103,7 +106,7 @@ export default function LinkPaymentModal({
       setSelectedPaymentId(null);
       setLinkAmount(0);
       setSearchTerm("");
-      setApplyLateFee(true);
+      setApplyLateFee(null);
       setLateFeeWaivedReason("");
     }
   }, [isOpen, invoice]);
@@ -173,7 +176,16 @@ export default function LinkPaymentModal({
   const handleLinkPayment = async () => {
     if (!currentInvoice || !selectedPaymentId || linkAmount <= 0) return;
 
-    if (shouldPromptLateFee && !applyLateFee && !lateFeeWaivedReason.trim()) {
+    if (shouldPromptLateFee && applyLateFee === null) {
+      alert("Please choose whether to apply or waive the late fee");
+      return;
+    }
+
+    if (
+      shouldPromptLateFee &&
+      applyLateFee === false &&
+      !lateFeeWaivedReason.trim()
+    ) {
       alert("Please provide a reason for waiving the late fee");
       return;
     }
@@ -203,9 +215,15 @@ export default function LinkPaymentModal({
           invoiceId: currentInvoice.id,
           amount: linkAmount,
           lateFeeAmount:
-            shouldPromptLateFee && applyLateFee ? lateFeeSetting.amount : 0,
+            shouldPromptLateFee && applyLateFee === true
+              ? lateFeeSetting.amount
+              : 0,
+          lateFeeReason:
+            shouldPromptLateFee && applyLateFee === true && overdueInstallment
+              ? buildLateFeeReason(overdueInstallment)
+              : "",
           lateFeeWaivedReason:
-            shouldPromptLateFee && !applyLateFee
+            shouldPromptLateFee && applyLateFee === false
               ? lateFeeWaivedReason.trim()
               : "",
         }),
@@ -283,7 +301,10 @@ export default function LinkPaymentModal({
           isLinking ||
           !selectedPaymentId ||
           linkAmount <= 0 ||
-          (shouldPromptLateFee && !applyLateFee && !lateFeeWaivedReason.trim())
+          (shouldPromptLateFee && applyLateFee === null) ||
+          (shouldPromptLateFee &&
+            applyLateFee === false &&
+            !lateFeeWaivedReason.trim())
         }
         className="px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:bg-blue-400 disabled:cursor-not-allowed flex items-center"
       >
@@ -349,12 +370,13 @@ export default function LinkPaymentModal({
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-3 mb-3">
               <div>
                 <p className="text-sm font-semibold text-amber-900">
-                  Late fee required for overdue installment
+                  Installment due date has passed
                 </p>
                 <p className="text-xs text-amber-800 mt-1">
                   {overdueInstallment.label} was due on{" "}
                   {new Date(overdueInstallment.dueDate).toLocaleDateString()}.
-                  Admin late fee: ${lateFeeSetting.amount.toFixed(2)}
+                  Apply late fee to this invoice? Admin late fee: $
+                  {lateFeeSetting.amount.toFixed(2)}
                 </p>
               </div>
               <div className="flex gap-3">
@@ -362,7 +384,7 @@ export default function LinkPaymentModal({
                   type="button"
                   onClick={() => setApplyLateFee(true)}
                   className={`px-3 py-2 rounded-lg text-sm border ${
-                    applyLateFee
+                    applyLateFee === true
                       ? "bg-amber-600 text-white border-amber-600"
                       : "bg-white text-amber-900 border-amber-200"
                   }`}
@@ -373,7 +395,7 @@ export default function LinkPaymentModal({
                   type="button"
                   onClick={() => setApplyLateFee(false)}
                   className={`px-3 py-2 rounded-lg text-sm border ${
-                    !applyLateFee
+                    applyLateFee === false
                       ? "bg-white text-amber-900 border-amber-500"
                       : "bg-white text-amber-900 border-amber-200"
                   }`}
@@ -381,7 +403,7 @@ export default function LinkPaymentModal({
                   Waive late fee
                 </button>
               </div>
-              {!applyLateFee && (
+              {applyLateFee === false && (
                 <div>
                   <label className="block text-sm font-medium text-amber-900 mb-2">
                     Reason for waiving late fee

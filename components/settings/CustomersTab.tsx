@@ -50,6 +50,15 @@ interface CustomerFull extends CustomerDetail {
     invoiceId: number | null;
     createdAt: string;
   }[];
+  refundHistory?: {
+    id: number;
+    invoiceId: number;
+    invoiceNumber: string;
+    reason: string;
+    proofUrl: string;
+    proofFileName: string | null;
+    createdAt: string;
+  }[];
 }
 
 interface CustomersTabProps {
@@ -911,6 +920,55 @@ export default function CustomersTab({
                               ))}
                             </tbody>
                           </table>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Refund History */}
+                    <div className="mb-6">
+                      <h3 className="text-sm font-semibold text-gray-700 mb-2">
+                        Refund History
+                      </h3>
+                      {!viewingCustomer.refundHistory ||
+                      viewingCustomer.refundHistory.length === 0 ? (
+                        <p className="text-sm text-gray-500 py-4 text-center border border-dashed border-gray-200 rounded-lg">
+                          No refunds recorded yet.
+                        </p>
+                      ) : (
+                        <div className="space-y-2">
+                          {viewingCustomer.refundHistory.map((refund) => (
+                            <div
+                              key={refund.id}
+                              className="rounded-lg border border-red-100 bg-red-50 p-3 text-sm"
+                            >
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div>
+                                  <p className="font-semibold text-red-900">
+                                    {refund.invoiceNumber}
+                                  </p>
+                                  <p className="text-xs text-red-700">
+                                    {new Date(
+                                      refund.createdAt,
+                                    ).toLocaleString()}
+                                  </p>
+                                </div>
+                                <a
+                                  href={refund.proofUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-sm font-medium text-blue-700 hover:underline"
+                                >
+                                  View proof
+                                  {refund.proofFileName
+                                    ? ` (${refund.proofFileName})`
+                                    : ""}
+                                </a>
+                              </div>
+                              <p className="mt-2 text-red-800">
+                                {refund.reason}
+                              </p>
+                            </div>
+                          ))}
                         </div>
                       )}
                     </div>

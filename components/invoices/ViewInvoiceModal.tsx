@@ -7,11 +7,20 @@ import { InvoiceItem } from "./types";
 import { generateSingleInvoicePDF } from "../../lib/pdf-export";
 import { exportElementAsJPEG } from "../../lib/image-export";
 import InvoiceImageTemplate from "./InvoiceImageTemplate";
-import { getVisibleLayawayFee } from "../../lib/invoice-display";
+import {
+  getRecalculationFeeDisplayEntries,
+  getRemovedItemDepositFeeDisplayEntries,
+  getVisibleLayawayFee,
+} from "../../lib/invoice-display";
+import {
+  buildLateFeeReason,
+  findOverdueLayawayInstallmentClient,
+} from "../../lib/late-fee-client";
 
 interface Payment {
   id: number;
   amount: number;
+  source?: string;
   method:
     | {
         id: number;
@@ -118,7 +127,7 @@ interface Invoice {
     id: number;
     reason: string;
     createdAt: string;
-    changes?: Record<string, { from: any; to: any }> | null;
+    changes?: Record<string, any> | null;
     editedBy?: {
       id: number;
       name: string;
@@ -164,10 +173,19 @@ export default function ViewInvoiceModal({
   const [shipmentLoading, setShipmentLoading] = useState(false);
   const [shipmentError, setShipmentError] = useState<string | null>(null);
   const [localPaidAmount, setLocalPaidAmount] = useState(0);
+  const [localInvoiceAmount, setLocalInvoiceAmount] = useState(
+    Number(invoice?.amount || 0),
+  );
   const [markPaidModalOpen, setMarkPaidModalOpen] = useState(false);
   const [selectedInstallment, setSelectedInstallment] =
     useState<LayawayInstallment | null>(null);
   const [markPaidMode, setMarkPaidMode] = useState<"create" | "link">("create");
+  const [lateFeeSetting, setLateFeeSetting] = useState({
+    amount: 0,
+    isActive: false,
+  });
+  const [applyLateFee, setApplyLateFee] = useState<boolean | null>(null);
+  const [lateFeeWaivedReason, setLateFeeWaivedReason] = useState("");
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>(
     [],
   );
@@ -208,11 +226,14 @@ export default function ViewInvoiceModal({
 
   const buildPDFInvoice = () => ({
     ...invoice!,
+    amount: localInvoiceAmount,
+    paidAmount: localPaidAmount,
     payments: payments.map((p) => ({
       amount: p.amount,
       paymentDate: p.date || p.createdAt,
       method:
         typeof p.method === "object" ? p.method : { name: String(p.method) },
+      source: p.source,
     })),
   });
 
@@ -311,11 +332,26 @@ export default function ViewInvoiceModal({
     if (isOpen && invoice) {
       fetchPayments();
       setLocalPaidAmount(Number(invoice.paidAmount || 0));
+      setLocalInvoiceAmount(Number(invoice.amount || 0));
       if (invoice.layawayPlan?.installments) {
         setLocalInstallments(invoice.layawayPlan.installments);
       }
       setInvoiceSentAt(resolveLatestSentAt());
       setInvoiceActionError(null);
+      setApplyLateFee(null);
+      setLateFeeWaivedReason("");
+
+      fetch("/api/late-fee")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (data) {
+            setLateFeeSetting({
+              amount: Number(data.amount ?? 0),
+              isActive: !!data.isActive,
+            });
+          }
+        })
+        .catch(() => {});
 
       if (invoice.shipmentId || invoice.trackingNumber) {
         setShipmentLoading(true);
@@ -366,6 +402,8 @@ export default function ViewInvoiceModal({
     setLinkAmount(installment.amount);
     setPaymentDate(new Date().toISOString().split("T")[0]);
     setPaymentNotes(`Layaway installment payment: ${installment.label}`);
+    setApplyLateFee(null);
+    setLateFeeWaivedReason("");
     setSelectedUnmatchedPaymentId(null);
     setMarkPaidError(null);
     setMarkPaidModalOpen(true);
@@ -402,6 +440,31 @@ export default function ViewInvoiceModal({
   const confirmInstallmentPaid = async () => {
     if (!invoice || !selectedInstallment) return;
 
+    const overdueInstallment =
+      paymentDate && selectedInstallment
+        ? findOverdueLayawayInstallmentClient(invoice, paymentDate)
+        : null;
+    const shouldPromptLateFee =
+      !!overdueInstallment &&
+      lateFeeSetting.isActive &&
+      lateFeeSetting.amount > 0;
+    const lateFeeAmount =
+      shouldPromptLateFee && applyLateFee === true ? lateFeeSetting.amount : 0;
+
+    if (shouldPromptLateFee && applyLateFee === null) {
+      setMarkPaidError("Please choose whether to apply or waive the late fee.");
+      return;
+    }
+
+    if (
+      shouldPromptLateFee &&
+      applyLateFee === false &&
+      !lateFeeWaivedReason.trim()
+    ) {
+      setMarkPaidError("Please provide a reason for waiving the late fee.");
+      return;
+    }
+
     setIsSavingInstallmentPayment(true);
     setMarkPaidError(null);
 
@@ -426,6 +489,17 @@ export default function ViewInvoiceModal({
             methodId: selectedMethodId,
             paymentDate,
             notes: paymentNotes || null,
+            lateFeeAmount,
+            lateFeeReason:
+              shouldPromptLateFee &&
+              applyLateFee === true &&
+              overdueInstallment
+                ? buildLateFeeReason(overdueInstallment)
+                : "",
+            lateFeeWaivedReason:
+              shouldPromptLateFee && applyLateFee === false
+                ? lateFeeWaivedReason.trim()
+                : "",
           }),
         });
 
@@ -478,6 +552,17 @@ export default function ViewInvoiceModal({
             paymentId: selectedUnmatchedPaymentId,
             invoiceId: invoice.id,
             amount: linkAmount,
+            lateFeeAmount,
+            lateFeeReason:
+              shouldPromptLateFee &&
+              applyLateFee === true &&
+              overdueInstallment
+                ? buildLateFeeReason(overdueInstallment)
+                : "",
+            lateFeeWaivedReason:
+              shouldPromptLateFee && applyLateFee === false
+                ? lateFeeWaivedReason.trim()
+                : "",
           }),
         });
 
@@ -505,6 +590,11 @@ export default function ViewInvoiceModal({
       }
 
       await Promise.all([fetchPayments(), fetchLayawayPlan()]);
+      if (lateFeeAmount > 0) {
+        setLocalInvoiceAmount((prev) =>
+          Number((prev + lateFeeAmount).toFixed(2)),
+        );
+      }
       setMarkPaidModalOpen(false);
       setSelectedInstallment(null);
       setMarkPaidError(null);
@@ -663,7 +753,57 @@ export default function ViewInvoiceModal({
   const shippingFee = Number(invoice.shippingFee || 0);
   const insuranceAmount = Number(invoice.insuranceAmount || 0);
   const layawayFee = getVisibleLayawayFee(invoice);
-  const amountDue = Math.max(Number(invoice.amount || 0) - localPaidAmount, 0);
+  const currentItemDepositFeeTotal = (invoice.items || []).reduce(
+    (sum, item) => sum + Number(item.depositFee || 0),
+    0,
+  );
+  const removedItemDepositFeeEntries = getRemovedItemDepositFeeDisplayEntries(
+    invoice.editHistory || [],
+  );
+  const invoiceDepositFeeTotal = currentItemDepositFeeTotal;
+  const lateFeeTotal = payments.reduce(
+    (sum, payment) =>
+      payment.source === "late_fee" ? sum + Number(payment.amount || 0) : sum,
+    0,
+  );
+  const lateFeePayments = payments.filter(
+    (payment) => payment.source === "late_fee",
+  );
+  const depositFeePayments = payments.filter(
+    (payment) => payment.source === "deposit_fee",
+  );
+  const depositFeeTotal = depositFeePayments.reduce(
+    (sum, payment) => sum + Number(payment.amount || 0),
+    0,
+  );
+  const restockingFeePayments = payments.filter(
+    (payment) => payment.source === "restocking_fee",
+  );
+  const restockingFeeTotal = restockingFeePayments.reduce(
+    (sum, payment) => sum + Number(payment.amount || 0),
+    0,
+  );
+  const refundHistoryEntries = (invoice.editHistory || [])
+    .map((entry) => ({
+      id: entry.id,
+      date: entry.createdAt,
+      reason: entry.reason,
+      proofUrl: entry.changes?.refundProof?.url as string | undefined,
+      proofFileName: entry.changes?.refundProof?.fileName as string | undefined,
+    }))
+    .filter((entry) => !!entry.proofUrl);
+  const recalculationFeeEntries = getRecalculationFeeDisplayEntries(
+    invoice.editHistory || [],
+  );
+  const amountDue = Math.max(localInvoiceAmount - localPaidAmount, 0);
+  const overdueInstallment =
+    selectedInstallment && paymentDate
+      ? findOverdueLayawayInstallmentClient(invoice, paymentDate)
+      : null;
+  const shouldPromptLateFee =
+    !!overdueInstallment &&
+    lateFeeSetting.isActive &&
+    lateFeeSetting.amount > 0;
   const localStatus =
     invoice.status === "inactive" || invoice.status === "abandoned"
       ? invoice.status
@@ -1088,12 +1228,115 @@ export default function ViewInvoiceModal({
                   </span>
                 </div>
               )}
+              {invoiceDepositFeeTotal > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Total Deposit Amount:</span>
+                  <span className="font-medium text-amber-700">
+                    {formatCurrency(invoiceDepositFeeTotal)}
+                  </span>
+                </div>
+              )}
+              {lateFeeTotal > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Late Fee:</span>
+                  <span className="font-medium text-amber-700">
+                    {formatCurrency(lateFeeTotal)}
+                  </span>
+                </div>
+              )}
+              {lateFeePayments.map((payment) => (
+                <div
+                  key={`late-fee-${payment.id}`}
+                  className="flex justify-between gap-4 text-xs text-amber-700"
+                >
+                  <span>
+                    {payment.notes || "Late fee applied"} (
+                    {new Date(payment.date).toLocaleDateString()})
+                  </span>
+                  <span className="font-medium">
+                    {formatCurrency(payment.amount)}
+                  </span>
+                </div>
+              ))}
+              {depositFeeTotal > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Deposit Fee:</span>
+                  <span className="font-medium text-amber-700">
+                    {formatCurrency(depositFeeTotal)}
+                  </span>
+                </div>
+              )}
+              {depositFeePayments.map((payment) => (
+                <div
+                  key={`deposit-fee-${payment.id}`}
+                  className="flex justify-between gap-4 text-xs text-amber-700"
+                >
+                  <span>
+                    {payment.notes || "Deposit fee retained"} (
+                    {new Date(payment.date).toLocaleDateString()})
+                  </span>
+                  <span className="font-medium">
+                    {formatCurrency(payment.amount)}
+                  </span>
+                </div>
+              ))}
+              {removedItemDepositFeeEntries.map((entry) => (
+                <div
+                  key={`removed-deposit-fee-${entry?.id}`}
+                  className="flex justify-between gap-4 text-xs text-amber-700"
+                >
+                  <span>
+                    Removed item deposit fee{" "}
+                    {entry.action === "skip"
+                      ? `skipped: ${entry.reason}`
+                      : `applied (${new Date(entry.date).toLocaleDateString()})`}
+                  </span>
+                  <span className="font-medium">
+                    {formatCurrency(entry.amount)}
+                  </span>
+                </div>
+              ))}
+              {restockingFeeTotal > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Restocking Fee:</span>
+                  <span className="font-medium text-orange-700">
+                    {formatCurrency(restockingFeeTotal)}
+                  </span>
+                </div>
+              )}
+              {restockingFeePayments.map((payment) => (
+                <div
+                  key={`restocking-fee-${payment.id}`}
+                  className="flex justify-between gap-4 text-xs text-orange-700"
+                >
+                  <span>
+                    {payment.notes || "Restocking fee retained"} (
+                    {new Date(payment.date).toLocaleDateString()})
+                  </span>
+                  <span className="font-medium">
+                    {formatCurrency(payment.amount)}
+                  </span>
+                </div>
+              ))}
+              {recalculationFeeEntries.map((entry) => (
+                <div
+                  key={`${entry.date}-${entry.label}`}
+                  className="flex justify-between text-sm"
+                >
+                  <span className="text-gray-600">
+                    {entry.label} ({new Date(entry.date).toLocaleDateString()})
+                  </span>
+                  <span className="font-medium text-violet-700">
+                    {formatCurrency(entry.amount)}
+                  </span>
+                </div>
+              ))}
               <div className="border-t border-blue-300 pt-3 flex justify-between">
                 <span className="text-lg font-semibold text-gray-900">
                   Total Amount:
                 </span>
                 <span className="text-lg font-bold text-blue-600">
-                  {formatCurrency(invoice.amount)}
+                  {formatCurrency(localInvoiceAmount)}
                 </span>
               </div>
               <div className="flex justify-between text-sm">
@@ -1382,6 +1625,35 @@ export default function ViewInvoiceModal({
             <h4 className="text-lg font-semibold text-gray-900 my-4">
               Edit History
             </h4>
+            {refundHistoryEntries.length > 0 && (
+              <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4">
+                <h5 className="text-sm font-semibold text-red-800">
+                  Refund History
+                </h5>
+                <div className="mt-3 space-y-3">
+                  {refundHistoryEntries.map((entry) => (
+                    <div
+                      key={`refund-${entry.id}`}
+                      className="rounded-md bg-white p-3 text-sm"
+                    >
+                      <p className="font-medium text-red-800">
+                        {new Date(entry.date).toLocaleString()}
+                      </p>
+                      <p className="mt-1 text-red-700">{entry.reason}</p>
+                      <a
+                        href={entry.proofUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-2 inline-flex text-sm font-medium text-blue-700 hover:underline"
+                      >
+                        View refund proof
+                        {entry.proofFileName ? ` (${entry.proofFileName})` : ""}
+                      </a>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             {invoice.editHistory && invoice.editHistory.length > 0 ? (
               <div className="space-y-3">
                 {invoice.editHistory.map((entry) => (
@@ -1441,7 +1713,13 @@ export default function ViewInvoiceModal({
             </button>
             <button
               onClick={confirmInstallmentPaid}
-              disabled={isSavingInstallmentPayment}
+              disabled={
+                isSavingInstallmentPayment ||
+                (shouldPromptLateFee && applyLateFee === null) ||
+                (shouldPromptLateFee &&
+                  applyLateFee === false &&
+                  !lateFeeWaivedReason.trim())
+              }
               className="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-60"
             >
               {isSavingInstallmentPayment ? "Saving..." : "Confirm"}
@@ -1458,6 +1736,12 @@ export default function ViewInvoiceModal({
               <p className="text-gray-600 mt-1">
                 Amount: {formatCurrency(selectedInstallment.amount)}
               </p>
+              {new Date(selectedInstallment.dueDate) <
+                new Date(paymentDate) && (
+                <p className="mt-1 text-red-600 font-medium">
+                  This installment is overdue.
+                </p>
+              )}
             </div>
           )}
 
@@ -1625,6 +1909,60 @@ export default function ViewInvoiceModal({
             </div>
           )}
 
+          {shouldPromptLateFee && overdueInstallment && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-3">
+              <div>
+                <p className="text-sm font-semibold text-amber-900">
+                  Installment due date has passed
+                </p>
+                <p className="text-xs text-amber-800 mt-1">
+                  {overdueInstallment.label} was due on{" "}
+                  {new Date(overdueInstallment.dueDate).toLocaleDateString()}.
+                  Apply late fee to this invoice? Admin late fee: $
+                  {lateFeeSetting.amount.toFixed(2)}
+                </p>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setApplyLateFee(true)}
+                  className={`px-3 py-2 rounded-lg text-sm border ${
+                    applyLateFee === true
+                      ? "bg-amber-600 text-white border-amber-600"
+                      : "bg-white text-amber-900 border-amber-200"
+                  }`}
+                >
+                  Apply late fee
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setApplyLateFee(false)}
+                  className={`px-3 py-2 rounded-lg text-sm border ${
+                    applyLateFee === false
+                      ? "bg-white text-amber-900 border-amber-500"
+                      : "bg-white text-amber-900 border-amber-200"
+                  }`}
+                >
+                  Waive late fee
+                </button>
+              </div>
+              {applyLateFee === false && (
+                <div>
+                  <label className="block text-sm font-medium text-amber-900 mb-2">
+                    Reason for waiving late fee
+                  </label>
+                  <textarea
+                    value={lateFeeWaivedReason}
+                    onChange={(e) => setLateFeeWaivedReason(e.target.value)}
+                    className="w-full px-4 py-2 border border-amber-200 rounded-lg text-gray-900 focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                    rows={3}
+                    placeholder="Explain why the late fee is not being charged"
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
           {markPaidError && (
             <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
               {markPaidError}
@@ -1647,7 +1985,11 @@ export default function ViewInvoiceModal({
       >
         <div ref={imageTemplateRef}>
           <InvoiceImageTemplate
-            invoice={invoice}
+            invoice={{
+              ...invoice,
+              amount: localInvoiceAmount,
+              paidAmount: localPaidAmount,
+            }}
             payments={payments}
             terms={
               invoice?.terms?.lines || invoice?.termsSnapshot || defaultTerms

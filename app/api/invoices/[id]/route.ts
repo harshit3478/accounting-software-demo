@@ -120,6 +120,9 @@ export async function PUT(
       liveTypeId,
       isHold,
       editReason,
+      recalculationFeeAction,
+      removedItemDepositFeeAction,
+      removedItemDepositFeeSkipReason,
     } = await request.json();
 
     const reason = typeof editReason === "string" ? editReason.trim() : "";
@@ -129,9 +132,22 @@ export async function PUT(
         { status: 400 },
       );
     }
+    const normalizedRecalculationFeeAction =
+      recalculationFeeAction === "apply" || recalculationFeeAction === "skip"
+        ? recalculationFeeAction
+        : "none";
+    const normalizedRemovedDepositFeeAction =
+      removedItemDepositFeeAction === "apply" ||
+      removedItemDepositFeeAction === "skip"
+        ? removedItemDepositFeeAction
+        : "none";
+    const normalizedRemovedDepositFeeSkipReason =
+      typeof removedItemDepositFeeSkipReason === "string"
+        ? removedItemDepositFeeSkipReason.trim()
+        : "";
 
     const { id } = await params;
-    const invoiceId = parseInt(id);
+    const invoiceId = parseInt(id, 10);
 
     // Check if invoice exists
     const existingInvoice = await prisma.invoice.findUnique({
@@ -267,13 +283,72 @@ export async function PUT(
           depositFee: calculateDepositFeeForItem(item, depositFeeRules),
         }))
       : items || null;
+
+    const getItemKey = (item: any) =>
+      [
+        String(item?.name || "").trim().toLowerCase(),
+        String(item?.unit || "").trim().toLowerCase(),
+      ].join("|");
+
+    const currentItemCounts = new Map<string, number>();
+    if (Array.isArray(normalizedItems)) {
+      for (const item of normalizedItems) {
+        const key = getItemKey(item);
+        currentItemCounts.set(key, (currentItemCounts.get(key) || 0) + 1);
+      }
+    }
+
+    const removedDepositFeeItems = Array.isArray(existingInvoice.items)
+      ? existingInvoice.items.filter((item: any) => {
+          const key = getItemKey(item);
+          const count = currentItemCounts.get(key) || 0;
+          if (count > 0) {
+            currentItemCounts.set(key, count - 1);
+            return false;
+          }
+          return Number(item?.depositFee || 0) > 0;
+        })
+      : [];
+    const removedItemDepositFeeAmount = Number(
+      removedDepositFeeItems
+        .reduce((sum: number, item: any) => sum + Number(item?.depositFee || 0), 0)
+        .toFixed(2),
+    );
+
+    if (
+      removedItemDepositFeeAmount > 0 &&
+      normalizedRemovedDepositFeeAction === "none"
+    ) {
+      return NextResponse.json(
+        { error: "Choose whether to apply removed item deposit fee." },
+        { status: 400 },
+      );
+    }
+
+    if (
+      removedItemDepositFeeAmount > 0 &&
+      normalizedRemovedDepositFeeAction === "skip" &&
+      !normalizedRemovedDepositFeeSkipReason
+    ) {
+      return NextResponse.json(
+        { error: "Reason is required when skipping removed item deposit fee." },
+        { status: 400 },
+      );
+    }
+
+    const appliedRemovedItemDepositFee =
+      normalizedRemovedDepositFeeAction === "apply"
+        ? removedItemDepositFeeAmount
+        : 0;
+
     const totalAmount =
       parseFloat(subtotal) +
       parseFloat(taxAmount) -
       parseFloat(discountAmount) +
       shippingFeeAmount +
       insuranceFeeAmount +
-      layawayFeeAmount;
+      layawayFeeAmount +
+      appliedRemovedItemDepositFee;
     const paidAmount = Number(existingInvoiceAny.paidAmount?.toNumber?.() ?? 0);
 
     let resolvedTermsId: number | null = existingTermsId;
@@ -419,7 +494,7 @@ export async function PUT(
       customerId: resolvedCustomerId,
     };
 
-    const changes: Record<string, { from: any; to: any }> = {};
+    const changes: Record<string, any> = {};
     const trackChange = (key: string, fromValue: any, toValue: any) => {
       const fromSerialized =
         fromValue instanceof Date ? fromValue.toISOString() : fromValue;
@@ -459,6 +534,27 @@ export async function PUT(
       nextData.layawayFee,
     );
     trackChange("amount", existingInvoice.amount.toNumber(), nextData.amount);
+    if (removedItemDepositFeeAmount > 0) {
+      changes.removedItemDepositFee = {
+        action: normalizedRemovedDepositFeeAction,
+        amount:
+          normalizedRemovedDepositFeeAction === "apply"
+            ? removedItemDepositFeeAmount
+            : 0,
+        availableAmount: removedItemDepositFeeAmount,
+        reason:
+          normalizedRemovedDepositFeeAction === "skip"
+            ? normalizedRemovedDepositFeeSkipReason
+            : undefined,
+        items: removedDepositFeeItems.map((item: any) => ({
+          name: item?.name || "",
+          quantity: Number(item?.quantity || 0),
+          price: Number(item?.price || 0),
+          unit: item?.unit || null,
+          depositFee: Number(item?.depositFee || 0),
+        })),
+      };
+    }
     trackChange(
       "invoiceDate",
       (existingInvoiceAny.invoiceDate as Date | null) ||
@@ -542,19 +638,26 @@ export async function PUT(
               Number(updated.amount) - paidAmount,
               0,
             );
-            const canRecalculate =
+            const hasPaidExistingPlan = Boolean(
+              existingPlan && hasPaidInstallments,
+            );
+            const hasLayawayPlanConfigChanged = Boolean(
               existingPlan &&
-              hasPaidInstallments &&
+                (existingPlan.months !== normalizedLayawayPlan.months ||
+                  existingPlan.paymentFrequency !==
+                    normalizedLayawayPlan.paymentFrequency ||
+                  Number(existingPlan.downPayment) !==
+                    normalizedLayawayPlan.downPayment ||
+                  String(existingPlan.notes || "").trim() !==
+                    String(normalizedLayawayPlan.notes || "").trim()),
+            );
+            const shouldApplyRecalculationFee =
+              hasLayawayPlanConfigChanged &&
+              normalizedRecalculationFeeAction === "apply" &&
               recalcFeeSetting.isActive &&
               recalcFeeSetting.ratePercent > 0;
 
-            if (existingPlan && hasPaidInstallments && !canRecalculate) {
-              throw new Error(
-                "Cannot reconfigure layaway plan after installment payments have been recorded unless recalculation fee is enabled.",
-              );
-            }
-
-            const recalcFeeAmount = canRecalculate
+            const recalcFeeAmount = shouldApplyRecalculationFee
               ? calculateRecalculationFeeAmount(
                   totalForPlan,
                   recalcFeeSetting.ratePercent,
@@ -575,12 +678,15 @@ export async function PUT(
                 from: amountBeforeFee,
                 to: amountBeforeFee + recalcFeeAmount,
               };
+              changes.recalculationFee = {
+                amount: recalcFeeAmount,
+              };
             }
 
-            const planBaseDate = canRecalculate
+            const planBaseDate = hasPaidExistingPlan
               ? new Date()
               : new Date(invoiceDateValue);
-            const downPayment = canRecalculate
+            const downPayment = hasPaidExistingPlan
               ? 0
               : normalizedLayawayPlan.downPayment;
             const remaining = totalForPlan + recalcFeeAmount - downPayment;
@@ -641,7 +747,7 @@ export async function PUT(
                 data: {
                   months: normalizedLayawayPlan.months,
                   paymentFrequency: normalizedLayawayPlan.paymentFrequency,
-                  downPayment: canRecalculate
+                  downPayment: hasPaidExistingPlan
                     ? existingPlan.downPayment
                     : normalizedLayawayPlan.downPayment,
                   notes: normalizedLayawayPlan.notes,
@@ -782,6 +888,12 @@ export async function DELETE(
       body?.targetInvoiceId === ""
         ? null
         : parseInt(String(body.targetInvoiceId), 10);
+    const requestedFeeMethodId =
+      body?.feeMethodId === null ||
+      body?.feeMethodId === undefined ||
+      body?.feeMethodId === ""
+        ? null
+        : parseInt(String(body.feeMethodId), 10);
 
     let targetStatus:
       | "inactive"
@@ -823,6 +935,9 @@ export async function DELETE(
 
     const updated = await prisma.$transaction(
       async (tx) => {
+        let refundProofUrl: string | null = null;
+        let storedRefundProofFileName: string | null = null;
+
         if (targetStatus === "abandoned") {
           if (
             normalizedFeeAction === "restocking" &&
@@ -891,17 +1006,37 @@ export async function DELETE(
                 ? Number(depositFeeTotal.toFixed(2))
                 : 0;
 
-          feeAmount = Math.min(
-            Math.round(calculatedFee * 100) / 100,
-            Math.round((directTotal + matchedTotal) * 100) / 100,
-          );
+          const paymentTotal = Math.round((directTotal + matchedTotal) * 100) / 100;
+          const roundedCalculatedFee = Math.round(calculatedFee * 100) / 100;
+          feeAmount =
+            normalizedFeeAction === "none"
+              ? 0
+              : paymentTotal > 0
+                ? Math.min(roundedCalculatedFee, paymentTotal)
+                : roundedCalculatedFee;
           movedAmount = Math.max(
-            Math.round((directTotal + matchedTotal - feeAmount) * 100) / 100,
+            Math.round((paymentTotal - feeAmount) * 100) / 100,
             0,
           );
 
-          let refundProofUrl: string | null = null;
-          let storedRefundProofFileName: string | null = null;
+          const sourceMethodId =
+            (Number.isFinite(requestedFeeMethodId as number)
+              ? requestedFeeMethodId
+              : null) ||
+            realDirectPayments[0]?.methodId ||
+            (
+              await tx.payment.findFirst({
+                where: { id: matchedPayments[0]?.paymentId },
+                select: { methodId: true },
+              })
+            )?.methodId ||
+            (
+              await tx.paymentMethodEntry.findFirst({
+                where: { isActive: true },
+                orderBy: [{ isSystem: "desc" }, { sortOrder: "asc" }],
+                select: { id: true },
+              })
+            )?.id;
 
           if (normalizedPaymentAction === "refund") {
             if (!refundProofDataUrl) {
@@ -936,7 +1071,7 @@ export async function DELETE(
             storedRefundProofFileName = safeFileName;
           }
 
-          if (movedAmount > 0.009) {
+          if (paymentTotal > 0.009) {
             if (
               !normalizedPaymentAction ||
               normalizedPaymentAction === "none"
@@ -981,64 +1116,75 @@ export async function DELETE(
                 });
               }
 
-              const sourceMethodId =
-                realDirectPayments[0]?.methodId ||
-                (
-                  await tx.payment.findFirst({
-                    where: { id: matchedPayments[0]?.paymentId },
-                    select: { methodId: true },
-                  })
-                )?.methodId ||
-                (
-                  await tx.paymentMethodEntry.findFirst({
-                    where: { isActive: true },
-                    orderBy: [{ isSystem: "desc" }, { sortOrder: "asc" }],
-                    select: { id: true },
-                  })
-                )?.id;
-
               if (!sourceMethodId) {
                 throw new Error(
                   "No active payment method available for store credit.",
                 );
               }
 
-              const creditPayment = await tx.payment.create({
-                data: {
-                  invoiceId: null,
-                  amount: new Prisma.Decimal(movedAmount),
-                  paymentDate: new Date(),
-                  methodId: sourceMethodId,
-                  notes: `Store credit from abandoned invoice ${existingInvoice.invoiceNumber}${reason ? ` | ${reason}` : ""}`,
-                  userId: user.id,
-                  isMatched: false,
-                  source: "store_credit_excess",
-                },
-              });
+              if (movedAmount > 0.009) {
+                const creditPayment = await tx.payment.create({
+                  data: {
+                    invoiceId: null,
+                    amount: new Prisma.Decimal(movedAmount),
+                    paymentDate: new Date(),
+                    methodId: sourceMethodId,
+                    notes: `Store credit from abandoned invoice ${existingInvoice.invoiceNumber}${reason ? ` | ${reason}` : ""}`,
+                    userId: user.id,
+                    isMatched: false,
+                    source: "store_credit_excess",
+                  },
+                });
 
-              await stampPaymentCode(tx, creditPayment.id);
+                await stampPaymentCode(tx, creditPayment.id);
 
-              await (tx as any).customer.update({
-                where: { id: existingInvoice.customerId },
-                data: {
-                  storeCredit: { increment: new Prisma.Decimal(movedAmount) },
-                },
-              });
+                await (tx as any).customer.update({
+                  where: { id: existingInvoice.customerId },
+                  data: {
+                    storeCredit: { increment: new Prisma.Decimal(movedAmount) },
+                  },
+                });
 
-              await (tx as any).customerCreditTransaction.create({
-                data: {
-                  customerId: existingInvoice.customerId,
-                  amount: new Prisma.Decimal(movedAmount),
-                  type: "credit",
-                  reason: `Payments moved from abandoned invoice ${existingInvoice.invoiceNumber}. ${reason}`,
-                  paymentId: creditPayment.id,
-                  invoiceId,
-                  createdById: user.id,
-                },
-              });
+                await (tx as any).customerCreditTransaction.create({
+                  data: {
+                    customerId: existingInvoice.customerId,
+                    amount: new Prisma.Decimal(movedAmount),
+                    type: "credit",
+                    reason: `Payments moved from abandoned invoice ${existingInvoice.invoiceNumber}. ${reason}`,
+                    paymentId: creditPayment.id,
+                    invoiceId,
+                    createdById: user.id,
+                  },
+                });
+              }
             }
 
             if (normalizedPaymentAction === "transfer") {
+              if (movedAmount <= 0.009) {
+                if (realDirectPayments.length > 0) {
+                  await tx.payment.updateMany({
+                    where: { id: { in: realDirectPayments.map((p) => p.id) } },
+                    data: {
+                      invoiceId: null,
+                      isAbandoned: true,
+                      abandonedAt: new Date(),
+                      abandonedBy: user.id,
+                      abandonReason: `Payments retained as fee from abandoned invoice ${existingInvoice.invoiceNumber}. ${reason}`,
+                    },
+                  });
+                }
+                if (matchedPaymentsWithoutDirectOverlap.length > 0) {
+                  await tx.paymentInvoiceMatch.deleteMany({
+                    where: {
+                      id: {
+                        in: matchedPaymentsWithoutDirectOverlap.map(
+                          (m) => m.id,
+                        ),
+                      },
+                    },
+                  });
+                }
+              } else {
               if (!Number.isFinite(targetInvoiceId as number)) {
                 throw new Error("Target invoice is required for transfer.");
               }
@@ -1111,6 +1257,7 @@ export async function DELETE(
                     data: { invoiceId: target.id },
                   });
                 }
+              }
               }
             }
 
@@ -1201,6 +1348,42 @@ export async function DELETE(
               }
             }
           }
+
+          if (normalizedFeeAction !== "none" && feeAmount > 0.009) {
+            if (
+              paymentTotal <= 0.009 &&
+              !Number.isFinite(requestedFeeMethodId as number)
+            ) {
+              throw new Error("Payment method is required for the fee payment.");
+            }
+            if (!sourceMethodId) {
+              throw new Error(
+                "No active payment method available for fee payment.",
+              );
+            }
+
+            const feeLabel =
+              normalizedFeeAction === "restocking"
+                ? "Restocking fee"
+                : "Deposit fee";
+            const feePayment = await tx.payment.create({
+              data: {
+                invoiceId,
+                amount: new Prisma.Decimal(feeAmount),
+                paymentDate: new Date(),
+                methodId: sourceMethodId,
+                notes: `${feeLabel} retained from abandoned invoice ${existingInvoice.invoiceNumber}${reason ? ` | ${reason}` : ""}`,
+                userId: user.id,
+                isMatched: true,
+                source:
+                  normalizedFeeAction === "restocking"
+                    ? "restocking_fee"
+                    : "deposit_fee",
+              },
+            });
+
+            await stampPaymentCode(tx, feePayment.id);
+          }
         }
 
         const inv = await tx.invoice.update({
@@ -1236,6 +1419,18 @@ export async function DELETE(
                           feeAmount: {
                             from: 0,
                             to: feeAmount,
+                          },
+                          feeType: {
+                            from: null,
+                            to: normalizedFeeAction,
+                          },
+                        }
+                      : {}),
+                    ...(normalizedPaymentAction === "refund" && refundProofUrl
+                      ? {
+                          refundProof: {
+                            url: refundProofUrl,
+                            fileName: storedRefundProofFileName,
                           },
                         }
                       : {}),

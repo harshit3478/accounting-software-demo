@@ -1,15 +1,22 @@
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import prisma from "../../../../../lib/prisma";
 import { requireAuth } from "../../../../../lib/auth";
 
+type PaymentMethodLike = {
+  id: number;
+  name: string;
+  icon: string | null;
+  color: string;
+};
+
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     await requireAuth();
     const { id } = await params;
-    const invoiceId = parseInt(id);
+    const invoiceId = parseInt(id, 10);
 
     // Fetch direct payments (where payment.invoiceId = invoiceId)
     const directPayments = await prisma.payment.findMany({
@@ -57,7 +64,8 @@ export async function GET(
       {
         id: number;
         amount: number;
-        method: any;
+        source?: string;
+        method: PaymentMethodLike;
         date: string;
         notes: string | null;
         createdAt: string;
@@ -71,6 +79,7 @@ export async function GET(
       allPaymentsMap.set(payment.id, {
         id: payment.id,
         amount: payment.amount.toNumber(),
+        source: payment.source,
         method: payment.method,
         date: payment.paymentDate.toISOString(),
         notes: payment.notes,
@@ -88,6 +97,7 @@ export async function GET(
       allPaymentsMap.set(match.payment.id, {
         id: match.payment.id,
         amount: match.amount.toNumber(), // Use match amount, not full payment amount
+        source: match.payment.source,
         method: match.payment.method,
         date: match.payment.paymentDate.toISOString(),
         notes: match.payment.notes,
@@ -104,8 +114,9 @@ export async function GET(
     );
 
     return NextResponse.json(allPayments);
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error";
     console.error("Fetch invoice payments error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

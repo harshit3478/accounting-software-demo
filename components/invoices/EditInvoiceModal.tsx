@@ -1,16 +1,17 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import Modal from "./Modal";
+import {
+  calculateLayawayFeeFromItems,
+  DEFAULT_LAYAWAY_FEE_RATES,
+  type LayawayFeeRate,
+  normalizeLayawayFeeRates,
+} from "../../lib/layaway-fees";
+import { calculateRecalculationFeeAmount } from "../../lib/recalculation-fee-calculator";
 import InvoiceItemsEditor from "./InvoiceItemsEditor";
 import InvoiceSummary from "./InvoiceSummary";
+import Modal from "./Modal";
 import { InvoiceItem } from "./types";
-import {
-  DEFAULT_LAYAWAY_FEE_RATES,
-  calculateLayawayFeeFromItems,
-  normalizeLayawayFeeRates,
-  type LayawayFeeRate,
-} from "../../lib/layaway-fees";
 
 interface CustomerOption {
   id: number;
@@ -37,7 +38,7 @@ interface LiveTypeOption {
 
 interface TermOption {
   id: number;
-  title: string | null;
+  title?: string | null;
   lines: string[];
   isDefault: boolean;
 }
@@ -149,6 +150,10 @@ export default function EditInvoiceModal({
   const [layawayBasisUnit, setLayawayBasisUnit] = useState("grams");
   const [layawayDownPayment, setLayawayDownPayment] = useState(0);
   const [layawayNotes, setLayawayNotes] = useState("");
+  const [recalculationFeeSetting, setRecalculationFeeSetting] = useState({
+    ratePercent: 0,
+    isActive: false,
+  });
   const [termsOptions, setTermsOptions] = useState<TermOption[]>([]);
   const [selectedTermsId, setSelectedTermsId] = useState<
     number | "custom" | "none"
@@ -158,6 +163,17 @@ export default function EditInvoiceModal({
   const [invoiceDateError, setInvoiceDateError] = useState("");
   const [dateError, setDateError] = useState("");
   const [editReason, setEditReason] = useState("");
+  const [showRecalculationFeeModal, setShowRecalculationFeeModal] =
+    useState(false);
+  const [selectedRecalculationFeeAction, setSelectedRecalculationFeeAction] =
+    useState<"apply" | "skip" | null>(null);
+  const [showRemovedDepositFeeModal, setShowRemovedDepositFeeModal] =
+    useState(false);
+  const [removedDepositFeeAction, setRemovedDepositFeeAction] = useState<
+    "apply" | "skip" | null
+  >(null);
+  const [removedDepositFeeSkipReason, setRemovedDepositFeeSkipReason] =
+    useState("");
 
   const paidAmount = Number(invoice?.paidAmount || 0);
 
@@ -260,6 +276,18 @@ export default function EditInvoiceModal({
           setLayawayFeeRates(DEFAULT_LAYAWAY_FEE_RATES);
         });
 
+      fetch("/api/recalculation-fee")
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data) {
+            setRecalculationFeeSetting({
+              ratePercent: Number(data.ratePercent ?? 0),
+              isActive: !!data.isActive,
+            });
+          }
+        })
+        .catch(() => {});
+
       try {
         const stored = localStorage.getItem("layaway-defaults");
         if (stored) {
@@ -353,6 +381,11 @@ export default function EditInvoiceModal({
       setEditReason("");
       setInvoiceDateError("");
       setDateError("");
+      setShowRecalculationFeeModal(false);
+      setSelectedRecalculationFeeAction(null);
+      setShowRemovedDepositFeeModal(false);
+      setRemovedDepositFeeAction(null);
+      setRemovedDepositFeeSkipReason("");
     }
   }, [invoice, isOpen]);
 
@@ -393,9 +426,62 @@ export default function EditInvoiceModal({
     );
   };
 
+  const getItemKey = (item: InvoiceItem) =>
+    [
+      item.name.trim().toLowerCase(),
+      (item.unit || "").trim().toLowerCase(),
+    ].join("|");
+
+  const getRemovedDepositFeeItems = () => {
+    const currentCounts = new Map<string, number>();
+    for (const item of items) {
+      const key = getItemKey(item);
+      currentCounts.set(key, (currentCounts.get(key) || 0) + 1);
+    }
+
+    return (invoice?.items || []).filter((item) => {
+      const key = getItemKey(item);
+      const count = currentCounts.get(key) || 0;
+      if (count > 0) {
+        currentCounts.set(key, count - 1);
+        return false;
+      }
+      return Number(item.depositFee || 0) > 0;
+    });
+  };
+
+  const removedDepositFeeItems = getRemovedDepositFeeItems();
+  const removedDepositFeeTotal = removedDepositFeeItems.reduce(
+    (sum, item) => sum + Number(item.depositFee || 0),
+    0,
+  );
+  const shouldOfferRemovedDepositFee = removedDepositFeeTotal > 0;
+
   const calculateRemainingBalance = () => {
     return Math.max(calculateTotal() - paidAmount, 0);
   };
+
+  const hasLayawayReconfigurationChanged = Boolean(
+    invoice?.isLayaway &&
+      invoice?.layawayPlan &&
+    (layawayMonths !== Number(invoice.layawayPlan?.months || 3) ||
+      layawayFrequency !==
+        (invoice.layawayPlan?.paymentFrequency || "monthly") ||
+      layawayDownPayment !== Number(invoice.layawayPlan?.downPayment || 0) ||
+      layawayNotes.trim() !== String(invoice.layawayPlan?.notes || "").trim()),
+  );
+
+  const shouldOfferRecalculationFee =
+    hasLayawayReconfigurationChanged &&
+    recalculationFeeSetting.isActive &&
+    recalculationFeeSetting.ratePercent > 0;
+
+  const expectedRecalculationFeeAmount = shouldOfferRecalculationFee
+    ? calculateRecalculationFeeAmount(
+        calculateRemainingBalance(),
+        recalculationFeeSetting.ratePercent,
+      )
+    : 0;
 
   const buildLayawayInstallments = () => {
     const remainingBalance = calculateRemainingBalance();
@@ -479,7 +565,10 @@ export default function EditInvoiceModal({
     validateInvoiceDate(newDate);
   };
 
-  const handleUpdateInvoice = async () => {
+  const handleUpdateInvoice = async (
+    recalculationFeeActionOverride?: "apply" | "skip",
+    removedFeeActionOverride?: "apply" | "skip",
+  ) => {
     if (!invoice || !clientName.trim() || !invoiceDate || !dueDate) {
       onError?.("Please fill in all required fields");
       return;
@@ -524,6 +613,39 @@ export default function EditInvoiceModal({
       return;
     }
 
+    const effectiveRemovedDepositFeeAction =
+      removedFeeActionOverride || removedDepositFeeAction;
+    const effectiveRecalculationFeeAction =
+      recalculationFeeActionOverride || selectedRecalculationFeeAction;
+
+    if (
+      shouldOfferRemovedDepositFee &&
+      !effectiveRemovedDepositFeeAction
+    ) {
+      setShowRemovedDepositFeeModal(true);
+      return;
+    }
+
+    if (
+      shouldOfferRemovedDepositFee &&
+      effectiveRemovedDepositFeeAction === "skip" &&
+      !removedDepositFeeSkipReason.trim()
+    ) {
+      onError?.("Please provide reason for skipping removed item deposit fee");
+      return;
+    }
+
+    if (
+      shouldOfferRecalculationFee &&
+      !effectiveRecalculationFeeAction
+    ) {
+      setShowRemovedDepositFeeModal(false);
+      setShowRecalculationFeeModal(true);
+      return;
+    }
+
+    setShowRecalculationFeeModal(false);
+    setShowRemovedDepositFeeModal(false);
     setIsUpdating(true);
     try {
       const subtotal = calculateSubtotal();
@@ -573,6 +695,16 @@ export default function EditInvoiceModal({
           newTerms:
             selectedCustomTerms.length > 0 ? selectedCustomTerms : undefined,
           editReason: editReason.trim(),
+          recalculationFeeAction: shouldOfferRecalculationFee
+            ? effectiveRecalculationFeeAction
+            : "none",
+          removedItemDepositFeeAction: shouldOfferRemovedDepositFee
+            ? effectiveRemovedDepositFeeAction
+            : "none",
+          removedItemDepositFeeSkipReason:
+            effectiveRemovedDepositFeeAction === "skip"
+              ? removedDepositFeeSkipReason.trim()
+              : undefined,
         }),
       });
 
@@ -582,6 +714,7 @@ export default function EditInvoiceModal({
         return { success: true };
       } else {
         const error = await res.json();
+        onError?.(error.error || "Failed to update invoice");
         return {
           success: false,
           error: error.error || "Failed to update invoice",
@@ -589,6 +722,7 @@ export default function EditInvoiceModal({
       }
     } catch (error) {
       console.error("Failed to update invoice:", error);
+      onError?.("Failed to update invoice");
       return { success: false, error: "Failed to update invoice" };
     } finally {
       setIsUpdating(false);
@@ -605,7 +739,7 @@ export default function EditInvoiceModal({
         Cancel
       </button>
       <button
-        onClick={handleUpdateInvoice}
+        onClick={() => handleUpdateInvoice()}
         disabled={isUpdating}
         className="px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:bg-blue-400 disabled:cursor-not-allowed flex items-center"
       >
@@ -642,7 +776,8 @@ export default function EditInvoiceModal({
   if (!invoice) return null;
 
   return (
-    <Modal
+    <>
+      <Modal
       isOpen={isOpen}
       onClose={onClose}
       title={`Edit Invoice ${invoice.invoiceNumber}`}
@@ -1263,7 +1398,206 @@ export default function EditInvoiceModal({
           />
         </div>
       </div>
-    </Modal>
+      </Modal>
+      {showRecalculationFeeModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            aria-hidden="true"
+            onClick={() => setShowRecalculationFeeModal(false)}
+          />
+          <div
+            className="relative w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="recalculation-fee-title"
+          >
+            <h3
+              id="recalculation-fee-title"
+              className="text-xl font-bold text-gray-900"
+            >
+              Apply recalculation fee?
+            </h3>
+            <p className="mt-2 text-sm text-gray-600">
+              This layaway invoice has paid installments and its configuration
+              changed. You can add the configured recalculation fee to the
+              invoice, or save the new schedule without adding the fee.
+            </p>
+
+            <div className="mt-4 rounded-xl border border-purple-200 bg-purple-50 p-4 text-sm text-gray-800">
+              <div className="flex justify-between gap-4">
+                <span>Duration</span>
+                <span className="font-medium">
+                  {invoice.layawayPlan?.months || 3} month(s) {"->"}{" "}
+                  {layawayMonths} month(s)
+                </span>
+              </div>
+              <div className="mt-2 flex justify-between gap-4">
+                <span>Payment frequency</span>
+                <span className="font-medium">
+                  {invoice.layawayPlan?.paymentFrequency || "monthly"} {"->"}{" "}
+                  {layawayFrequency}
+                </span>
+              </div>
+              <div className="mt-2 flex justify-between gap-4">
+                <span>Down payment</span>
+                <span className="font-medium">
+                  ${Number(invoice.layawayPlan?.downPayment || 0).toFixed(2)}{" "}
+                  {"->"} ${layawayDownPayment.toFixed(2)}
+                </span>
+              </div>
+              <div className="mt-3 flex justify-between border-t border-purple-200 pt-3">
+                <span>Recalculation fee</span>
+                <span className="font-semibold text-purple-800">
+                  ${expectedRecalculationFeeAmount.toFixed(2)}
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-6 flex flex-wrap justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setShowRecalculationFeeModal(false)}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                disabled={isUpdating}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedRecalculationFeeAction("skip");
+                  handleUpdateInvoice("skip");
+                }}
+                className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-800 hover:bg-amber-100"
+                disabled={isUpdating}
+              >
+                Leave without fee
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedRecalculationFeeAction("apply");
+                  handleUpdateInvoice("apply");
+                }}
+                className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:bg-purple-300"
+                disabled={isUpdating}
+              >
+                Apply fee and update
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showRemovedDepositFeeModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            aria-hidden="true"
+            onClick={() => setShowRemovedDepositFeeModal(false)}
+          />
+          <div
+            className="relative w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="removed-deposit-fee-title"
+          >
+            <h3
+              id="removed-deposit-fee-title"
+              className="text-xl font-bold text-gray-900"
+            >
+              Apply removed item deposit fee?
+            </h3>
+            <p className="mt-2 text-sm text-gray-600">
+              You removed item(s) that had deposit fees. You can retain those
+              deposit fees by adding them to the invoice total, or skip the fee
+              with a reason.
+            </p>
+
+            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-gray-800">
+              <div className="space-y-2">
+                {removedDepositFeeItems.map((item, index) => (
+                  <div
+                    key={`${item.name}-${index}`}
+                    className="flex justify-between gap-4"
+                  >
+                    <span>
+                      {item.name} ({Number(item.quantity || 0)}{" "}
+                      {item.unit || "item"})
+                    </span>
+                    <span className="font-medium text-amber-800">
+                      ${Number(item.depositFee || 0).toFixed(2)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-3 flex justify-between border-t border-amber-200 pt-3 font-semibold">
+                <span>Total removed deposit fee</span>
+                <span className="text-amber-800">
+                  ${removedDepositFeeTotal.toFixed(2)}
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-4">
+              <label className="block text-sm font-medium text-gray-700">
+                Reason when skipping fee
+              </label>
+              <textarea
+                value={removedDepositFeeSkipReason}
+                onChange={(e) => setRemovedDepositFeeSkipReason(e.target.value)}
+                rows={2}
+                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                placeholder="Why should this removed item deposit fee be skipped?"
+              />
+            </div>
+
+            <div className="mt-6 flex flex-wrap justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setShowRemovedDepositFeeModal(false)}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                disabled={isUpdating}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!removedDepositFeeSkipReason.trim()) {
+                    onError?.("Please provide reason for skipping deposit fee");
+                    return;
+                  }
+                  setRemovedDepositFeeAction("skip");
+                  handleUpdateInvoice(
+                    undefined,
+                    "skip",
+                  );
+                }}
+                className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-800 hover:bg-amber-100"
+                disabled={isUpdating}
+              >
+                Skip with reason
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setRemovedDepositFeeAction("apply");
+                  handleUpdateInvoice(
+                    undefined,
+                    "apply",
+                  );
+                }}
+                className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:bg-amber-300"
+                disabled={isUpdating}
+              >
+                Apply fee and update
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 

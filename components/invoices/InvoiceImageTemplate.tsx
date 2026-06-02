@@ -2,15 +2,18 @@
 
 import { BUSINESS_CONFIG } from "../../lib/business-config";
 import {
+  getRecalculationFeeDisplayEntries,
+  getRemovedItemDepositFeeDisplayEntries,
   getVisibleLayawayFee,
   resolveLiveTypeLabel,
   resolveInvoiceDate,
 } from "../../lib/invoice-display";
-import { InvoiceItem } from "./types";
+import type { InvoiceItem } from "./types";
 
 interface Payment {
   id: number;
   amount: number;
+  source?: string;
   method:
     | { id: number; name: string; icon: string | null; color: string }
     | string;
@@ -64,6 +67,12 @@ interface Invoice {
     isActive: boolean;
     sortOrder: number;
   } | null;
+  editHistory?: Array<{
+    id: number;
+    reason: string;
+    createdAt: string;
+    changes?: Record<string, any> | null;
+  }> | null;
   customer?: {
     id: number;
     name: string;
@@ -113,6 +122,36 @@ export default function InvoiceImageTemplate({
   const shippingFee = Number(invoice.shippingFee || 0);
   const insuranceAmount = Number(invoice.insuranceAmount || 0);
   const layawayFee = getVisibleLayawayFee(invoice);
+  const currentItemDepositFeeTotal = (invoice.items || []).reduce(
+    (sum, item) => sum + Number(item.depositFee || 0),
+    0,
+  );
+  const removedItemDepositFeeEntries = getRemovedItemDepositFeeDisplayEntries(
+    invoice.editHistory || [],
+  );
+  const invoiceDepositFeeTotal = currentItemDepositFeeTotal;
+  const lateFeeTotal = payments.reduce(
+    (sum, payment) =>
+      payment.source === "late_fee" ? sum + Number(payment.amount || 0) : sum,
+    0,
+  );
+  const depositFeeTotal = payments.reduce(
+    (sum, payment) =>
+      payment.source === "deposit_fee"
+        ? sum + Number(payment.amount || 0)
+        : sum,
+    0,
+  );
+  const restockingFeeTotal = payments.reduce(
+    (sum, payment) =>
+      payment.source === "restocking_fee"
+        ? sum + Number(payment.amount || 0)
+        : sum,
+    0,
+  );
+  const recalculationFeeEntries = getRecalculationFeeDisplayEntries(
+    invoice.editHistory || [],
+  );
   const invoiceDate = resolveInvoiceDate(
     invoice.invoiceDate,
     invoice.createdAt,
@@ -133,8 +172,32 @@ export default function InvoiceImageTemplate({
         color: "#1a1a1a",
         fontSize: "13px",
         lineHeight: 1.5,
+        position: "relative",
+        overflow: "hidden",
       }}
     >
+      {invoice.status === "abandoned" && (
+        <div
+          style={{
+            position: "absolute",
+            top: "42%",
+            left: "50%",
+            transform: "translate(-50%, -50%) rotate(-28deg)",
+            fontSize: "86px",
+            fontWeight: 800,
+            letterSpacing: "8px",
+            color: "rgba(220, 38, 38, 0.14)",
+            border: "8px solid rgba(220, 38, 38, 0.12)",
+            padding: "12px 28px",
+            zIndex: 0,
+            pointerEvents: "none",
+            textTransform: "uppercase",
+            whiteSpace: "nowrap",
+          }}
+        >
+          Cancelled
+        </div>
+      )}
       {/* ── HEADER: Logo (left) + INVOICE + Biz info (right) ── */}
       <div
         style={{
@@ -142,6 +205,8 @@ export default function InvoiceImageTemplate({
           justifyContent: "space-between",
           alignItems: "flex-start",
           padding: "36px 48px 28px",
+          position: "relative",
+          zIndex: 1,
         }}
       >
         {/* Logo */}
@@ -594,6 +659,96 @@ export default function InvoiceImageTemplate({
               <span style={{ fontWeight: 600 }}>{fmt(layawayFee)}</span>
             </div>
           )}
+          {invoiceDepositFeeTotal > 0 && (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                padding: "5px 0",
+                fontSize: "13px",
+              }}
+            >
+              <span style={{ color: "#333333" }}>Total Deposit Amount:</span>
+              <span style={{ fontWeight: 600 }}>
+                {fmt(invoiceDepositFeeTotal)}
+              </span>
+            </div>
+          )}
+          {lateFeeTotal > 0 && (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                padding: "5px 0",
+                fontSize: "13px",
+              }}
+            >
+              <span style={{ color: "#333333" }}>Late Fee:</span>
+              <span style={{ fontWeight: 600 }}>{fmt(lateFeeTotal)}</span>
+            </div>
+          )}
+          {depositFeeTotal > 0 && (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                padding: "5px 0",
+                fontSize: "13px",
+              }}
+            >
+              <span style={{ color: "#333333" }}>Deposit Fee:</span>
+              <span style={{ fontWeight: 600 }}>{fmt(depositFeeTotal)}</span>
+            </div>
+          )}
+          {removedItemDepositFeeEntries.map((entry) => (
+            <div
+              key={`${entry.date}-${entry.label}`}
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                padding: "5px 0",
+                fontSize: "13px",
+              }}
+            >
+              <span style={{ color: "#333333" }}>
+                {entry.action === "skip"
+                  ? `${entry.label}: ${entry.reason}`
+                  : `${entry.label} (${fmtDate(entry.date)})`}
+              </span>
+              <span style={{ fontWeight: 600 }}>{fmt(entry.amount)}</span>
+            </div>
+          ))}
+          {restockingFeeTotal > 0 && (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                padding: "5px 0",
+                fontSize: "13px",
+              }}
+            >
+              <span style={{ color: "#333333" }}>Restocking Fee:</span>
+              <span style={{ fontWeight: 600 }}>
+                {fmt(restockingFeeTotal)}
+              </span>
+            </div>
+          )}
+          {recalculationFeeEntries.map((entry) => (
+            <div
+              key={`${entry.date}-${entry.label}`}
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                padding: "5px 0",
+                fontSize: "13px",
+              }}
+            >
+              <span style={{ color: "#333333" }}>
+                {entry.label} ({fmtDate(entry.date)})
+              </span>
+              <span style={{ fontWeight: 600 }}>{fmt(entry.amount)}</span>
+            </div>
+          ))}
           <div
             style={{
               height: "1px",

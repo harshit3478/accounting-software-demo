@@ -18,10 +18,18 @@ export async function GET(request: NextRequest) {
 
     if (status === "abandoned") {
       where.isAbandoned = true;
+      where.refundProofUrl = null;
+    } else if (status === "refund") {
+      where.isAbandoned = true;
+      where.refundProofUrl = { not: null };
+    } else if (status === "deposit_fee") {
+      where.isAbandoned = false;
+      where.source = "deposit_fee";
     } else if (status === "all") {
       delete where.isAbandoned;
     } else {
       where.isAbandoned = false;
+      where.source = { notIn: ["deposit_fee", "restocking_fee"] };
     }
 
     // Search filter

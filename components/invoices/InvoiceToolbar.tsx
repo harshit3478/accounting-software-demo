@@ -104,7 +104,7 @@ export default function InvoiceToolbar({
   const handleClearDateRange = () => {
     setDateFrom(undefined);
     setDateTo(undefined);
-    ("hold", onDateRangeChange(null));
+    onDateRangeChange(null);
     setShowDatePicker(false);
   };
 
@@ -147,6 +147,7 @@ export default function InvoiceToolbar({
                   "paid",
                   "overdue",
                   "partial",
+                  "hold",
                   "abandoned",
                   "inactive",
                 ].map((status) => (

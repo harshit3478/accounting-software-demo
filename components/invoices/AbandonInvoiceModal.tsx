@@ -12,6 +12,11 @@ interface InvoiceOption {
   status: string;
 }
 
+interface PaymentMethodOption {
+  id: number;
+  name: string;
+}
+
 interface InvoiceLike {
   id: number;
   invoiceNumber: string;
@@ -41,6 +46,7 @@ interface AbandonInvoiceModalProps {
     paymentAction: "credit" | "transfer" | "refund" | "none";
     feeAction: "restocking" | "deposit" | "none";
     targetInvoiceId?: number;
+    feeMethodId?: number;
     refundProof?: RefundProof;
   }) => void;
 }
@@ -61,9 +67,14 @@ export default function AbandonInvoiceModal({
   );
   const [targetInvoiceId, setTargetInvoiceId] = useState<number | null>(null);
   const [customerInvoices, setCustomerInvoices] = useState<InvoiceOption[]>([]);
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>(
+    [],
+  );
   const [loadingInvoices, setLoadingInvoices] = useState(false);
+  const [loadingPaymentMethods, setLoadingPaymentMethods] = useState(false);
   const [error, setError] = useState("");
   const [refundProof, setRefundProof] = useState<RefundProof | null>(null);
+  const [feeMethodId, setFeeMethodId] = useState<number | null>(null);
   const [restockingFeeSetting, setRestockingFeeSetting] = useState<{
     amount: number;
     isPercentage: boolean;
@@ -82,6 +93,12 @@ export default function AbandonInvoiceModal({
       ? ((invoice?.amount || 0) * restockingFeeSetting.amount) / 100
       : restockingFeeSetting.amount
     : 0;
+  const selectedFeeAmount =
+    feeAction === "restocking"
+      ? restockingFeeAmount
+      : feeAction === "deposit"
+        ? depositFeeTotal
+        : 0;
 
   useEffect(() => {
     if (!isOpen) return;
@@ -105,13 +122,14 @@ export default function AbandonInvoiceModal({
     setTargetInvoiceId(null);
     setCustomerInvoices([]);
     setRefundProof(null);
+    setFeeMethodId(null);
 
     if (!invoice || !hasPayments) {
       setPaymentAction("none");
       return;
+    } else {
+      setPaymentAction("credit");
     }
-
-    setPaymentAction("credit");
 
     if (!invoice.customerId) return;
 
@@ -138,6 +156,23 @@ export default function AbandonInvoiceModal({
       })
       .finally(() => setLoadingInvoices(false));
   }, [isOpen, invoice, hasPayments]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    setLoadingPaymentMethods(true);
+    fetch("/api/payment-methods")
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data: PaymentMethodOption[]) => {
+        setPaymentMethods(data);
+        setFeeMethodId((prev) => prev || data[0]?.id || null);
+      })
+      .catch(() => {
+        setPaymentMethods([]);
+        setFeeMethodId(null);
+      })
+      .finally(() => setLoadingPaymentMethods(false));
+  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -211,12 +246,18 @@ export default function AbandonInvoiceModal({
       }
     }
 
+    if (feeAction !== "none" && selectedFeeAmount > 0 && !feeMethodId) {
+      setError("Please select a payment method for the fee payment.");
+      return;
+    }
+
     setError("");
     onConfirm({
       editReason: reason.trim(),
       paymentAction: hasPayments ? paymentAction : "none",
-      feeAction: hasPayments ? feeAction : "none",
+      feeAction,
       ...(targetInvoiceId ? { targetInvoiceId } : {}),
+      ...(feeMethodId ? { feeMethodId } : {}),
       ...(refundProof ? { refundProof } : {}),
     });
   };
@@ -261,58 +302,91 @@ export default function AbandonInvoiceModal({
           </div>
         )}
 
-        {hasPayments && (
-          <div className="space-y-3 rounded-lg border border-gray-200 p-3">
-            <label className="block text-sm font-medium text-gray-700">
-              Fee Handling
-            </label>
-
-            {isLayaway && (
-              <label className="flex items-start gap-2 text-sm text-gray-700">
-                <input
-                  type="radio"
-                  checked={feeAction === "restocking"}
-                  onChange={() => setFeeAction("restocking")}
-                  className="mt-0.5"
-                  disabled={
-                    loadingFeeSetting || !restockingFeeSetting?.isActive
-                  }
-                />
-                Apply restocking fee
-                {restockingFeeSetting?.isActive && (
-                  <span className="text-xs text-gray-500">
-                    {restockingFeeSetting.isPercentage
-                      ? `${restockingFeeSetting.amount}% of invoice total (~$${restockingFeeAmount.toFixed(2)})`
-                      : `$${restockingFeeSetting.amount.toFixed(2)} fixed`}
-                  </span>
-                )}
-              </label>
-            )}
-
-            <label className="flex items-start gap-2 text-sm text-gray-700">
-              <input
-                type="radio"
-                checked={feeAction === "deposit"}
-                onChange={() => setFeeAction("deposit")}
-                className="mt-0.5"
-              />
-              Apply deposit fees from invoice items
-              <span className="text-xs text-gray-500">
-                (${depositFeeTotal.toFixed(2)})
-              </span>
-            </label>
-
-            <label className="flex items-start gap-2 text-sm text-gray-700">
-              <input
-                type="radio"
-                checked={feeAction === "none"}
-                onChange={() => setFeeAction("none")}
-                className="mt-0.5"
-              />
-              Abandon without fee
-            </label>
+        {!hasPayments && (
+          <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
+            This invoice has no linked payments. Choose whether to create and
+            retain a fee payment before marking it abandoned.
           </div>
         )}
+
+        <div className="space-y-3 rounded-lg border border-gray-200 p-3">
+          <label className="block text-sm font-medium text-gray-700">
+            Fee Handling
+          </label>
+
+          {isLayaway && (
+            <label className="flex items-start gap-2 text-sm text-gray-700">
+              <input
+                type="radio"
+                checked={feeAction === "restocking"}
+                onChange={() => setFeeAction("restocking")}
+                className="mt-0.5"
+                disabled={loadingFeeSetting || !restockingFeeSetting?.isActive}
+              />
+              Apply restocking fee
+              {restockingFeeSetting?.isActive && (
+                <span className="text-xs text-gray-500">
+                  {restockingFeeSetting.isPercentage
+                    ? `${restockingFeeSetting.amount}% of invoice total (~$${restockingFeeAmount.toFixed(2)})`
+                    : `$${restockingFeeSetting.amount.toFixed(2)} fixed`}
+                </span>
+              )}
+            </label>
+          )}
+
+          <label className="flex items-start gap-2 text-sm text-gray-700">
+            <input
+              type="radio"
+              checked={feeAction === "deposit"}
+              onChange={() => setFeeAction("deposit")}
+              className="mt-0.5"
+            />
+            Apply deposit fees from invoice items
+            <span className="text-xs text-gray-500">
+              (${depositFeeTotal.toFixed(2)})
+            </span>
+          </label>
+
+          <label className="flex items-start gap-2 text-sm text-gray-700">
+            <input
+              type="radio"
+              checked={feeAction === "none"}
+              onChange={() => setFeeAction("none")}
+              className="mt-0.5"
+            />
+            Abandon without fee
+          </label>
+
+          {feeAction !== "none" && selectedFeeAmount > 0 && (
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">
+                Fee Payment Method
+              </label>
+              <select
+                value={feeMethodId || ""}
+                onChange={(e) =>
+                  setFeeMethodId(
+                    e.target.value ? parseInt(e.target.value, 10) : null,
+                  )
+                }
+                disabled={loadingPaymentMethods}
+                className="w-full px-3 py-2 border border-gray-300 text-gray-900 rounded-lg"
+              >
+                <option value="">Select method</option>
+                {paymentMethods.map((method) => (
+                  <option key={method.id} value={method.id}>
+                    {method.name}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-gray-500">
+                A {feeAction === "restocking" ? "restocking" : "deposit"} fee
+                payment of ${selectedFeeAmount.toFixed(2)} will be linked to
+                this abandoned invoice.
+              </p>
+            </div>
+          )}
+        </div>
 
         {hasPayments && (
           <div className="space-y-3 rounded-lg border border-gray-200 p-3">

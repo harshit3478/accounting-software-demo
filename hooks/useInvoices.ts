@@ -202,8 +202,13 @@ interface UseInvoicesReturn {
   handleDeleteConfirm: (options?: {
     editReason?: string;
     targetStatus?: "abandoned" | "inactive" | "reactivate";
-    paymentAction?: "credit" | "transfer" | "none";
+    paymentAction?: "credit" | "transfer" | "refund" | "none";
+    feeAction?: "restocking" | "deposit" | "none";
+    feeMethodId?: number;
     targetInvoiceId?: number | null;
+    refundProofDataUrl?: string;
+    refundProofFileName?: string;
+    refundProofMimeType?: string;
   }) => Promise<void>;
   handleToggleHold: (invoice: Invoice) => Promise<void>;
   handleExportCSV: () => void;
@@ -578,6 +583,7 @@ export function useInvoices(
     targetStatus?: "abandoned" | "inactive" | "reactivate";
     paymentAction?: "credit" | "transfer" | "refund" | "none";
     feeAction?: "restocking" | "deposit" | "none";
+    feeMethodId?: number;
     targetInvoiceId?: number | null;
     refundProofDataUrl?: string;
     refundProofFileName?: string;
@@ -609,6 +615,7 @@ export function useInvoices(
           editReason: editReason.trim(),
           paymentAction: options?.paymentAction,
           feeAction: options?.feeAction,
+          feeMethodId: options?.feeMethodId,
           targetInvoiceId: options?.targetInvoiceId ?? null,
           refundProofDataUrl: options?.refundProofDataUrl,
           refundProofFileName: options?.refundProofFileName,

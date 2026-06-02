@@ -60,6 +60,15 @@ export async function GET(
               status: true,
               dueDate: true,
               createdAt: true,
+              editHistory: {
+                select: {
+                  id: true,
+                  reason: true,
+                  changes: true,
+                  createdAt: true,
+                },
+                orderBy: { createdAt: "desc" },
+              },
             },
             orderBy: { createdAt: "desc" },
           },
@@ -103,6 +112,15 @@ export async function GET(
               status: true,
               dueDate: true,
               createdAt: true,
+              editHistory: {
+                select: {
+                  id: true,
+                  reason: true,
+                  changes: true,
+                  createdAt: true,
+                },
+                orderBy: { createdAt: "desc" },
+              },
             },
             orderBy: { createdAt: "desc" },
           },
@@ -186,6 +204,21 @@ export async function GET(
             ? tx.createdAt.toISOString()
             : tx.createdAt,
         }),
+      ),
+      refundHistory: (customer.invoices || []).flatMap((invoice: any) =>
+        (invoice.editHistory || [])
+          .filter((entry: any) => entry.changes?.refundProof?.url)
+          .map((entry: any) => ({
+            id: entry.id,
+            invoiceId: invoice.id,
+            invoiceNumber: invoice.invoiceNumber,
+            reason: entry.reason,
+            proofUrl: entry.changes.refundProof.url,
+            proofFileName: entry.changes.refundProof.fileName || null,
+            createdAt: entry.createdAt?.toISOString
+              ? entry.createdAt.toISOString()
+              : entry.createdAt,
+          })),
       ),
       stats: {
         totalRevenue,

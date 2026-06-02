@@ -171,7 +171,9 @@ export async function GET(request: NextRequest) {
     // Build where clause
     const where: any = {};
     const showHeldInvoices = status === "hold";
-    where.isHold = showHeldInvoices ? true : false;
+    if (showHeldInvoices) {
+      where.isHold = true;
+    }
 
     // By default, exclude inactive/abandoned invoices unless explicitly requested
     if (showHeldInvoices) {
@@ -199,7 +201,12 @@ export async function GET(request: NextRequest) {
     }
 
     // Status filter (applied on top of inactive exclusion)
-    if (status !== "all" && status !== "inactive" && status !== "abandoned") {
+    if (
+      status !== "all" &&
+      status !== "inactive" &&
+      status !== "abandoned" &&
+      status !== "hold"
+    ) {
       where.status = status;
     }
 

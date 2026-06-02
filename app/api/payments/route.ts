@@ -30,10 +30,18 @@ export async function GET(request: NextRequest) {
     // Status filter
     if (status === "abandoned") {
       where.isAbandoned = true;
+      where.refundProofUrl = null;
+    } else if (status === "refund") {
+      where.isAbandoned = true;
+      where.refundProofUrl = { not: null };
+    } else if (status === "deposit_fee") {
+      where.isAbandoned = false;
+      where.source = "deposit_fee";
     } else if (status === "all") {
       delete where.isAbandoned;
     } else {
       where.isAbandoned = false;
+      where.source = { notIn: ["deposit_fee", "restocking_fee"] };
     }
 
     // Filter by invoiceId if provided
@@ -190,6 +198,7 @@ export async function POST(request: NextRequest) {
       notes,
       source,
       lateFeeAmount,
+      lateFeeReason,
       lateFeeWaivedReason,
     } = await request.json();
 
@@ -209,6 +218,8 @@ export async function POST(request: NextRequest) {
     }
 
     const normalizedLateFeeAmount = Number(lateFeeAmount ?? 0);
+    const normalizedLateFeeReason =
+      typeof lateFeeReason === "string" ? lateFeeReason.trim() : "";
     const normalizedLateFeeWaivedReason =
       typeof lateFeeWaivedReason === "string" ? lateFeeWaivedReason.trim() : "";
 
@@ -295,7 +306,7 @@ export async function POST(request: NextRequest) {
             paymentDate: paymentDate ? new Date(paymentDate) : new Date(),
             amount: normalizedLateFeeAmount,
             userId: user.id,
-            reason: normalizedLateFeeWaivedReason || null,
+            reason: normalizedLateFeeReason || null,
           });
 
           await (tx as any).invoice.update({

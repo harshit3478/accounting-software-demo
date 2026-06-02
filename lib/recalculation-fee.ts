@@ -1,4 +1,5 @@
 import prisma from "./prisma";
+import { calculateRecalculationFeeAmount } from "./recalculation-fee-calculator";
 
 export interface RecalculationFeeSettingSnapshot {
   ratePercent: number;
@@ -6,12 +7,9 @@ export interface RecalculationFeeSettingSnapshot {
 }
 
 export async function getRecalculationFeeSettingSnapshot(): Promise<RecalculationFeeSettingSnapshot> {
-  const rateModel = (prisma as any)?.recalculationFeeSetting;
-  if (!rateModel) {
-    return { ratePercent: 0, isActive: false };
-  }
-
-  const row = await rateModel.findFirst({ orderBy: { updatedAt: "desc" } });
+  const row = await prisma.recalculationFeeSetting.findFirst({
+    orderBy: { updatedAt: "desc" },
+  });
   if (!row) {
     return { ratePercent: 0, isActive: false };
   }
@@ -22,11 +20,4 @@ export async function getRecalculationFeeSettingSnapshot(): Promise<Recalculatio
   };
 }
 
-export function calculateRecalculationFeeAmount(
-  remainingAmount: number,
-  ratePercent: number,
-) {
-  const safeRemaining = Math.max(0, Number(remainingAmount) || 0);
-  const safeRate = Math.max(0, Number(ratePercent) || 0);
-  return Number(((safeRemaining * safeRate) / 100).toFixed(2));
-}
+export { calculateRecalculationFeeAmount };

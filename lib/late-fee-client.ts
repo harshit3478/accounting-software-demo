@@ -40,3 +40,11 @@ export function findOverdueLayawayInstallmentClient(
     amount: Number(overdueInstallment.amount || 0),
   };
 }
+
+export function buildLateFeeReason(
+  installment: LateFeeInstallmentInfo,
+): string {
+  return `${installment.label} due date passed (${new Date(
+    installment.dueDate,
+  ).toLocaleDateString()})`;
+}

@@ -2,6 +2,8 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { BUSINESS_CONFIG } from "./business-config";
 import {
+  getRecalculationFeeDisplayEntries,
+  getRemovedItemDepositFeeDisplayEntries,
   getVisibleLayawayFee,
   resolveInvoiceDate,
   resolveLiveTypeLabel,
@@ -57,6 +59,7 @@ interface Invoice {
     amount: number;
     paymentDate: string;
     method?: { name: string } | null;
+    source?: string;
   }> | null;
   liveTypeId?: number | null;
   liveTypeSnapshot?: string | null;
@@ -64,9 +67,48 @@ interface Invoice {
     name?: string | null;
     country?: string | null;
   } | null;
+  editHistory?: Array<{
+    id: number;
+    reason: string;
+    createdAt: string;
+    changes?: Record<string, any> | null;
+  }> | null;
 }
 
 const { colors } = BUSINESS_CONFIG;
+
+function getPaymentSourceTotal(invoice: Invoice, source: string): number {
+  return (invoice.payments || []).reduce(
+    (sum, payment) =>
+      payment.source === source ? sum + Number(payment.amount || 0) : sum,
+    0,
+  );
+}
+
+function getCurrentItemDepositFeeTotal(invoice: Invoice): number {
+  return (invoice.items || []).reduce(
+    (sum, item) => sum + Number(item.depositFee || 0),
+    0,
+  );
+}
+
+function drawCancelledWatermark(doc: jsPDF) {
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+
+  doc.saveGraphicsState();
+  doc.setGState(new (doc as any).GState({ opacity: 0.14 }));
+  doc.setTextColor(220, 38, 38);
+  doc.setDrawColor(220, 38, 38);
+  doc.setLineWidth(2);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(54);
+  doc.text("CANCELLED", pageW / 2, pageH / 2, {
+    align: "center",
+    angle: -28,
+  });
+  doc.restoreGraphicsState();
+}
 
 function drawBrandedHeader(doc: jsPDF) {
   const pageW = doc.internal.pageSize.getWidth();
@@ -427,6 +469,10 @@ export async function generateSingleInvoicePDF(
     invoice.createdAt,
   );
   const layawayFee = getVisibleLayawayFee(invoice);
+  const removedItemDepositFeeEntries = getRemovedItemDepositFeeDisplayEntries(
+    invoice.editHistory || [],
+  );
+  const totalDepositAmount = getCurrentItemDepositFeeTotal(invoice);
   const liveTypeLabel = resolveLiveTypeLabel(invoice);
 
   const metaRows = [
@@ -616,7 +662,24 @@ export async function generateSingleInvoicePDF(
     { label: "Shipping Fee:", value: Number(invoice.shippingFee || 0) },
     { label: "Insurance:", value: Number(invoice.insuranceAmount || 0) },
     { label: "Layaway Fee:", value: layawayFee },
+    { label: "Total Deposit Amount:", value: totalDepositAmount },
+    {
+      label: "Late Fee:",
+      value: getPaymentSourceTotal(invoice, "late_fee"),
+    },
+    {
+      label: "Deposit Fee:",
+      value: getPaymentSourceTotal(invoice, "deposit_fee"),
+    },
+    {
+      label: "Restocking Fee:",
+      value: getPaymentSourceTotal(invoice, "restocking_fee"),
+    },
   ].filter((row) => row.value !== 0);
+
+  const recalculationFeeEntries = getRecalculationFeeDisplayEntries(
+    invoice.editHistory || [],
+  );
 
   const summaryLabelX = 130;
 
@@ -630,16 +693,35 @@ export async function generateSingleInvoicePDF(
     y += 6;
   });
 
+  recalculationFeeEntries.forEach((entry) => {
+    const label = `${entry.label} (${new Date(entry.date).toLocaleDateString()})`;
+    const labelLines = doc.splitTextToSize(label, R - L - 35);
+    doc.text(labelLines, summaryLabelX, y, { align: "right" });
+    doc.text(`$${entry.amount.toFixed(2)}`, R, y, { align: "right" });
+    y += labelLines.length > 1 ? labelLines.length * 5 + 1 : 6;
+  });
+
+  removedItemDepositFeeEntries.forEach((entry) => {
+    const label =
+      entry.action === "skip"
+        ? `${entry.label}: ${entry.reason}`
+        : `${entry.label} (${new Date(entry.date).toLocaleDateString()})`;
+    const labelLines = doc.splitTextToSize(label, R - L - 35);
+    doc.text(labelLines, summaryLabelX, y, { align: "right" });
+    doc.text(`$${entry.amount.toFixed(2)}`, R, y, { align: "right" });
+    y += labelLines.length > 1 ? labelLines.length * 5 + 1 : 6;
+  });
+
   // Separator line
   doc.setDrawColor(180, 180, 180);
   doc.line(summaryLabelX - 20, y, R, y);
   y += 6;
 
-  // Amount Due (FINAL)
-  // const amtDue = Number(invoice.amount) - Number(invoice.paidAmount);
-
   doc.setFont("helvetica", "bold");
-  doc.text("Total:", summaryLabelX, y, { align: "right" });
+  doc.text("Invoice Total:", summaryLabelX, y, { align: "right" });
+  doc.text(`$${Number(invoice.amount).toFixed(2)}`, R, y, { align: "right" });
+  y += 6;
+  doc.text("Amount Due:", summaryLabelX, y, { align: "right" });
   doc.text(`$${amtDue.toFixed(2)}`, R, y, { align: "right" });
   y += 10;
 
@@ -726,6 +808,9 @@ export async function generateSingleInvoicePDF(
   const pageCount = doc.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
+    if (invoice.status === "abandoned") {
+      drawCancelledWatermark(doc);
+    }
     doc.setFontSize(8);
     doc.setFont("helvetica", "normal");
     doc.setTextColor(150, 150, 150);
@@ -876,6 +961,10 @@ export function buildSingleInvoicePdfBuffer(
     year: "numeric",
   });
   const layawayFee = getVisibleLayawayFee(invoice);
+  const removedItemDepositFeeEntries = getRemovedItemDepositFeeDisplayEntries(
+    invoice.editHistory || [],
+  );
+  const totalDepositAmount = getCurrentItemDepositFeeTotal(invoice);
   const liveTypeLabel = resolveLiveTypeLabel(invoice);
   [
     ["Invoice Number:", invoice.invoiceNumber],
@@ -1003,7 +1092,24 @@ export function buildSingleInvoicePdfBuffer(
     { label: "Shipping Fee:", value: Number(invoice.shippingFee || 0) },
     { label: "Insurance:", value: Number(invoice.insuranceAmount || 0) },
     { label: "Layaway Fee:", value: layawayFee },
+    { label: "Total Deposit Amount:", value: totalDepositAmount },
+    {
+      label: "Late Fee:",
+      value: getPaymentSourceTotal(invoice, "late_fee"),
+    },
+    {
+      label: "Deposit Fee:",
+      value: getPaymentSourceTotal(invoice, "deposit_fee"),
+    },
+    {
+      label: "Restocking Fee:",
+      value: getPaymentSourceTotal(invoice, "restocking_fee"),
+    },
   ].filter((row) => row.value !== 0);
+
+  const recalculationFeeEntries = getRecalculationFeeDisplayEntries(
+    invoice.editHistory || [],
+  );
 
   doc.setFontSize(9);
   doc.setFont("helvetica", "normal");
@@ -1014,12 +1120,34 @@ export function buildSingleInvoicePdfBuffer(
     y += 6;
   });
 
+  recalculationFeeEntries.forEach((entry) => {
+    const label = `${entry.label} (${new Date(entry.date).toLocaleDateString()})`;
+    const labelLines = doc.splitTextToSize(label, 115);
+    doc.text(labelLines, 130, y, { align: "right" });
+    doc.text(`$${entry.amount.toFixed(2)}`, R, y, { align: "right" });
+    y += labelLines.length > 1 ? labelLines.length * 5 + 1 : 6;
+  });
+
+  removedItemDepositFeeEntries.forEach((entry) => {
+    const label =
+      entry.action === "skip"
+        ? `${entry.label}: ${entry.reason}`
+        : `${entry.label} (${new Date(entry.date).toLocaleDateString()})`;
+    const labelLines = doc.splitTextToSize(label, 115);
+    doc.text(labelLines, 130, y, { align: "right" });
+    doc.text(`$${entry.amount.toFixed(2)}`, R, y, { align: "right" });
+    y += labelLines.length > 1 ? labelLines.length * 5 + 1 : 6;
+  });
+
   doc.setDrawColor(180, 180, 180);
   doc.line(110, y, R, y);
   y += 6;
 
   doc.setFont("helvetica", "bold");
-  doc.text("Total:", 130, y, { align: "right" });
+  doc.text("Invoice Total:", 130, y, { align: "right" });
+  doc.text(`$${Number(invoice.amount).toFixed(2)}`, R, y, { align: "right" });
+  y += 6;
+  doc.text("Amount Due:", 130, y, { align: "right" });
   doc.text(`$${amtDue.toFixed(2)}`, R, y, { align: "right" });
   y += 10;
 
@@ -1102,6 +1230,9 @@ export function buildSingleInvoicePdfBuffer(
   const pageCount = doc.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
+    if (invoice.status === "abandoned") {
+      drawCancelledWatermark(doc);
+    }
     doc.setFontSize(8);
     doc.setFont("helvetica", "normal");
     doc.setTextColor(150, 150, 150);

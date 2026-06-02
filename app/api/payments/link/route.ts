@@ -10,8 +10,14 @@ export async function POST(request: NextRequest) {
   try {
     const user = await requireAuth();
     const body = await request.json();
-    const { paymentId, invoiceId, amount, lateFeeAmount, lateFeeWaivedReason } =
-      body;
+    const {
+      paymentId,
+      invoiceId,
+      amount,
+      lateFeeAmount,
+      lateFeeReason,
+      lateFeeWaivedReason,
+    } = body;
 
     if (!paymentId || !invoiceId || !amount) {
       return NextResponse.json(
@@ -22,6 +28,8 @@ export async function POST(request: NextRequest) {
 
     const amountToLink = new Prisma.Decimal(amount);
     const normalizedLateFeeAmount = Number(lateFeeAmount ?? 0);
+    const normalizedLateFeeReason =
+      typeof lateFeeReason === "string" ? lateFeeReason.trim() : "";
     const normalizedLateFeeWaivedReason =
       typeof lateFeeWaivedReason === "string" ? lateFeeWaivedReason.trim() : "";
 
@@ -157,7 +165,7 @@ export async function POST(request: NextRequest) {
           paymentDate: payment.paymentDate,
           amount: normalizedLateFeeAmount,
           userId: user.id,
-          reason: normalizedLateFeeWaivedReason || null,
+          reason: normalizedLateFeeReason || null,
         });
 
         await tx.invoice.update({

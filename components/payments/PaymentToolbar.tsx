@@ -115,6 +115,8 @@ export default function PaymentToolbar({
   const getStatusLabel = (status: PaymentStatusFilter) => {
     if (status === "all") return "All Payments";
     if (status === "abandoned") return "Abandoned";
+    if (status === "refund") return "Refund";
+    if (status === "deposit_fee") return "Deposit Fee";
     return "Active Only";
   };
 
@@ -207,8 +209,15 @@ export default function PaymentToolbar({
             </PopoverTrigger>
             <PopoverContent className="w-[200px] p-0" align="start">
               <div className="p-2">
-                {(["active", "abandoned", "all"] as PaymentStatusFilter[]).map(
-                  (status) => (
+                {(
+                  [
+                    "active",
+                    "refund",
+                    "deposit_fee",
+                    "abandoned",
+                    "all",
+                  ] as PaymentStatusFilter[]
+                ).map((status) => (
                     <div
                       key={status}
                       className={`px-3 py-2 text-sm rounded-md cursor-pointer hover:bg-gray-100 flex items-center ${
@@ -220,8 +229,7 @@ export default function PaymentToolbar({
                     >
                       {getStatusLabel(status)}
                     </div>
-                  ),
-                )}
+                  ))}
               </div>
             </PopoverContent>
           </Popover>

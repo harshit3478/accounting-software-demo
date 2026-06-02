@@ -28,6 +28,8 @@ export interface Payment {
   abandonedAt?: string | null;
   abandonedBy?: number | null;
   abandonReason?: string | null;
+  refundProofUrl?: string | null;
+  refundProofFileName?: string | null;
   abandonedByUser?: {
     id: number;
     name: string;
@@ -73,7 +75,12 @@ export interface PaymentStats {
 }
 
 export type PaymentMethodFilter = "all" | string; // 'all' or methodId as string
-export type PaymentStatusFilter = "active" | "abandoned" | "all";
+export type PaymentStatusFilter =
+  | "active"
+  | "abandoned"
+  | "refund"
+  | "deposit_fee"
+  | "all";
 export type PaymentSortField = "date" | "amount" | "client";
 export type SortDirection = "asc" | "desc";
 

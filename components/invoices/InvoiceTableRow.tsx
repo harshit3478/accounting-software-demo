@@ -198,6 +198,15 @@ export default function InvoiceTableRow({
           {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}
         </span>
       </td>
+      <td className="px-4 py-3 whitespace-nowrap">
+        {invoice.isHold ? (
+          <span className="inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">
+            On Hold
+          </span>
+        ) : (
+          <span className="text-sm text-gray-400">-</span>
+        )}
+      </td>
       <td
         className="px-2 sm:px-3 py-3 text-xs text-gray-700 max-w-[3rem] sm:max-w-[130px]"
         title={shipTitle}

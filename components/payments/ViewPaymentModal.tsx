@@ -23,6 +23,8 @@ interface ViewPaymentModalProps {
     isAbandoned?: boolean;
     abandonedAt?: string | null;
     abandonReason?: string | null;
+    refundProofUrl?: string | null;
+    refundProofFileName?: string | null;
     abandonedByUser?: {
       id: number;
       name: string;
@@ -269,6 +271,24 @@ export default function ViewPaymentModal({
                     <p className="text-red-700 whitespace-pre-wrap">
                       {payment.abandonReason}
                     </p>
+                  </div>
+                )}
+                {payment.refundProofUrl && (
+                  <div className="mt-3 pt-3 border-t border-red-200">
+                    <p className="text-red-600 font-medium mb-1">
+                      Refund Proof:
+                    </p>
+                    <a
+                      href={payment.refundProofUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-blue-700 hover:underline font-medium"
+                    >
+                      View proof
+                      {payment.refundProofFileName
+                        ? ` (${payment.refundProofFileName})`
+                        : ""}
+                    </a>
                   </div>
                 )}
               </div>
