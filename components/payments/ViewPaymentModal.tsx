@@ -3,6 +3,7 @@
 import { useRef } from "react";
 import Modal from "../invoices/Modal";
 import LucideIcon from "../LucideIcon";
+import { formatUserDisplayName } from "../../lib/user-display";
 
 interface ViewPaymentModalProps {
   isOpen: boolean;
@@ -38,6 +39,7 @@ interface ViewPaymentModalProps {
         id: number;
         name: string;
         email?: string;
+        displayName?: string;
       };
       changes?: Record<string, { from: any; to: any }> | null;
     }>;
@@ -273,7 +275,7 @@ export default function ViewPaymentModal({
                 <div className="flex justify-between">
                   <span className="text-red-600">Abandoned by:</span>
                   <span className="font-medium text-red-700">
-                    {payment.abandonedByUser?.name || "Unknown"}
+                    {formatUserDisplayName(payment.abandonedByUser)}
                     {payment.abandonedByUser?.email
                       ? ` (${payment.abandonedByUser.email})`
                       : ""}
@@ -333,7 +335,8 @@ export default function ViewPaymentModal({
                     <p className="text-sm text-gray-800">{entry.reason}</p>
                     <p className="mt-1 text-xs text-gray-500">
                       {new Date(entry.createdAt).toLocaleString()} by{" "}
-                      {entry.editedBy?.name || "Unknown"}
+                      {entry.editedBy?.displayName ||
+                        formatUserDisplayName(entry.editedBy)}
                     </p>
                   </div>
                 ))}

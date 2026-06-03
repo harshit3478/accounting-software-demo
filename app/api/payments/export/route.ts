@@ -105,7 +105,8 @@ export async function GET(request: NextRequest) {
         notes: payment.notes,
         invoiceNumber,
         clientName,
-        recordedBy: payment.user.name || "Unknown",
+        recordedBy:
+          payment.user.name?.trim() || payment.user?.email || "Unknown",
         source: payment.source || "manual",
         createdAt: payment.createdAt.toISOString().split("T")[0],
       };

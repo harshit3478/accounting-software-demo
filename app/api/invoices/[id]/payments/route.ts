@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import prisma from "../../../../../lib/prisma";
 import { requireAuth } from "../../../../../lib/auth";
 import { formatPaymentCode } from "../../../../../lib/payment-code";
+import { formatUserDisplayName } from "../../../../../lib/user-display";
 
 type PaymentMethodLike = {
   id: number;
@@ -35,7 +36,7 @@ function serializePaymentRow(
     date: payment.paymentDate.toISOString(),
     notes: payment.notes,
     createdAt: payment.createdAt.toISOString(),
-    createdBy: payment.user?.name || "Unknown",
+    createdBy: formatUserDisplayName(payment.user),
     isAbandoned: payment.isAbandoned ?? false,
     isRefund: !!(payment.isAbandoned && payment.refundProofUrl),
     type: extras?.type,

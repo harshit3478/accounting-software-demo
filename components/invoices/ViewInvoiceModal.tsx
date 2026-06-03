@@ -18,6 +18,7 @@ import {
   findOverdueLayawayInstallmentClient,
 } from "../../lib/late-fee-client";
 import { formatPaymentCode } from "../../lib/payment-code";
+import { formatUserDisplayName } from "../../lib/user-display";
 
 interface Payment {
   id: number;
@@ -136,6 +137,7 @@ interface Invoice {
       id: number;
       name: string;
       email?: string;
+      displayName?: string;
     };
   }>;
 }
@@ -1890,7 +1892,8 @@ export default function ViewInvoiceModal({
                       )}
                       <p className="mt-1 text-xs text-gray-500">
                         {new Date(entry.createdAt).toLocaleString()} by{" "}
-                        {entry.editedBy?.name || "Unknown"}
+                        {entry.editedBy?.displayName ||
+                          formatUserDisplayName(entry.editedBy)}
                       </p>
                     </div>
                   );

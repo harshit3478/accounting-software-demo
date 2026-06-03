@@ -91,6 +91,7 @@ export interface Invoice {
       id: number;
       name: string;
       email?: string;
+      displayName?: string;
     };
   }>;
 }

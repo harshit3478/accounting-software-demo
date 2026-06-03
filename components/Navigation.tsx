@@ -3,13 +3,15 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "../lib/AuthContext";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import UserAvatar from "./UserAvatar";
+import { formatUserDisplayName } from "../lib/user-display";
 
 export default function Navigation() {
   const pathname = usePathname();
   const { logout, isAdmin, user } = useAuth();
-
-  // Check if user is superadmin (matches email from env)
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const navItems = [
     { href: "/", label: "Dashboard", active: pathname === "/" },
@@ -27,7 +29,6 @@ export default function Navigation() {
     },
   ];
 
-  // Attendance for regular users (staff/accountant) only
   if (user && (user.role === "staff" || user.role === "accountant")) {
     navItems.push({
       href: "/attendance",
@@ -39,7 +40,6 @@ export default function Navigation() {
   const isSuperAdmin =
     user?.email === process.env.NEXT_PUBLIC_SUPERADMIN_EMAIL || user?.id === 1;
 
-  // Settings page (admin only) - combines User Management, Terms, Payment Methods, QuickBooks
   if (isAdmin || isSuperAdmin) {
     navItems.push({
       href: "/settings",
@@ -64,7 +64,7 @@ export default function Navigation() {
         if (!res.ok) return;
         const data = await res.json();
         if (mounted && data?.count >= 0) setPendingCount(data.count);
-      } catch (e) {
+      } catch {
         // ignore
       }
     }
@@ -73,6 +73,23 @@ export default function Navigation() {
       mounted = false;
     };
   }, [isAdmin, isSuperAdmin]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [menuOpen]);
+
+  const displayName = user
+    ? formatUserDisplayName({ name: user.name, email: user.email })
+    : "";
 
   return (
     <nav className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-50">
@@ -105,27 +122,57 @@ export default function Navigation() {
               ))}
             </div>
           </div>
-          <div className="flex items-center space-x-4">
-            {/* <button className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
-              + New Invoice
-            </button> */}
+          <div className="flex items-center">
             {user && (
-              <div className="flex items-center space-x-3">
-               
-                <div className="text-right">
-                  <p className="text-sm font-medium text-gray-900">
-                    Welcome {user.name}!
-                  </p>
-                  <p className="text-xs text-gray-500 capitalize">
-                    {user.role}
-                  </p>
-                </div>
+              <div className="relative" ref={menuRef}>
                 <button
-                  onClick={handleLogout}
-                  className="bg-gray-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors"
+                  type="button"
+                  onClick={() => setMenuOpen((open) => !open)}
+                  className="rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                  aria-expanded={menuOpen}
+                  aria-haspopup="true"
+                  aria-label="Account menu"
                 >
-                  Logout
+                  <UserAvatar
+                    src={user.avatarUrl}
+                    name={user.name}
+                    email={user.email}
+                    size="md"
+                  />
                 </button>
+
+                {menuOpen && (
+                  <div className="absolute right-0 mt-2 w-56 rounded-lg border border-gray-200 bg-white py-2 shadow-lg z-50">
+                    <div className="px-4 py-3 border-b border-gray-100">
+                      <p className="text-sm font-medium text-gray-900 truncate">
+                        {displayName}
+                      </p>
+                      <p className="text-xs text-gray-500 truncate">
+                        {user.email}
+                      </p>
+                      <p className="text-xs text-gray-400 capitalize mt-0.5">
+                        {user.role}
+                      </p>
+                    </div>
+                    <Link
+                      href="/settings?tab=profile"
+                      onClick={() => setMenuOpen(false)}
+                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                    >
+                      My Profile
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        handleLogout();
+                      }}
+                      className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                    >
+                      Logout
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>

@@ -3,6 +3,7 @@
 import { Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Navigation from "../../components/Navigation";
+import { useAuth } from "../../lib/AuthContext";
 import { ToastProvider, useToastContext } from "../../components/ToastContext";
 import PaymentMethodsTab from "../../components/settings/PaymentMethodsTab";
 import UserManagementTab from "../../components/settings/UserManagementTab";
@@ -20,8 +21,10 @@ import DepositFeeRulesTab from "../../components/settings/DepositFeeRulesTab";
 import RestockingFeeTab from "../../components/settings/RestockingFeeTab";
 import RecalculationFeeTab from "../../components/settings/RecalculationFeeTab";
 import DueDateReasonsTab from "../../components/settings/DueDateReasonsTab";
+import ProfileTab from "../../components/settings/ProfileTab";
 import {
   CreditCard,
+  UserCircle,
   Users,
   CalendarCheck2,
   UsersRound,
@@ -35,7 +38,13 @@ import {
   MapPinned,
 } from "lucide-react";
 
-const TABS = [
+const PROFILE_TAB = {
+  id: "profile",
+  label: "My Profile",
+  icon: UserCircle,
+} as const;
+
+const ADMIN_TABS = [
   { id: "payment-methods", label: "Payment Methods", icon: CreditCard },
   { id: "users", label: "User Management", icon: Users },
   { id: "regularizations", label: "Regularizations", icon: CalendarCheck2 },
@@ -54,14 +63,25 @@ const TABS = [
   { id: "quickbooks", label: "QuickBooks", icon: Link2 },
 ] as const;
 
-type TabId = (typeof TABS)[number]["id"];
+type TabId =
+  | typeof PROFILE_TAB.id
+  | (typeof ADMIN_TABS)[number]["id"];
 
 function SettingsContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { showSuccess, showError } = useToastContext();
+  const { isAdmin, isSuperAdmin } = useAuth();
+  const canManageSettings = isAdmin || isSuperAdmin;
+  const visibleTabs = canManageSettings
+    ? [PROFILE_TAB, ...ADMIN_TABS]
+    : [PROFILE_TAB];
 
-  const activeTab = (searchParams.get("tab") as TabId) || "payment-methods";
+  const tabParam = searchParams.get("tab") as TabId | null;
+  const activeTab: TabId =
+    tabParam && visibleTabs.some((t) => t.id === tabParam)
+      ? tabParam
+      : "profile";
 
   const setActiveTab = (tab: TabId) => {
     router.push(`/settings?tab=${tab}`);
@@ -69,6 +89,8 @@ function SettingsContent() {
 
   const renderTabContent = () => {
     switch (activeTab) {
+      case "profile":
+        return <ProfileTab showSuccess={showSuccess} showError={showError} />;
       case "payment-methods":
         return (
           <PaymentMethodsTab showSuccess={showSuccess} showError={showError} />
@@ -154,7 +176,7 @@ function SettingsContent() {
           {/* Sidebar */}
           <div className="w-56 flex-shrink-0">
             <nav className="space-y-1 sticky top-24">
-              {TABS.map((tab) => {
+              {visibleTabs.map((tab) => {
                 const Icon = tab.icon;
                 const isActive = activeTab === tab.id;
                 return (

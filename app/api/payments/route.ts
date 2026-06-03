@@ -3,6 +3,7 @@ import prisma from "../../../lib/prisma";
 import { requireAuth } from "../../../lib/auth";
 import { updateInvoiceAfterPayment } from "../../../lib/invoice-utils";
 import { invalidateDashboard } from "../../../lib/cache-helpers";
+import { serializeInvoiceEditHistoryEntry } from "../../../lib/user-display";
 import { sendPaymentConfirmation } from "../../../lib/email";
 import { stampPaymentCode } from "../../../lib/payment-code";
 import { createLateFeePayment } from "../../../lib/late-fee";
@@ -148,12 +149,9 @@ export async function GET(request: NextRequest) {
             ...payment.abandonedByUser,
           }
         : null,
-      editHistory: (payment.editHistory || []).map((entry: any) => ({
-        ...entry,
-        createdAt: entry.createdAt?.toISOString
-          ? entry.createdAt.toISOString()
-          : entry.createdAt,
-      })),
+      editHistory: (payment.editHistory || []).map((entry: any) =>
+        serializeInvoiceEditHistoryEntry(entry),
+      ),
       invoice: payment.invoice
         ? {
             ...payment.invoice,

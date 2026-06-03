@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import jwt from 'jsonwebtoken';
-import { isSuperAdmin } from '@/lib/auth';
+import { getUserFromToken, isSuperAdmin } from '@/lib/auth';
+import { formatUserDisplayName } from '@/lib/user-display';
 
 export async function GET(request: NextRequest) {
   const token = request.cookies.get('token')?.value;
@@ -10,26 +10,32 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as any;
-    const privileges = decoded.privileges as any;
+    const dbUser = await getUserFromToken();
+    if (!dbUser) {
+      return NextResponse.json(
+        { authenticated: false, message: 'Invalid token' },
+        { status: 401 },
+      );
+    }
+
+    const privileges = dbUser.privileges as any;
 
     // Calculate document permissions
-    const canUploadDocuments = decoded.role === 'admin' || privileges?.documents?.upload === true;
-    const canRenameDocuments = decoded.role === 'admin' || privileges?.documents?.rename === true;
-    const canDeleteDocuments = decoded.role === 'admin' || privileges?.documents?.delete === true;
+    const canUploadDocuments = dbUser.role === 'admin' || privileges?.documents?.upload === true;
+    const canRenameDocuments = dbUser.role === 'admin' || privileges?.documents?.rename === true;
+    const canDeleteDocuments = dbUser.role === 'admin' || privileges?.documents?.delete === true;
 
     const user = {
-      id: decoded.userId,
-      email: decoded.email,
-      role: decoded.role,
-      name: decoded.name,
+      id: dbUser.id,
+      email: dbUser.email,
+      role: dbUser.role,
+      name: dbUser.name,
+      avatarUrl: dbUser.avatarUrl,
+      displayName: formatUserDisplayName(dbUser),
       canUploadDocuments,
       canRenameDocuments,
       canDeleteDocuments,
-      isSuperAdmin: isSuperAdmin({
-        id: decoded.userId,
-        email: decoded.email,
-      }),
+      isSuperAdmin: isSuperAdmin(dbUser),
     };
 
     return NextResponse.json({

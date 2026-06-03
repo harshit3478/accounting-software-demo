@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import ConfirmModal from '../ConfirmModal';
 import { Plus } from 'lucide-react';
+import { formatUserDisplayName } from '../../lib/user-display';
 
 interface User {
   id: number;
@@ -202,7 +203,9 @@ export default function UserManagementTab({ showSuccess, showError }: UserManage
                 {users.map((user, index) => (
                   <tr key={user.id} className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-blue-50 transition duration-150`}>
                     <td className="px-4 py-3">
-                      <div className="text-sm font-medium text-gray-900 break-words">{user.name}</div>
+                      <div className="text-sm font-medium text-gray-900 break-words">
+                        {formatUserDisplayName(user)}
+                      </div>
                       <div className="text-xs text-gray-500 break-words">{user.email}</div>
                     </td>
                     <td className="px-3 py-3">

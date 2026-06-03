@@ -159,7 +159,7 @@ export default function TermsConditionsTab({ showSuccess, showError }: TermsCond
                         <div>
                           <div className="text-sm font-medium text-gray-900">{t.title || 'Untitled'}</div>
                           <div className="text-xs text-gray-500">
-                            By {t.creator?.name || 'Unknown'} &bull; {new Date(t.updatedAt).toLocaleString()}
+                            By {t.creator?.name?.trim() || t.creator?.email || 'Unknown'} &bull; {new Date(t.updatedAt).toLocaleString()}
                           </div>
                         </div>
                         <div className="flex gap-2">

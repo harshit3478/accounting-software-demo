@@ -21,6 +21,7 @@ import {
   normalizeDepositFeeRules,
 } from "../../../lib/deposit-fees";
 import { invalidateDashboard } from "../../../lib/cache-helpers";
+import { serializeInvoiceEditHistoryEntry } from "../../../lib/user-display";
 
 async function getConfiguredInsuranceBands(): Promise<InsuranceBand[]> {
   const ruleModel = (prisma as any)?.insuranceRule;
@@ -439,13 +440,9 @@ export async function GET(request: NextRequest) {
           }
         : null,
       isHold: !!invoice.isHold,
-      editHistory: (invoice.editHistory || []).map((entry: any) => ({
-        ...entry,
-        createdAt: entry.createdAt?.toISOString
-          ? entry.createdAt.toISOString()
-          : entry.createdAt,
-        changes: entry.changes || null,
-      })),
+      editHistory: (invoice.editHistory || []).map((entry: any) =>
+        serializeInvoiceEditHistoryEntry(entry),
+      ),
     }));
 
     return NextResponse.json({

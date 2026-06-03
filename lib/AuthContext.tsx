@@ -6,6 +6,8 @@ interface User {
   id: number;
   email: string;
   name: string;
+  avatarUrl?: string | null;
+  displayName?: string;
   role: "admin" | "accountant" | "staff";
   canUploadDocuments: boolean;
   canRenameDocuments: boolean;
