@@ -10,6 +10,7 @@ interface User {
   canUploadDocuments: boolean;
   canRenameDocuments: boolean;
   canDeleteDocuments: boolean;
+  isSuperAdmin?: boolean;
 }
 
 interface AuthContextType {
@@ -17,6 +18,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   user: User | null;
   isAdmin: boolean;
+  isSuperAdmin: boolean;
   canUpload: boolean;
   canRename: boolean;
   canDelete: boolean;
@@ -29,6 +31,7 @@ const AuthContext = createContext<AuthContextType>({
   isAuthenticated: false,
   user: null,
   isAdmin: false,
+  isSuperAdmin: false,
   canUpload: false,
   canRename: false,
   canDelete: false,
@@ -90,6 +93,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const isAdmin = user?.role === "admin";
+  const isSuperAdmin = user?.isSuperAdmin === true;
 
   // Permission helpers
   const canUpload = isAdmin || (user?.canUploadDocuments ?? false);
@@ -118,6 +122,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isAuthenticated: !!token,
         user,
         isAdmin,
+        isSuperAdmin,
         canUpload,
         canRename,
         canDelete,

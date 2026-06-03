@@ -5,12 +5,26 @@ import { invalidateDashboard } from "../../../../lib/cache-helpers";
 import { calculateInvoiceStatus } from "../../../../lib/invoice-utils";
 import { updateInvoiceAfterPayment } from "../../../../lib/invoice-utils";
 import { Prisma } from "@prisma/client";
-import { stampPaymentCode } from "../../../../lib/payment-code";
+import {
+  formatPaymentCode,
+  stampPaymentCode,
+} from "../../../../lib/payment-code";
 import {
   DEFAULT_LAYAWAY_FEE_RATES,
   calculateLayawayFeeFromItems,
   normalizeLayawayFeeRates,
 } from "../../../../lib/layaway-fees";
+import {
+  calculateDepositFeeForItem,
+  normalizeDepositFeeRules,
+} from "../../../../lib/deposit-fees";
+import {
+  calculateRecalculationFeeAmount,
+  getRecalculationFeeSettingSnapshot,
+} from "../../../../lib/recalculation-fee";
+import { calculateRestockingFeeAmount } from "../../../../lib/restocking-fee";
+import { uploadToR2 } from "../../../../lib/r2-client";
+import { allocatePaymentAmounts } from "../../../../lib/allocate-payment-amounts";
 
 async function getConfiguredLayawayFeeRates() {
   const rateModel = (prisma as any)?.layawayFeeSetting;
@@ -49,6 +63,40 @@ async function getConfiguredLayawayFeeRates() {
   }
 }
 
+async function getConfiguredDepositFeeRules() {
+  const ruleModel = (prisma as any)?.depositFeeRule;
+  if (!ruleModel) {
+    return [];
+  }
+
+  try {
+    const rows = await ruleModel.findMany({
+      where: { isActive: true },
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
+    });
+
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return [];
+    }
+
+    return normalizeDepositFeeRules(
+      rows.map((row: any) => ({
+        minAmount: row.minAmount?.toNumber
+          ? row.minAmount.toNumber()
+          : row.minAmount,
+        maxAmount: row.maxAmount?.toNumber
+          ? row.maxAmount.toNumber()
+          : row.maxAmount,
+        fee: row.fee?.toNumber ? row.fee.toNumber() : Number(row.fee || 0),
+        isActive: row.isActive,
+        sortOrder: row.sortOrder,
+      })),
+    );
+  } catch {
+    return [];
+  }
+}
+
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -74,7 +122,11 @@ export async function PUT(
       termsId,
       newTerms,
       liveTypeId,
+      isHold,
       editReason,
+      recalculationFeeAction,
+      removedItemDepositFeeAction,
+      removedItemDepositFeeSkipReason,
     } = await request.json();
 
     const reason = typeof editReason === "string" ? editReason.trim() : "";
@@ -84,9 +136,22 @@ export async function PUT(
         { status: 400 },
       );
     }
+    const normalizedRecalculationFeeAction =
+      recalculationFeeAction === "apply" || recalculationFeeAction === "skip"
+        ? recalculationFeeAction
+        : "none";
+    const normalizedRemovedDepositFeeAction =
+      removedItemDepositFeeAction === "apply" ||
+      removedItemDepositFeeAction === "skip"
+        ? removedItemDepositFeeAction
+        : "none";
+    const normalizedRemovedDepositFeeSkipReason =
+      typeof removedItemDepositFeeSkipReason === "string"
+        ? removedItemDepositFeeSkipReason.trim()
+        : "";
 
     const { id } = await params;
-    const invoiceId = parseInt(id);
+    const invoiceId = parseInt(id, 10);
 
     // Check if invoice exists
     const existingInvoice = await prisma.invoice.findUnique({
@@ -215,13 +280,79 @@ export async function PUT(
           layawayFeeRates,
         )
       : 0;
+    const depositFeeRules = await getConfiguredDepositFeeRules();
+    const normalizedItems = Array.isArray(items)
+      ? items.map((item: any) => ({
+          ...item,
+          depositFee: calculateDepositFeeForItem(item, depositFeeRules),
+        }))
+      : items || null;
+
+    const getItemKey = (item: any) =>
+      [
+        String(item?.name || "").trim().toLowerCase(),
+        String(item?.unit || "").trim().toLowerCase(),
+      ].join("|");
+
+    const currentItemCounts = new Map<string, number>();
+    if (Array.isArray(normalizedItems)) {
+      for (const item of normalizedItems) {
+        const key = getItemKey(item);
+        currentItemCounts.set(key, (currentItemCounts.get(key) || 0) + 1);
+      }
+    }
+
+    const removedDepositFeeItems = Array.isArray(existingInvoice.items)
+      ? existingInvoice.items.filter((item: any) => {
+          const key = getItemKey(item);
+          const count = currentItemCounts.get(key) || 0;
+          if (count > 0) {
+            currentItemCounts.set(key, count - 1);
+            return false;
+          }
+          return Number(item?.depositFee || 0) > 0;
+        })
+      : [];
+    const removedItemDepositFeeAmount = Number(
+      removedDepositFeeItems
+        .reduce((sum: number, item: any) => sum + Number(item?.depositFee || 0), 0)
+        .toFixed(2),
+    );
+
+    if (
+      removedItemDepositFeeAmount > 0 &&
+      normalizedRemovedDepositFeeAction === "none"
+    ) {
+      return NextResponse.json(
+        { error: "Choose whether to apply removed item deposit fee." },
+        { status: 400 },
+      );
+    }
+
+    if (
+      removedItemDepositFeeAmount > 0 &&
+      normalizedRemovedDepositFeeAction === "skip" &&
+      !normalizedRemovedDepositFeeSkipReason
+    ) {
+      return NextResponse.json(
+        { error: "Reason is required when skipping removed item deposit fee." },
+        { status: 400 },
+      );
+    }
+
+    const appliedRemovedItemDepositFee =
+      normalizedRemovedDepositFeeAction === "apply"
+        ? removedItemDepositFeeAmount
+        : 0;
+
     const totalAmount =
       parseFloat(subtotal) +
       parseFloat(taxAmount) -
       parseFloat(discountAmount) +
       shippingFeeAmount +
       insuranceFeeAmount +
-      layawayFeeAmount;
+      layawayFeeAmount +
+      appliedRemovedItemDepositFee;
     const paidAmount = Number(existingInvoiceAny.paidAmount?.toNumber?.() ?? 0);
 
     let resolvedTermsId: number | null = existingTermsId;
@@ -345,7 +476,7 @@ export async function PUT(
 
     const nextData = {
       clientName: normalizedClientName,
-      items: items as any,
+      items: normalizedItems as any,
       subtotal: parseFloat(subtotal),
       tax: parseFloat(taxAmount),
       discount: parseFloat(discountAmount),
@@ -358,6 +489,8 @@ export async function PUT(
       dueDateReason: requiresDueDateReason ? normalizedDueDateReason : null,
       description,
       isLayaway: isLayaway || false,
+      isHold:
+        typeof isHold === "boolean" ? isHold : !!existingInvoiceAny.isHold,
       termsId: resolvedTermsId,
       termsSnapshot: resolvedTermsSnapshot,
       liveTypeId: resolvedLiveTypeId,
@@ -365,7 +498,7 @@ export async function PUT(
       customerId: resolvedCustomerId,
     };
 
-    const changes: Record<string, { from: any; to: any }> = {};
+    const changes: Record<string, any> = {};
     const trackChange = (key: string, fromValue: any, toValue: any) => {
       const fromSerialized =
         fromValue instanceof Date ? fromValue.toISOString() : fromValue;
@@ -405,6 +538,27 @@ export async function PUT(
       nextData.layawayFee,
     );
     trackChange("amount", existingInvoice.amount.toNumber(), nextData.amount);
+    if (removedItemDepositFeeAmount > 0) {
+      changes.removedItemDepositFee = {
+        action: normalizedRemovedDepositFeeAction,
+        amount:
+          normalizedRemovedDepositFeeAction === "apply"
+            ? removedItemDepositFeeAmount
+            : 0,
+        availableAmount: removedItemDepositFeeAmount,
+        reason:
+          normalizedRemovedDepositFeeAction === "skip"
+            ? normalizedRemovedDepositFeeSkipReason
+            : undefined,
+        items: removedDepositFeeItems.map((item: any) => ({
+          name: item?.name || "",
+          quantity: Number(item?.quantity || 0),
+          price: Number(item?.price || 0),
+          unit: item?.unit || null,
+          depositFee: Number(item?.depositFee || 0),
+        })),
+      };
+    }
     trackChange(
       "invoiceDate",
       (existingInvoiceAny.invoiceDate as Date | null) ||
@@ -423,6 +577,7 @@ export async function PUT(
       nextData.description || null,
     );
     trackChange("isLayaway", existingInvoice.isLayaway, nextData.isLayaway);
+    trackChange("isHold", !!existingInvoiceAny.isHold, nextData.isHold);
     trackChange("termsId", existingInvoice.termsId || null, nextData.termsId);
     trackChange("liveTypeId", existingLiveTypeId || null, nextData.liveTypeId);
     trackChange(
@@ -431,157 +586,223 @@ export async function PUT(
       nextData.customerId || null,
     );
 
-    const invoice = await prisma.$transaction(async (tx) => {
-      const updated = await tx.invoice.update({
-        where: { id: invoiceId },
-        data: nextData,
-      });
-
-      const normalizedLayawayPlan =
-        layawayPlan && isLayaway
-          ? {
-              months: Math.max(1, Number(layawayPlan.months) || 3),
-              paymentFrequency:
-                layawayPlan.paymentFrequency === "weekly" ||
-                layawayPlan.paymentFrequency === "bi-weekly"
-                  ? layawayPlan.paymentFrequency
-                  : "monthly",
-              downPayment: Math.max(0, Number(layawayPlan.downPayment) || 0),
-              notes:
-                typeof layawayPlan.notes === "string"
-                  ? layawayPlan.notes.trim() || null
-                  : null,
-            }
-          : null;
-
-      if (normalizedLayawayPlan || (!isLayaway && existingInvoice.isLayaway)) {
-        const existingPlan = await tx.layawayPlan.findUnique({
-          where: { invoiceId },
-          include: { installments: true },
+    const invoice = await prisma.$transaction(
+      async (tx) => {
+        let updated = await tx.invoice.update({
+          where: { id: invoiceId },
+          data: nextData,
         });
 
-        const hasPaidInstallments = !!existingPlan?.installments?.some(
-          (inst: any) => inst.isPaid,
-        );
+        const recalcFeeSetting = await getRecalculationFeeSettingSnapshot();
 
-        if (!isLayaway && existingPlan) {
-          if (hasPaidInstallments) {
-            throw new Error(
-              "Cannot disable layaway after installment payments have been recorded.",
-            );
-          }
+        const normalizedLayawayPlan =
+          layawayPlan && isLayaway
+            ? {
+                months: Math.max(1, Number(layawayPlan.months) || 3),
+                paymentFrequency:
+                  layawayPlan.paymentFrequency === "weekly" ||
+                  layawayPlan.paymentFrequency === "bi-weekly"
+                    ? layawayPlan.paymentFrequency
+                    : "monthly",
+                downPayment: Math.max(0, Number(layawayPlan.downPayment) || 0),
+                notes:
+                  typeof layawayPlan.notes === "string"
+                    ? layawayPlan.notes.trim() || null
+                    : null,
+              }
+            : null;
 
-          await tx.layawayInstallment.deleteMany({
-            where: { layawayPlanId: existingPlan.id },
+        if (
+          normalizedLayawayPlan ||
+          (!isLayaway && existingInvoice.isLayaway)
+        ) {
+          const existingPlan = await tx.layawayPlan.findUnique({
+            where: { invoiceId },
+            include: { installments: true },
           });
-          await tx.layawayPlan.delete({ where: { invoiceId } });
-        } else if (normalizedLayawayPlan) {
-          if (existingPlan && hasPaidInstallments) {
-            throw new Error(
-              "Cannot reconfigure layaway plan after installment payments have been recorded.",
-            );
-          }
 
-          const totalForPlan = Math.max(Number(updated.amount) - paidAmount, 0);
-          const planBaseDate = new Date(invoiceDateValue);
-          const remaining = totalForPlan - normalizedLayawayPlan.downPayment;
-          let numInstallments = normalizedLayawayPlan.months;
-          if (normalizedLayawayPlan.paymentFrequency === "bi-weekly") {
-            numInstallments = normalizedLayawayPlan.months * 2;
-          } else if (normalizedLayawayPlan.paymentFrequency === "weekly") {
-            numInstallments = normalizedLayawayPlan.months * 4;
-          }
+          const paidInstallments = (existingPlan?.installments || []).filter(
+            (inst: any) => inst.isPaid,
+          );
+          const hasPaidInstallments = paidInstallments.length > 0;
 
-          const installmentAmount =
-            numInstallments > 0 ? remaining / numInstallments : 0;
-          const installments: {
-            dueDate: Date;
-            amount: number;
-            label: string;
-          }[] = [];
-
-          if (normalizedLayawayPlan.downPayment > 0) {
-            installments.push({
-              dueDate: planBaseDate,
-              amount: normalizedLayawayPlan.downPayment,
-              label: "Down Payment",
-            });
-          }
-
-          for (let i = 1; i <= numInstallments; i++) {
-            const instDate = new Date(planBaseDate);
-            if (normalizedLayawayPlan.paymentFrequency === "monthly") {
-              instDate.setMonth(instDate.getMonth() + i);
-            } else if (normalizedLayawayPlan.paymentFrequency === "bi-weekly") {
-              instDate.setDate(instDate.getDate() + i * 14);
-            } else {
-              instDate.setDate(instDate.getDate() + i * 7);
+          if (!isLayaway && existingPlan) {
+            if (hasPaidInstallments) {
+              throw new Error(
+                "Cannot disable layaway after installment payments have been recorded.",
+              );
             }
 
-            const suffix =
-              i === 1 ? "st" : i === 2 ? "nd" : i === 3 ? "rd" : "th";
-            installments.push({
-              dueDate: instDate,
-              amount: installmentAmount,
-              label: `${i}${suffix} Payment`,
-            });
-          }
-
-          if (existingPlan) {
             await tx.layawayInstallment.deleteMany({
               where: { layawayPlanId: existingPlan.id },
             });
+            await tx.layawayPlan.delete({ where: { invoiceId } });
+          } else if (normalizedLayawayPlan) {
+            const totalForPlan = Math.max(
+              Number(updated.amount) - paidAmount,
+              0,
+            );
+            const hasPaidExistingPlan = Boolean(
+              existingPlan && hasPaidInstallments,
+            );
+            const hasLayawayPlanConfigChanged = Boolean(
+              existingPlan &&
+                (existingPlan.months !== normalizedLayawayPlan.months ||
+                  existingPlan.paymentFrequency !==
+                    normalizedLayawayPlan.paymentFrequency ||
+                  Number(existingPlan.downPayment) !==
+                    normalizedLayawayPlan.downPayment ||
+                  String(existingPlan.notes || "").trim() !==
+                    String(normalizedLayawayPlan.notes || "").trim()),
+            );
+            const shouldApplyRecalculationFee =
+              hasLayawayPlanConfigChanged &&
+              normalizedRecalculationFeeAction === "apply" &&
+              recalcFeeSetting.isActive &&
+              recalcFeeSetting.amount > 0;
 
-            await tx.layawayPlan.update({
+            const recalcFeeAmount = shouldApplyRecalculationFee
+              ? calculateRecalculationFeeAmount(
+                  totalForPlan,
+                  recalcFeeSetting.amount,
+                )
+              : 0;
+            if (recalcFeeAmount > 0) {
+              const amountBeforeFee = updated.amount.toNumber();
+              updated = await tx.invoice.update({
+                where: { id: invoiceId },
+                data: {
+                  amount: {
+                    increment: recalcFeeAmount,
+                  },
+                },
+              });
+
+              changes.amount = {
+                from: amountBeforeFee,
+                to: amountBeforeFee + recalcFeeAmount,
+              };
+              changes.recalculationFee = {
+                amount: recalcFeeAmount,
+              };
+            }
+
+            const planBaseDate = hasPaidExistingPlan
+              ? new Date()
+              : new Date(invoiceDateValue);
+            const downPayment = hasPaidExistingPlan
+              ? 0
+              : normalizedLayawayPlan.downPayment;
+            const remaining = totalForPlan + recalcFeeAmount - downPayment;
+            let numInstallments = normalizedLayawayPlan.months;
+            if (normalizedLayawayPlan.paymentFrequency === "bi-weekly") {
+              numInstallments = normalizedLayawayPlan.months * 2;
+            } else if (normalizedLayawayPlan.paymentFrequency === "weekly") {
+              numInstallments = normalizedLayawayPlan.months * 4;
+            }
+
+            const installmentAmount =
+              numInstallments > 0 ? remaining / numInstallments : 0;
+            const installments: {
+              dueDate: Date;
+              amount: number;
+              label: string;
+            }[] = [];
+
+            if (downPayment > 0) {
+              installments.push({
+                dueDate: planBaseDate,
+                amount: downPayment,
+                label: "Down Payment",
+              });
+            }
+
+            for (let i = 1; i <= numInstallments; i++) {
+              const instDate = new Date(planBaseDate);
+              if (normalizedLayawayPlan.paymentFrequency === "monthly") {
+                instDate.setMonth(instDate.getMonth() + i);
+              } else if (
+                normalizedLayawayPlan.paymentFrequency === "bi-weekly"
+              ) {
+                instDate.setDate(instDate.getDate() + i * 14);
+              } else {
+                instDate.setDate(instDate.getDate() + i * 7);
+              }
+
+              const suffix =
+                i === 1 ? "st" : i === 2 ? "nd" : i === 3 ? "rd" : "th";
+              installments.push({
+                dueDate: instDate,
+                amount: installmentAmount,
+                label: `${i}${suffix} Payment`,
+              });
+            }
+
+            if (existingPlan) {
+              await tx.layawayInstallment.deleteMany({
+                where: {
+                  layawayPlanId: existingPlan.id,
+                  isPaid: false,
+                },
+              });
+
+              await tx.layawayPlan.update({
+                where: { invoiceId },
+                data: {
+                  months: normalizedLayawayPlan.months,
+                  paymentFrequency: normalizedLayawayPlan.paymentFrequency,
+                  downPayment: hasPaidExistingPlan
+                    ? existingPlan.downPayment
+                    : normalizedLayawayPlan.downPayment,
+                  notes: normalizedLayawayPlan.notes,
+                },
+              });
+            } else {
+              await tx.layawayPlan.create({
+                data: {
+                  invoiceId,
+                  months: normalizedLayawayPlan.months,
+                  paymentFrequency: normalizedLayawayPlan.paymentFrequency,
+                  downPayment,
+                  notes: normalizedLayawayPlan.notes,
+                },
+              });
+            }
+
+            const plan = await tx.layawayPlan.findUnique({
               where: { invoiceId },
-              data: {
-                months: normalizedLayawayPlan.months,
-                paymentFrequency: normalizedLayawayPlan.paymentFrequency,
-                downPayment: normalizedLayawayPlan.downPayment,
-                notes: normalizedLayawayPlan.notes,
-              },
+              select: { id: true },
             });
-          } else {
-            await tx.layawayPlan.create({
-              data: {
-                invoiceId,
-                months: normalizedLayawayPlan.months,
-                paymentFrequency: normalizedLayawayPlan.paymentFrequency,
-                downPayment: normalizedLayawayPlan.downPayment,
-                notes: normalizedLayawayPlan.notes,
-              },
-            });
-          }
 
-          const plan = await tx.layawayPlan.findUnique({
-            where: { invoiceId },
-            select: { id: true },
-          });
-
-          if (plan) {
-            await tx.layawayInstallment.createMany({
-              data: installments.map((inst) => ({
-                layawayPlanId: plan.id,
-                dueDate: inst.dueDate,
-                amount: inst.amount,
-                label: inst.label,
-                isPaid: false,
-              })),
-            });
+            if (plan) {
+              await tx.layawayInstallment.createMany({
+                data: installments.map((inst) => ({
+                  layawayPlanId: plan.id,
+                  dueDate: inst.dueDate,
+                  amount: inst.amount,
+                  label: inst.label,
+                  isPaid: false,
+                })),
+              });
+            }
           }
         }
-      }
 
-      await (tx as any).invoiceEditHistory.create({
-        data: {
-          invoiceId,
-          editedById: user.id,
-          reason,
-          changes: Object.keys(changes).length > 0 ? changes : null,
-        },
-      });
+        return updated;
+      },
+      {
+        timeout: 30000,
+        maxWait: 5000,
+      },
+    );
 
-      return updated;
+    await prisma.invoiceEditHistory.create({
+      data: {
+        invoiceId,
+        editedById: user.id,
+        reason,
+        changes: Object.keys(changes).length > 0 ? changes : undefined,
+      },
     });
 
     // Convert Decimal to number for response
@@ -645,14 +866,38 @@ export async function DELETE(
     const paymentAction = body?.paymentAction as
       | "credit"
       | "transfer"
+      | "refund"
       | "none"
       | undefined;
+    const feeAction = body?.feeAction as
+      | "restocking"
+      | "deposit"
+      | "none"
+      | undefined;
+    const refundProofDataUrl =
+      typeof body?.refundProofDataUrl === "string"
+        ? body.refundProofDataUrl
+        : "";
+    const refundProofFileName =
+      typeof body?.refundProofFileName === "string"
+        ? body.refundProofFileName
+        : "";
+    const refundProofMimeType =
+      typeof body?.refundProofMimeType === "string"
+        ? body.refundProofMimeType
+        : "";
     const targetInvoiceId =
       body?.targetInvoiceId === null ||
       body?.targetInvoiceId === undefined ||
       body?.targetInvoiceId === ""
         ? null
         : parseInt(String(body.targetInvoiceId), 10);
+    const requestedFeeMethodId =
+      body?.feeMethodId === null ||
+      body?.feeMethodId === undefined ||
+      body?.feeMethodId === ""
+        ? null
+        : parseInt(String(body.feeMethodId), 10);
 
     let targetStatus:
       | "inactive"
@@ -662,6 +907,12 @@ export async function DELETE(
       | "overdue"
       | "partial";
     if (requestedTargetStatus === "reactivate") {
+      if (existingInvoice.status === "abandoned") {
+        return NextResponse.json(
+          { error: "Abandoned invoices cannot be reactivated." },
+          { status: 400 },
+        );
+      }
       targetStatus = calculateInvoiceStatus(
         existingInvoice.amount.toNumber(),
         existingInvoice.paidAmount.toNumber(),
@@ -685,14 +936,38 @@ export async function DELETE(
     }
 
     let movedAmount = 0;
+    let feeAmount = 0;
     let resolvedTargetInvoiceId: number | null = null;
+    let normalizedPaymentAction: "credit" | "transfer" | "refund" | "none" =
+      paymentAction ?? "none";
+    let normalizedFeeAction: "restocking" | "deposit" | "none" =
+      feeAction ?? "none";
+    let feePaymentId: number | null = null;
+    let refundPaymentIds: number[] = [];
 
     const updated = await prisma.$transaction(
       async (tx) => {
+        let refundProofUrl: string | null = null;
+        let storedRefundProofFileName: string | null = null;
+
         if (targetStatus === "abandoned") {
+          if (
+            normalizedFeeAction === "restocking" &&
+            !existingInvoice.isLayaway
+          ) {
+            throw new Error(
+              "Restocking fee can only be applied to layaway invoices.",
+            );
+          }
+
           const directPayments = await tx.payment.findMany({
             where: { invoiceId },
-            select: { id: true, amount: true, source: true, methodId: true },
+            select: {
+              id: true,
+              amount: true,
+              source: true,
+              methodId: true,
+            },
           });
 
           const realDirectPayments = directPayments.filter(
@@ -716,10 +991,114 @@ export async function DELETE(
             (sum, m) => sum + m.amount.toNumber(),
             0,
           );
-          movedAmount = Math.round((directTotal + matchedTotal) * 100) / 100;
+          const invoiceTotal = existingInvoice.amount.toNumber();
+          const depositFeeTotal = Array.isArray(existingInvoice.items)
+            ? existingInvoice.items.reduce((sum: number, item: any) => {
+                const fee = Number(item?.depositFee || 0);
+                return sum + (Number.isFinite(fee) ? fee : 0);
+              }, 0)
+            : 0;
 
-          if (movedAmount > 0.009) {
-            if (!paymentAction || paymentAction === "none") {
+          const restockingSetting = await (
+            tx as any
+          ).restockingFeeSetting.findFirst({
+            where: { isActive: true },
+            orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+            select: { amount: true, isPercentage: true, isActive: true },
+          });
+
+          const calculatedFee =
+            normalizedFeeAction === "restocking"
+              ? calculateRestockingFeeAmount(invoiceTotal, {
+                  amount: Number(restockingSetting?.amount || 0),
+                  isPercentage: !!restockingSetting?.isPercentage,
+                  isActive: !!restockingSetting?.isActive,
+                })
+              : normalizedFeeAction === "deposit"
+                ? Number(depositFeeTotal.toFixed(2))
+                : 0;
+
+          const paymentTotal = Math.round((directTotal + matchedTotal) * 100) / 100;
+          const roundedCalculatedFee = Math.round(calculatedFee * 100) / 100;
+          feeAmount =
+            normalizedFeeAction === "none"
+              ? 0
+              : paymentTotal > 0
+                ? Math.min(roundedCalculatedFee, paymentTotal)
+                : roundedCalculatedFee;
+          movedAmount = Math.max(
+            Math.round((paymentTotal - feeAmount) * 100) / 100,
+            0,
+          );
+
+          const sourceMethodId =
+            (Number.isFinite(requestedFeeMethodId as number)
+              ? requestedFeeMethodId
+              : null) ||
+            realDirectPayments[0]?.methodId ||
+            (
+              await tx.payment.findFirst({
+                where: { id: matchedPayments[0]?.paymentId },
+                select: { methodId: true },
+              })
+            )?.methodId ||
+            (
+              await tx.paymentMethodEntry.findFirst({
+                where: { isActive: true },
+                orderBy: [{ isSystem: "desc" }, { sortOrder: "asc" }],
+                select: { id: true },
+              })
+            )?.id;
+
+          if (normalizedPaymentAction === "refund") {
+            if (movedAmount <= 0.009) {
+              throw new Error(
+                "No refundable payment balance remains after the selected fee.",
+              );
+            }
+            if (!refundProofDataUrl) {
+              throw new Error("Refund proof image is required.");
+            }
+
+            const match = refundProofDataUrl.match(
+              /^data:([^;]+);base64,(.+)$/,
+            );
+            if (!match) {
+              throw new Error("Refund proof image is invalid.");
+            }
+
+            const mimeType = refundProofMimeType.trim() || match[1];
+            const fallbackExtension =
+              mimeType === "image/png"
+                ? "png"
+                : mimeType === "image/webp"
+                  ? "webp"
+                  : mimeType === "image/gif"
+                    ? "gif"
+                    : "jpg";
+            const safeFileName =
+              refundProofFileName.trim() || `refund-proof.${fallbackExtension}`;
+            const proofKey = `refund-proofs/${invoiceId}-${Date.now()}-${safeFileName.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+
+            refundProofUrl = await uploadToR2(
+              Buffer.from(match[2], "base64"),
+              proofKey,
+              mimeType,
+            );
+            storedRefundProofFileName = safeFileName;
+          }
+
+          if (normalizedPaymentAction === "refund" && paymentTotal <= 0.009) {
+            throw new Error(
+              "Refund is only available when the invoice has payments.",
+            );
+          }
+
+          if (paymentTotal > 0.009) {
+            if (
+              !normalizedPaymentAction ||
+              normalizedPaymentAction === "none"
+            ) {
               throw new Error(
                 "This invoice has payments. Please choose how to handle them.",
               );
@@ -730,7 +1109,7 @@ export async function DELETE(
               ...matchedPayments.map((m) => m.paymentId),
             ]);
 
-            if (paymentAction === "credit") {
+            if (normalizedPaymentAction === "credit") {
               if (!existingInvoice.customerId) {
                 throw new Error(
                   "Cannot move payments to credit because this invoice has no linked customer.",
@@ -760,64 +1139,75 @@ export async function DELETE(
                 });
               }
 
-              const sourceMethodId =
-                realDirectPayments[0]?.methodId ||
-                (
-                  await tx.payment.findFirst({
-                    where: { id: matchedPayments[0]?.paymentId },
-                    select: { methodId: true },
-                  })
-                )?.methodId ||
-                (
-                  await tx.paymentMethodEntry.findFirst({
-                    where: { isActive: true },
-                    orderBy: [{ isSystem: "desc" }, { sortOrder: "asc" }],
-                    select: { id: true },
-                  })
-                )?.id;
-
               if (!sourceMethodId) {
                 throw new Error(
                   "No active payment method available for store credit.",
                 );
               }
 
-              const creditPayment = await tx.payment.create({
-                data: {
-                  invoiceId: null,
-                  amount: new Prisma.Decimal(movedAmount),
-                  paymentDate: new Date(),
-                  methodId: sourceMethodId,
-                  notes: `Store credit from abandoned invoice ${existingInvoice.invoiceNumber}${reason ? ` | ${reason}` : ""}`,
-                  userId: user.id,
-                  isMatched: false,
-                  source: "store_credit_excess",
-                },
-              });
+              if (movedAmount > 0.009) {
+                const creditPayment = await tx.payment.create({
+                  data: {
+                    invoiceId: null,
+                    amount: new Prisma.Decimal(movedAmount),
+                    paymentDate: new Date(),
+                    methodId: sourceMethodId,
+                    notes: `Store credit from abandoned invoice ${existingInvoice.invoiceNumber}${reason ? ` | ${reason}` : ""}`,
+                    userId: user.id,
+                    isMatched: false,
+                    source: "store_credit_excess",
+                  },
+                });
 
-              await stampPaymentCode(tx, creditPayment.id);
+                await stampPaymentCode(tx, creditPayment.id);
 
-              await (tx as any).customer.update({
-                where: { id: existingInvoice.customerId },
-                data: {
-                  storeCredit: { increment: new Prisma.Decimal(movedAmount) },
-                },
-              });
+                await (tx as any).customer.update({
+                  where: { id: existingInvoice.customerId },
+                  data: {
+                    storeCredit: { increment: new Prisma.Decimal(movedAmount) },
+                  },
+                });
 
-              await (tx as any).customerCreditTransaction.create({
-                data: {
-                  customerId: existingInvoice.customerId,
-                  amount: new Prisma.Decimal(movedAmount),
-                  type: "credit",
-                  reason: `Payments moved from abandoned invoice ${existingInvoice.invoiceNumber}. ${reason}`,
-                  paymentId: creditPayment.id,
-                  invoiceId,
-                  createdById: user.id,
-                },
-              });
+                await (tx as any).customerCreditTransaction.create({
+                  data: {
+                    customerId: existingInvoice.customerId,
+                    amount: new Prisma.Decimal(movedAmount),
+                    type: "credit",
+                    reason: `Payments moved from abandoned invoice ${existingInvoice.invoiceNumber}. ${reason}`,
+                    paymentId: creditPayment.id,
+                    invoiceId,
+                    createdById: user.id,
+                  },
+                });
+              }
             }
 
-            if (paymentAction === "transfer") {
+            if (normalizedPaymentAction === "transfer") {
+              if (movedAmount <= 0.009) {
+                if (realDirectPayments.length > 0) {
+                  await tx.payment.updateMany({
+                    where: { id: { in: realDirectPayments.map((p) => p.id) } },
+                    data: {
+                      invoiceId: null,
+                      isAbandoned: true,
+                      abandonedAt: new Date(),
+                      abandonedBy: user.id,
+                      abandonReason: `Payments retained as fee from abandoned invoice ${existingInvoice.invoiceNumber}. ${reason}`,
+                    },
+                  });
+                }
+                if (matchedPaymentsWithoutDirectOverlap.length > 0) {
+                  await tx.paymentInvoiceMatch.deleteMany({
+                    where: {
+                      id: {
+                        in: matchedPaymentsWithoutDirectOverlap.map(
+                          (m) => m.id,
+                        ),
+                      },
+                    },
+                  });
+                }
+              } else {
               if (!Number.isFinite(targetInvoiceId as number)) {
                 throw new Error("Target invoice is required for transfer.");
               }
@@ -891,6 +1281,83 @@ export async function DELETE(
                   });
                 }
               }
+              }
+            }
+
+            if (normalizedPaymentAction === "refund") {
+              const refundReason = `Payments refunded from abandoned invoice ${existingInvoice.invoiceNumber}. ${reason}`;
+              const refundAllocationItems: Array<{ id: number; amount: number }> =
+                [];
+
+              for (const payment of realDirectPayments) {
+                refundAllocationItems.push({
+                  id: payment.id,
+                  amount: payment.amount.toNumber(),
+                });
+              }
+
+              const matchedAmountByPaymentId = new Map<number, number>();
+              for (const match of matchedPaymentsWithoutDirectOverlap) {
+                if (directPaymentIds.has(match.paymentId)) continue;
+                matchedAmountByPaymentId.set(
+                  match.paymentId,
+                  (matchedAmountByPaymentId.get(match.paymentId) || 0) +
+                    match.amount.toNumber(),
+                );
+              }
+              for (const [paymentId, amount] of matchedAmountByPaymentId) {
+                refundAllocationItems.push({ id: paymentId, amount });
+              }
+
+              const refundAllocations = allocatePaymentAmounts(
+                refundAllocationItems,
+                movedAmount,
+              );
+
+              const refundPaymentUpdate = {
+                invoiceId: null,
+                isMatched: false,
+                isAbandoned: true,
+                abandonedAt: new Date(),
+                abandonedBy: user.id,
+                abandonReason: refundReason,
+                refundProofUrl,
+                refundProofFileName: storedRefundProofFileName,
+              };
+
+              for (const payment of realDirectPayments) {
+                const refundAmount = refundAllocations.get(payment.id) ?? 0;
+                await tx.payment.update({
+                  where: { id: payment.id },
+                  data: {
+                    ...refundPaymentUpdate,
+                    amount: new Prisma.Decimal(refundAmount),
+                  },
+                });
+              }
+
+              if (matchedPaymentsWithoutDirectOverlap.length > 0) {
+                await tx.paymentInvoiceMatch.deleteMany({
+                  where: {
+                    id: {
+                      in: matchedPaymentsWithoutDirectOverlap.map((m) => m.id),
+                    },
+                  },
+                });
+              }
+
+              for (const paymentId of matchedAmountByPaymentId.keys()) {
+                const refundAmount = refundAllocations.get(paymentId) ?? 0;
+                await tx.payment.update({
+                  where: { id: paymentId },
+                  data: {
+                    ...refundPaymentUpdate,
+                    amount: new Prisma.Decimal(refundAmount),
+                  },
+                });
+              }
+
+              refundPaymentIds = refundAllocationItems.map((item) => item.id);
             }
 
             for (const pid of affectedPaymentIds) {
@@ -918,12 +1385,58 @@ export async function DELETE(
                       isAbandoned: true,
                       abandonedAt,
                       abandonedBy: user.id,
-                      abandonReason: `Payments moved to customer store credit from abandoned invoice ${existingInvoice.invoiceNumber}. ${reason}`,
+                      abandonReason:
+                        normalizedPaymentAction === "refund"
+                          ? `Payments refunded from abandoned invoice ${existingInvoice.invoiceNumber}. ${reason}`
+                          : `Payments moved to customer store credit from abandoned invoice ${existingInvoice.invoiceNumber}. ${reason}`,
+                      ...(normalizedPaymentAction === "refund"
+                        ? {
+                            refundProofUrl,
+                            refundProofFileName: storedRefundProofFileName,
+                          }
+                        : {}),
                     },
                   });
                 }
               }
             }
+          }
+
+          if (normalizedFeeAction !== "none" && feeAmount > 0.009) {
+            if (
+              paymentTotal <= 0.009 &&
+              !Number.isFinite(requestedFeeMethodId as number)
+            ) {
+              throw new Error("Payment method is required for the fee payment.");
+            }
+            if (!sourceMethodId) {
+              throw new Error(
+                "No active payment method available for fee payment.",
+              );
+            }
+
+            const feeLabel =
+              normalizedFeeAction === "restocking"
+                ? "Restocking fee"
+                : "Deposit fee";
+            const feePayment = await tx.payment.create({
+              data: {
+                invoiceId,
+                amount: new Prisma.Decimal(feeAmount),
+                paymentDate: new Date(),
+                methodId: sourceMethodId,
+                notes: `${feeLabel} retained from abandoned invoice ${existingInvoice.invoiceNumber}${reason ? ` | ${reason}` : ""}`,
+                userId: user.id,
+                isMatched: true,
+                source:
+                  normalizedFeeAction === "restocking"
+                    ? "restocking_fee"
+                    : "deposit_fee",
+              },
+            });
+
+            await stampPaymentCode(tx, feePayment.id);
+            feePaymentId = feePayment.id;
           }
         }
 
@@ -931,7 +1444,9 @@ export async function DELETE(
           where: { id: invoiceId },
           data: {
             status: targetStatus,
-            ...(targetStatus === "abandoned" ? { paidAmount: 0 } : {}),
+            ...(targetStatus === "abandoned"
+              ? { amount: 0, paidAmount: feeAmount }
+              : {}),
           },
         });
 
@@ -949,12 +1464,58 @@ export async function DELETE(
                 ? {
                     paymentDisposition: {
                       from: "linked-to-invoice",
-                      to: paymentAction || "none",
+                      to: normalizedPaymentAction,
                     },
                     movedAmount: {
                       from: 0,
                       to: movedAmount,
                     },
+                    ...(feeAmount > 0
+                      ? {
+                          feeAmount: {
+                            from: 0,
+                            to: feeAmount,
+                          },
+                          feeType: {
+                            from: null,
+                            to: normalizedFeeAction,
+                          },
+                        }
+                      : {}),
+                    ...(feePaymentId
+                      ? {
+                          feePaymentId: {
+                            from: null,
+                            to: feePaymentId,
+                          },
+                          feePaymentCode: {
+                            from: null,
+                            to: formatPaymentCode(feePaymentId),
+                          },
+                        }
+                      : {}),
+                    ...(refundPaymentIds.length > 0
+                      ? {
+                          refundPaymentIds: {
+                            from: [],
+                            to: refundPaymentIds,
+                          },
+                          refundPaymentCodes: {
+                            from: [],
+                            to: refundPaymentIds.map((id) =>
+                              formatPaymentCode(id),
+                            ),
+                          },
+                        }
+                      : {}),
+                    ...(normalizedPaymentAction === "refund" && refundProofUrl
+                      ? {
+                          refundProof: {
+                            url: refundProofUrl,
+                            fileName: storedRefundProofFileName,
+                          },
+                        }
+                      : {}),
                     ...(resolvedTargetInvoiceId
                       ? {
                           targetInvoiceId: {
@@ -992,7 +1553,9 @@ export async function DELETE(
             ? movedAmount > 0.009
               ? resolvedTargetInvoiceId
                 ? "Invoice marked as abandoned and payments moved to selected invoice"
-                : "Invoice marked as abandoned and payments added to customer store credit"
+                : normalizedPaymentAction === "refund"
+                  ? "Invoice marked as abandoned and payments refunded"
+                  : "Invoice marked as abandoned and payments added to customer store credit"
               : "Invoice marked as abandoned"
             : "Invoice reactivated successfully",
       status: updated.status,

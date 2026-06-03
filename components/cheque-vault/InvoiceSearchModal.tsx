@@ -52,7 +52,12 @@ export default function InvoiceSearchModal({
   const fetchInvoices = useCallback(async (query: string) => {
     setIsLoading(true);
     try {
-      const params = new URLSearchParams({ limit: "20" });
+      const params = new URLSearchParams({
+        limit: "20",
+        status: "linkable",
+        sortBy: "invoiceNumber",
+        sortDirection: "desc",
+      });
       if (query) params.set("search", query);
       if (customerId) params.set("customerId", String(customerId));
       const res = await fetch(`/api/invoices?${params.toString()}`);
@@ -142,9 +147,10 @@ export default function InvoiceSearchModal({
             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             autoFocus
           />
-          {customerId && (
-            <p className="text-xs text-blue-600 mt-1">Showing invoices for the matched customer only</p>
-          )}
+          <p className="text-xs text-gray-500 mt-1">
+            Only unpaid invoices (pending, partial, or overdue) are shown.
+            {customerId ? " Filtered to the matched customer." : ""}
+          </p>
         </div>
 
         {/* Search results */}
@@ -155,7 +161,9 @@ export default function InvoiceSearchModal({
             </div>
           ) : invoices.length === 0 ? (
             <div className="text-center py-8 text-gray-500 text-sm">
-              {search ? "No invoices found" : "Start typing to search invoices"}
+              {search
+                ? "No unpaid invoices found"
+                : "Start typing to search unpaid invoices"}
             </div>
           ) : (
             <table className="w-full text-sm">

@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { InvoiceItem } from "./types";
+import {
+  calculateDepositFeeForItem,
+  type DepositFeeRuleLike,
+} from "../../lib/deposit-fees";
 
 interface UnitOption {
   id: number;
@@ -22,6 +26,9 @@ export default function InvoiceItemsEditor({
   const [units, setUnits] = useState<UnitOption[]>([
     { id: 0, name: FALLBACK_UNIT, isDefault: true, isActive: true },
   ]);
+  const [depositFeeRules, setDepositFeeRules] = useState<DepositFeeRuleLike[]>(
+    [],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -50,6 +57,38 @@ export default function InvoiceItemsEditor({
           setUnits([
             { id: 0, name: FALLBACK_UNIT, isDefault: true, isActive: true },
           ]);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    fetch("/api/deposit-fee-rules?active=true")
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        if (cancelled) return;
+        setDepositFeeRules(
+          Array.isArray(data)
+            ? data.map((rule: any) => ({
+                minAmount:
+                  rule.minAmount == null ? null : Number(rule.minAmount),
+                maxAmount:
+                  rule.maxAmount == null ? null : Number(rule.maxAmount),
+                fee: Number(rule.fee || 0),
+                isActive: !!rule.isActive,
+                sortOrder: Number(rule.sortOrder || 0),
+              }))
+            : [],
+        );
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setDepositFeeRules([]);
         }
       });
 
@@ -138,13 +177,14 @@ export default function InvoiceItemsEditor({
       <div className="space-y-3">
         {items.map((item, index) => {
           const selectedUnit = item.unit || defaultUnit.name;
+          const depositFee = calculateDepositFeeForItem(item, depositFeeRules);
 
           return (
             <div
               key={index}
-              className="flex items-start gap-3 rounded-lg bg-gray-50 p-4"
+              className="grid grid-cols-1 gap-3 rounded-lg bg-gray-50 p-4 lg:grid-cols-[minmax(0,1fr)_6rem_5rem_6rem_6rem_7rem_auto] lg:items-start"
             >
-              <div className="flex-1">
+              <div>
                 <input
                   type="text"
                   value={item.name}
@@ -153,7 +193,7 @@ export default function InvoiceItemsEditor({
                   placeholder="Item name or description"
                 />
               </div>
-              <div className="w-24">
+              <div>
                 <input
                   type="number"
                   min="0.01"
@@ -178,7 +218,7 @@ export default function InvoiceItemsEditor({
                   placeholder="Qty"
                 />
               </div>
-              <div className="w-32">
+              <div>
                 <select
                   value={selectedUnit}
                   onChange={(e) => updateItem(index, "unit", e.target.value)}
@@ -191,7 +231,7 @@ export default function InvoiceItemsEditor({
                   ))}
                 </select>
               </div>
-              <div className="w-32">
+              <div>
                 <input
                   type="number"
                   min="0"
@@ -210,14 +250,22 @@ export default function InvoiceItemsEditor({
                   placeholder="Price"
                 />
               </div>
-              <div className="w-32 rounded-lg bg-gray-100 px-3 py-2 text-right font-medium text-gray-700">
+              <div className="rounded-lg bg-gray-100 px-3 py-2 text-right font-medium text-gray-700">
                 ${(item.quantity * item.price).toFixed(2)}
+              </div>
+              <div>
+                <input
+                  type="number"
+                  value={depositFee.toFixed(2)}
+                  readOnly
+                  className="w-full rounded-lg border border-dashed border-amber-300 bg-amber-50 px-3 py-2 text-gray-900"
+                />
               </div>
               <button
                 onClick={() => removeItem(index)}
                 disabled={items.length === 1}
                 type="button"
-                className="text-red-600 hover:text-red-700 disabled:cursor-not-allowed disabled:text-gray-400"
+                className="self-center text-red-600 hover:text-red-700 disabled:cursor-not-allowed disabled:text-gray-400"
               >
                 <svg
                   className="h-5 w-5"

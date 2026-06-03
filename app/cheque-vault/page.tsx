@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useState } from "react";
 import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
 import Pagination from "@/components/Pagination";
@@ -13,6 +13,8 @@ import {
 } from "@/components/cheque-vault";
 import { useAuth } from "@/lib/AuthContext";
 import DateRangePicker from "@/components/DateRangePicker";
+import ConfirmModal from "@/components/ConfirmModal";
+import type { ChequeVaultRecord } from "@/hooks/useChequeVault";
 
 const STATUS_OPTIONS = [
   { value: "all", label: "All Statuses" },
@@ -23,8 +25,19 @@ const STATUS_OPTIONS = [
 ] as const;
 
 function ChequeVaultContent() {
-  const { isAdmin } = useAuth();
+  const { isSuperAdmin, user } = useAuth();
   const vault = useChequeVault();
+  const canUploadCheque = !isSuperAdmin;
+  const [deleteTarget, setDeleteTarget] = useState<ChequeVaultRecord | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setIsDeleting(true);
+    const ok = await vault.handleDelete(deleteTarget.id);
+    setIsDeleting(false);
+    if (ok) setDeleteTarget(null);
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -36,18 +49,22 @@ function ChequeVaultContent() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Cheque Vault</h1>
             <p className="text-sm text-gray-500 mt-1">
-              Upload and manage cheque-based payments
+              {isSuperAdmin
+                ? "Review, approve, or reject cheque payment requests"
+                : "Upload and manage cheque-based payments"}
             </p>
           </div>
-          <button
-            onClick={() => vault.setShowUploadModal(true)}
-            className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-            </svg>
-            Upload Cheque
-          </button>
+          {canUploadCheque && (
+            <button
+              onClick={() => vault.setShowUploadModal(true)}
+              className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+              </svg>
+              Upload Cheque
+            </button>
+          )}
         </div>
 
         {/* Stats row */}
@@ -111,7 +128,9 @@ function ChequeVaultContent() {
         <ChequeVaultTable
           cheques={vault.cheques}
           isLoading={vault.isLoading}
+          currentUserId={user?.id}
           onViewCheque={vault.handleOpenDetail}
+          onDeleteCheque={setDeleteTarget}
         />
 
         {/* Pagination */}
@@ -147,6 +166,24 @@ function ChequeVaultContent() {
         onReject={vault.handleReject}
         onRequestCorrection={vault.handleRequestCorrection}
         onUpdateAllocations={vault.handleUpdateAllocations}
+        onUpdateDetails={vault.handleUpdateDetails}
+        onDelete={vault.handleDelete}
+      />
+
+      <ConfirmModal
+        isOpen={!!deleteTarget}
+        title="Delete cheque request?"
+        message={
+          deleteTarget
+            ? `Delete pending request for cheque #${deleteTarget.chequeNumber || "—"}? This cannot be undone. Approved requests cannot be deleted.`
+            : ""
+        }
+        confirmText="Delete"
+        cancelText="Cancel"
+        danger
+        isLoading={isDeleting}
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteTarget(null)}
       />
     </div>
   );

@@ -1,9 +1,13 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import Navigation from '../../../components/Navigation';
-import { ToastProvider, useToastContext } from '../../../components/ToastContext';
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import Navigation from "../../../components/Navigation";
+import {
+  ToastProvider,
+  useToastContext,
+} from "../../../components/ToastContext";
+import { findOverdueLayawayInstallmentClient } from "../../../lib/late-fee-client";
 
 interface Payment {
   id: number;
@@ -25,6 +29,16 @@ interface Invoice {
   remaining: number;
   status: string;
   dueDate: string;
+  isLayaway?: boolean;
+  layawayPlan?: {
+    installments?: Array<{
+      id: number;
+      label: string;
+      dueDate: string;
+      amount: number;
+      isPaid?: boolean;
+    }>;
+  } | null;
 }
 
 interface Suggestion {
@@ -36,20 +50,26 @@ interface Suggestion {
 function PaymentMatchingPageContent() {
   const router = useRouter();
   const { showSuccess, showError } = useToastContext();
-  
+
   const [unmatchedPayments, setUnmatchedPayments] = useState<Payment[]>([]);
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [searchResults, setSearchResults] = useState<Invoice[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [showMatchModal, setShowMatchModal] = useState(false);
   const [matchingInvoice, setMatchingInvoice] = useState<Invoice | null>(null);
-  const [matchAmount, setMatchAmount] = useState('');
+  const [matchAmount, setMatchAmount] = useState("");
   const [isMatching, setIsMatching] = useState(false);
-  
+  const [lateFeeSetting, setLateFeeSetting] = useState({
+    amount: 0,
+    isActive: false,
+  });
+  const [applyLateFee, setApplyLateFee] = useState(true);
+  const [lateFeeWaivedReason, setLateFeeWaivedReason] = useState("");
+
   const [summary, setSummary] = useState({ count: 0, totalAmount: 0 });
 
   useEffect(() => {
@@ -57,9 +77,23 @@ function PaymentMatchingPageContent() {
   }, []);
 
   useEffect(() => {
+    fetch("/api/late-fee")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data) {
+          setLateFeeSetting({
+            amount: Number(data.amount ?? 0),
+            isActive: !!data.isActive,
+          });
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
     if (selectedPayment) {
       fetchSuggestions(selectedPayment.id);
-      setSearchQuery('');
+      setSearchQuery("");
       setSearchResults([]);
     }
   }, [selectedPayment]);
@@ -78,7 +112,7 @@ function PaymentMatchingPageContent() {
   const fetchUnmatchedPayments = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch('/api/payments/unmatched');
+      const res = await fetch("/api/payments/unmatched");
       if (res.ok) {
         const data = await res.json();
         setUnmatchedPayments(data.payments);
@@ -87,11 +121,11 @@ function PaymentMatchingPageContent() {
           setSelectedPayment(data.payments[0]);
         }
       } else {
-        showError('Failed to fetch unmatched payments');
+        showError("Failed to fetch unmatched payments");
       }
     } catch (error) {
-      console.error('Failed to fetch unmatched payments:', error);
-      showError('Failed to fetch unmatched payments');
+      console.error("Failed to fetch unmatched payments:", error);
+      showError("Failed to fetch unmatched payments");
     } finally {
       setIsLoading(false);
     }
@@ -106,7 +140,7 @@ function PaymentMatchingPageContent() {
         setSuggestions(data.suggestions);
       }
     } catch (error) {
-      console.error('Failed to fetch suggestions:', error);
+      console.error("Failed to fetch suggestions:", error);
     } finally {
       setIsLoadingSuggestions(false);
     }
@@ -115,13 +149,15 @@ function PaymentMatchingPageContent() {
   const searchInvoices = async (query: string) => {
     setIsSearching(true);
     try {
-      const res = await fetch(`/api/invoices/search?q=${encodeURIComponent(query)}`);
+      const res = await fetch(
+        `/api/invoices/search?q=${encodeURIComponent(query)}`,
+      );
       if (res.ok) {
         const data = await res.json();
         setSearchResults(data.invoices);
       }
     } catch (error) {
-      console.error('Failed to search invoices:', error);
+      console.error("Failed to search invoices:", error);
     } finally {
       setIsSearching(false);
     }
@@ -135,12 +171,16 @@ function PaymentMatchingPageContent() {
 
     setMatchingInvoice(invoice);
     setMatchAmount(matchAmt.toFixed(2));
+    setApplyLateFee(true);
+    setLateFeeWaivedReason("");
     setShowMatchModal(true);
   };
 
   const handleMatchPartial = (invoice: Invoice) => {
     setMatchingInvoice(invoice);
-    setMatchAmount('');
+    setMatchAmount("");
+    setApplyLateFee(true);
+    setLateFeeWaivedReason("");
     setShowMatchModal(true);
   };
 
@@ -149,66 +189,84 @@ function PaymentMatchingPageContent() {
 
     const amount = parseFloat(matchAmount);
     if (isNaN(amount) || amount <= 0) {
-      showError('Please enter a valid amount');
+      showError("Please enter a valid amount");
       return;
     }
 
-    const alreadyAllocated = selectedPayment.paymentMatches.reduce((sum: number, m: any) => sum + m.amount, 0);
+    const alreadyAllocated = selectedPayment.paymentMatches.reduce(
+      (sum: number, m: any) => sum + m.amount,
+      0,
+    );
     const remaining = selectedPayment.amount - alreadyAllocated;
 
     if (amount > remaining) {
-      showError(`Amount exceeds remaining payment balance ($${remaining.toFixed(2)})`);
+      showError(
+        `Amount exceeds remaining payment balance ($${remaining.toFixed(2)})`,
+      );
       return;
     }
 
     if (amount > matchingInvoice.remaining) {
-      showError(`Amount exceeds invoice remaining balance ($${matchingInvoice.remaining.toFixed(2)})`);
+      showError(
+        `Amount exceeds invoice remaining balance ($${matchingInvoice.remaining.toFixed(2)})`,
+      );
+      return;
+    }
+
+    if (shouldPromptLateFee && !applyLateFee && !lateFeeWaivedReason.trim()) {
+      showError("Please provide a reason for waiving the late fee");
       return;
     }
 
     setIsMatching(true);
     try {
       const res = await fetch(`/api/payments/${selectedPayment.id}/match`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           matches: [
             {
               invoiceId: matchingInvoice.id,
-              amount
-            }
-          ]
-        })
+              amount,
+            },
+          ],
+          lateFeeAmount:
+            shouldPromptLateFee && applyLateFee ? lateFeeSetting.amount : 0,
+          lateFeeWaivedReason:
+            shouldPromptLateFee && !applyLateFee
+              ? lateFeeWaivedReason.trim()
+              : "",
+        }),
       });
 
       if (res.ok) {
         showSuccess(`Payment matched to ${matchingInvoice.invoiceNumber}`);
         setShowMatchModal(false);
         setMatchingInvoice(null);
-        setMatchAmount('');
+        setMatchAmount("");
         await fetchUnmatchedPayments();
       } else {
         const error = await res.json();
-        showError(error.error || 'Failed to match payment');
+        showError(error.error || "Failed to match payment");
       }
     } catch (error) {
-      console.error('Failed to match payment:', error);
-      showError('Failed to match payment');
+      console.error("Failed to match payment:", error);
+      showError("Failed to match payment");
     } finally {
       setIsMatching(false);
     }
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
+    return new Date(dateString).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
     });
   };
 
-  const getMethodBadgeStyle = (method: Payment['method']) => {
-    const color = method?.color || '#6B7280';
+  const getMethodBadgeStyle = (method: Payment["method"]) => {
+    const color = method?.color || "#6B7280";
     return {
       backgroundColor: `${color}20`,
       color: color,
@@ -216,10 +274,24 @@ function PaymentMatchingPageContent() {
   };
 
   const getConfidenceColor = (confidence: number) => {
-    if (confidence >= 90) return 'text-green-600';
-    if (confidence >= 70) return 'text-blue-600';
-    return 'text-gray-600';
+    if (confidence >= 90) return "text-green-600";
+    if (confidence >= 70) return "text-blue-600";
+    return "text-gray-600";
   };
+
+  const overdueInstallment =
+    matchingInvoice && selectedPayment
+      ? findOverdueLayawayInstallmentClient(
+          matchingInvoice,
+          selectedPayment.paymentDate,
+        )
+      : null;
+  const shouldPromptLateFee =
+    !!matchingInvoice &&
+    !!selectedPayment &&
+    !!overdueInstallment &&
+    lateFeeSetting.isActive &&
+    lateFeeSetting.amount > 0;
 
   if (isLoading) {
     return (
@@ -243,13 +315,17 @@ function PaymentMatchingPageContent() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">🔗 Payment Matching</h1>
+              <h1 className="text-3xl font-bold text-gray-900">
+                🔗 Payment Matching
+              </h1>
               <p className="text-gray-600 mt-2">
-                {summary.count} unmatched payment{summary.count !== 1 ? 's' : ''} • ${summary.totalAmount.toLocaleString()} total
+                {summary.count} unmatched payment
+                {summary.count !== 1 ? "s" : ""} • $
+                {summary.totalAmount.toLocaleString()} total
               </p>
             </div>
             <button
-              onClick={() => router.push('/payments')}
+              onClick={() => router.push("/payments")}
               className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors"
             >
               ← Back to Payments
@@ -261,11 +337,25 @@ function PaymentMatchingPageContent() {
       {unmatchedPayments.length === 0 ? (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
           <div className="text-center">
-            <svg className="w-16 h-16 text-green-600 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            <svg
+              className="w-16 h-16 text-green-600 mx-auto mb-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+              ></path>
             </svg>
-            <h2 className="text-2xl font-semibold text-gray-900 mb-2">All Payments Matched!</h2>
-            <p className="text-gray-600">There are no unmatched payments at the moment.</p>
+            <h2 className="text-2xl font-semibold text-gray-900 mb-2">
+              All Payments Matched!
+            </h2>
+            <p className="text-gray-600">
+              There are no unmatched payments at the moment.
+            </p>
           </div>
         </div>
       ) : (
@@ -274,8 +364,12 @@ function PaymentMatchingPageContent() {
             {/* Left: Unmatched Payments */}
             <div className="bg-white rounded-xl shadow-lg border border-gray-200">
               <div className="p-6 border-b border-gray-200">
-                <h2 className="text-xl font-semibold text-gray-900">Unmatched Payments</h2>
-                <p className="text-sm text-gray-500 mt-1">Select a payment to match</p>
+                <h2 className="text-xl font-semibold text-gray-900">
+                  Unmatched Payments
+                </h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  Select a payment to match
+                </p>
               </div>
               <div className="divide-y divide-gray-200 max-h-[600px] overflow-y-auto">
                 {unmatchedPayments.map((payment) => (
@@ -284,36 +378,53 @@ function PaymentMatchingPageContent() {
                     onClick={() => setSelectedPayment(payment)}
                     className={`p-4 cursor-pointer transition-colors ${
                       selectedPayment?.id === payment.id
-                        ? 'bg-blue-50 border-l-4 border-blue-600'
-                        : 'hover:bg-gray-50'
+                        ? "bg-blue-50 border-l-4 border-blue-600"
+                        : "hover:bg-gray-50"
                     }`}
                   >
                     <div className="flex items-center justify-between mb-2">
                       <div>
                         <span className="text-2xl font-bold text-gray-900">
-                          ${(payment.remainingAmount || payment.amount).toFixed(2)}
+                          $
+                          {(payment.remainingAmount || payment.amount).toFixed(
+                            2,
+                          )}
                         </span>
-                        {payment.allocatedAmount && payment.allocatedAmount > 0 && (
-                          <span className="text-sm text-gray-500 ml-2">
-                            (${payment.amount.toFixed(2)} total, ${payment.allocatedAmount.toFixed(2)} allocated)
-                          </span>
-                        )}
+                        {payment.allocatedAmount &&
+                          payment.allocatedAmount > 0 && (
+                            <span className="text-sm text-gray-500 ml-2">
+                              (${payment.amount.toFixed(2)} total, $
+                              {payment.allocatedAmount.toFixed(2)} allocated)
+                            </span>
+                          )}
                       </div>
                       <span
                         className="px-3 py-1 rounded-full text-xs font-medium"
                         style={getMethodBadgeStyle(payment.method)}
                       >
-                        {payment.method?.name || 'Unknown'}
+                        {payment.method?.name || "Unknown"}
                       </span>
                     </div>
                     <div className="flex items-center text-sm text-gray-600">
-                      <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                      <svg
+                        className="w-4 h-4 mr-1"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                        ></path>
                       </svg>
                       {formatDate(payment.paymentDate)}
                     </div>
                     {payment.notes && (
-                      <p className="text-xs text-gray-500 mt-1 truncate">{payment.notes}</p>
+                      <p className="text-xs text-gray-500 mt-1 truncate">
+                        {payment.notes}
+                      </p>
                     )}
                   </div>
                 ))}
@@ -323,8 +434,10 @@ function PaymentMatchingPageContent() {
             {/* Right: Match to Invoices */}
             <div className="bg-white rounded-xl shadow-lg border border-gray-200">
               <div className="p-6 border-b border-gray-200">
-                <h2 className="text-xl font-semibold text-gray-900 mb-4">Match to Invoice</h2>
-                
+                <h2 className="text-xl font-semibold text-gray-900 mb-4">
+                  Match to Invoice
+                </h2>
+
                 {/* Search Bar */}
                 <div className="relative">
                   <input
@@ -334,8 +447,18 @@ function PaymentMatchingPageContent() {
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="w-full pl-10 pr-4 py-2 border  border-gray-300 rounded-lg text-gray-900 focus:ring-0 focus:ring-gray-900 focus:border-gray-900"
                   />
-                  <svg className="w-5 h-5 text-gray-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                  <svg
+                    className="w-5 h-5 text-gray-400 absolute left-3 top-2.5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                    ></path>
                   </svg>
                   {isSearching && (
                     <div className="absolute right-3 top-2.5">
@@ -350,10 +473,22 @@ function PaymentMatchingPageContent() {
                 {!searchQuery && suggestions.length > 0 && (
                   <div className="p-4 bg-blue-50 border-b border-blue-100">
                     <div className="flex items-center mb-3">
-                      <svg className="w-5 h-5 text-blue-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                      <svg
+                        className="w-5 h-5 text-blue-600 mr-2"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M13 10V3L4 14h7v7l9-11h-7z"
+                        ></path>
                       </svg>
-                      <h3 className="text-sm font-semibold text-blue-900">Smart Suggestions</h3>
+                      <h3 className="text-sm font-semibold text-blue-900">
+                        Smart Suggestions
+                      </h3>
                     </div>
                     {isLoadingSuggestions ? (
                       <div className="flex items-center justify-center py-4">
@@ -372,27 +507,40 @@ function PaymentMatchingPageContent() {
                                   <span className="font-semibold text-gray-900">
                                     {suggestion.invoice.invoiceNumber}
                                   </span>
-                                  <span className={`text-xs font-medium ${getConfidenceColor(suggestion.confidence)}`}>
+                                  <span
+                                    className={`text-xs font-medium ${getConfidenceColor(suggestion.confidence)}`}
+                                  >
                                     {suggestion.confidence}%
                                   </span>
                                 </div>
-                                <p className="text-sm text-gray-600">{suggestion.invoice.clientName}</p>
-                                <p className="text-xs text-gray-500 mt-1">{suggestion.reason}</p>
+                                <p className="text-sm text-gray-600">
+                                  {suggestion.invoice.clientName}
+                                </p>
+                                <p className="text-xs text-gray-500 mt-1">
+                                  {suggestion.reason}
+                                </p>
                               </div>
                             </div>
                             <div className="flex items-center justify-between text-sm">
                               <span className="text-gray-700">
-                                Remaining: <span className="font-semibold">${suggestion.invoice.remaining.toFixed(2)}</span>
+                                Remaining:{" "}
+                                <span className="font-semibold">
+                                  ${suggestion.invoice.remaining.toFixed(2)}
+                                </span>
                               </span>
                               <div className="flex gap-2">
                                 <button
-                                  onClick={() => handleMatchFull(suggestion.invoice)}
+                                  onClick={() =>
+                                    handleMatchFull(suggestion.invoice)
+                                  }
                                   className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 transition-colors"
                                 >
                                   Match
                                 </button>
                                 <button
-                                  onClick={() => handleMatchPartial(suggestion.invoice)}
+                                  onClick={() =>
+                                    handleMatchPartial(suggestion.invoice)
+                                  }
                                   className="px-3 py-1 bg-gray-100 text-gray-700 text-xs rounded hover:bg-gray-200 transition-colors"
                                 >
                                   Partial
@@ -411,7 +559,7 @@ function PaymentMatchingPageContent() {
                   <div className="p-4">
                     {searchResults.length === 0 ? (
                       <p className="text-center text-gray-500 py-8">
-                        {isSearching ? 'Searching...' : 'No invoices found'}
+                        {isSearching ? "Searching..." : "No invoices found"}
                       </p>
                     ) : (
                       <div className="space-y-2">
@@ -422,20 +570,31 @@ function PaymentMatchingPageContent() {
                           >
                             <div className="flex items-start justify-between mb-2">
                               <div className="flex-1">
-                                <span className="font-semibold text-gray-900">{invoice.invoiceNumber}</span>
-                                <p className="text-sm text-gray-600">{invoice.clientName}</p>
+                                <span className="font-semibold text-gray-900">
+                                  {invoice.invoiceNumber}
+                                </span>
+                                <p className="text-sm text-gray-600">
+                                  {invoice.clientName}
+                                </p>
                               </div>
-                              <span className={`px-2 py-1 text-xs rounded ${
-                                invoice.status === 'overdue' ? 'bg-red-100 text-red-700' :
-                                invoice.status === 'partial' ? 'bg-yellow-100 text-yellow-700' :
-                                'bg-gray-100 text-gray-700'
-                              }`}>
+                              <span
+                                className={`px-2 py-1 text-xs rounded ${
+                                  invoice.status === "overdue"
+                                    ? "bg-red-100 text-red-700"
+                                    : invoice.status === "partial"
+                                      ? "bg-yellow-100 text-yellow-700"
+                                      : "bg-gray-100 text-gray-700"
+                                }`}
+                              >
                                 {invoice.status}
                               </span>
                             </div>
                             <div className="flex items-center justify-between text-sm">
                               <span className="text-gray-700">
-                                Remaining: <span className="font-semibold">${invoice.remaining.toFixed(2)}</span>
+                                Remaining:{" "}
+                                <span className="font-semibold">
+                                  ${invoice.remaining.toFixed(2)}
+                                </span>
                               </span>
                               <div className="flex gap-2">
                                 <button
@@ -459,15 +618,27 @@ function PaymentMatchingPageContent() {
                   </div>
                 )}
 
-                {!searchQuery && suggestions.length === 0 && !isLoadingSuggestions && (
-                  <div className="p-8 text-center text-gray-500">
-                    <svg className="w-12 h-12 mx-auto mb-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-                    </svg>
-                    <p>No suggestions available</p>
-                    <p className="text-sm mt-1">Search for invoices above</p>
-                  </div>
-                )}
+                {!searchQuery &&
+                  suggestions.length === 0 &&
+                  !isLoadingSuggestions && (
+                    <div className="p-8 text-center text-gray-500">
+                      <svg
+                        className="w-12 h-12 mx-auto mb-3 text-gray-400"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                        ></path>
+                      </svg>
+                      <p>No suggestions available</p>
+                      <p className="text-sm mt-1">Search for invoices above</p>
+                    </div>
+                  )}
               </div>
             </div>
           </div>
@@ -479,18 +650,29 @@ function PaymentMatchingPageContent() {
         <div className="fixed inset-0  backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-2xl max-w-md w-full">
             <div className="p-6 border-b border-gray-200">
-              <h3 className="text-xl font-semibold text-gray-900">Confirm Match</h3>
+              <h3 className="text-xl font-semibold text-gray-900">
+                Confirm Match
+              </h3>
             </div>
             <div className="p-6 space-y-4">
               <div>
                 <p className="text-sm text-gray-600">Payment</p>
-                <p className="text-lg font-semibold text-gray-900">${selectedPayment.amount.toFixed(2)} via {selectedPayment.method?.name || 'Unknown'}</p>
+                <p className="text-lg font-semibold text-gray-900">
+                  ${selectedPayment.amount.toFixed(2)} via{" "}
+                  {selectedPayment.method?.name || "Unknown"}
+                </p>
               </div>
               <div>
                 <p className="text-sm text-gray-600">Invoice</p>
-                <p className="text-lg font-semibold text-gray-900">{matchingInvoice.invoiceNumber}</p>
-                <p className="text-sm text-gray-600">{matchingInvoice.clientName}</p>
-                <p className="text-sm text-gray-600">Remaining: ${matchingInvoice.remaining.toFixed(2)}</p>
+                <p className="text-lg font-semibold text-gray-900">
+                  {matchingInvoice.invoiceNumber}
+                </p>
+                <p className="text-sm text-gray-600">
+                  {matchingInvoice.clientName}
+                </p>
+                <p className="text-sm text-gray-600">
+                  Remaining: ${matchingInvoice.remaining.toFixed(2)}
+                </p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -506,13 +688,68 @@ function PaymentMatchingPageContent() {
                   placeholder="Enter amount"
                 />
               </div>
+
+              {shouldPromptLateFee && overdueInstallment && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-3">
+                  <div>
+                    <p className="text-sm font-semibold text-amber-900">
+                      Late fee required for overdue installment
+                    </p>
+                    <p className="text-xs text-amber-800 mt-1">
+                      {overdueInstallment.label} was due on{" "}
+                      {new Date(
+                        overdueInstallment.dueDate,
+                      ).toLocaleDateString()}
+                      . Admin late fee: ${lateFeeSetting.amount.toFixed(2)}
+                    </p>
+                  </div>
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setApplyLateFee(true)}
+                      className={`px-3 py-2 rounded-lg text-sm border ${
+                        applyLateFee
+                          ? "bg-amber-600 text-white border-amber-600"
+                          : "bg-white text-amber-900 border-amber-200"
+                      }`}
+                    >
+                      Apply late fee
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setApplyLateFee(false)}
+                      className={`px-3 py-2 rounded-lg text-sm border ${
+                        !applyLateFee
+                          ? "bg-white text-amber-900 border-amber-500"
+                          : "bg-white text-amber-900 border-amber-200"
+                      }`}
+                    >
+                      Waive late fee
+                    </button>
+                  </div>
+                  {!applyLateFee && (
+                    <div>
+                      <label className="block text-sm font-medium text-amber-900 mb-2">
+                        Reason for waiving late fee
+                      </label>
+                      <textarea
+                        value={lateFeeWaivedReason}
+                        onChange={(e) => setLateFeeWaivedReason(e.target.value)}
+                        className="w-full px-4 py-2 border border-amber-200 rounded-lg text-gray-900 focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                        rows={3}
+                        placeholder="Explain why the late fee is not being charged"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
               <button
                 onClick={() => {
                   setShowMatchModal(false);
                   setMatchingInvoice(null);
-                  setMatchAmount('');
+                  setMatchAmount("");
                 }}
                 disabled={isMatching}
                 className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
@@ -524,7 +761,7 @@ function PaymentMatchingPageContent() {
                 disabled={isMatching || !matchAmount}
                 className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isMatching ? 'Matching...' : 'Confirm Match'}
+                {isMatching ? "Matching..." : "Confirm Match"}
               </button>
             </div>
           </div>

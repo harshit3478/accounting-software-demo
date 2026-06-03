@@ -11,6 +11,8 @@ import {
   Package,
   XCircle,
   RotateCcw,
+  PauseCircle,
+  PlayCircle,
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Button } from "../ui/button";
@@ -24,6 +26,7 @@ interface InvoiceTableRowProps {
   onPay: (invoice: Invoice) => void;
   onLink?: (invoice: Invoice) => void;
   onDelete: (invoice: Invoice) => void;
+  onToggleHold?: (invoice: Invoice) => void;
   onShip?: (invoice: Invoice) => void;
   onFilterByClient?: (customerId: number, clientName: string) => void;
   onPrintPDF?: (invoice: Invoice) => void;
@@ -39,6 +42,7 @@ export default function InvoiceTableRow({
   onPay,
   onLink,
   onDelete,
+  onToggleHold,
   onShip,
   onFilterByClient,
   onPrintPDF,
@@ -70,7 +74,8 @@ export default function InvoiceTableRow({
   const canPay =
     invoice.status !== "paid" &&
     invoice.status !== "inactive" &&
-    invoice.status !== "abandoned";
+    invoice.status !== "abandoned" &&
+    !invoice.isHold;
 
   const trk = invoice.trackingNumber?.trim();
   const sid = invoice.shipmentId?.trim();
@@ -114,6 +119,11 @@ export default function InvoiceTableRow({
         {invoice.isLayaway && (
           <span className="ml-1.5 text-xs bg-purple-100 text-purple-800 px-1.5 py-0.5 rounded">
             Layaway
+          </span>
+        )}
+        {invoice.isHold && (
+          <span className="ml-1.5 text-xs bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded">
+            Hold
           </span>
         )}
       </td>
@@ -188,6 +198,15 @@ export default function InvoiceTableRow({
           {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}
         </span>
       </td>
+      <td className="px-4 py-3 whitespace-nowrap">
+        {invoice.isHold ? (
+          <span className="inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">
+            On Hold
+          </span>
+        ) : (
+          <span className="text-sm text-gray-400">-</span>
+        )}
+      </td>
       <td
         className="px-2 sm:px-3 py-3 text-xs text-gray-700 max-w-[3rem] sm:max-w-[130px]"
         title={shipTitle}
@@ -239,6 +258,26 @@ export default function InvoiceTableRow({
                   Print PDF
                 </button>
               )}
+              {onToggleHold && (
+                <button
+                  onClick={() => {
+                    setShowActionsMenu(false);
+                    onToggleHold(invoice);
+                  }}
+                  className={`flex items-center gap-2 px-3 py-2 text-sm rounded-md text-left ${
+                    invoice.isHold
+                      ? "text-emerald-700 hover:bg-emerald-50"
+                      : "text-amber-700 hover:bg-amber-50"
+                  }`}
+                >
+                  {invoice.isHold ? (
+                    <PlayCircle className="h-4 w-4" />
+                  ) : (
+                    <PauseCircle className="h-4 w-4" />
+                  )}
+                  {invoice.isHold ? "Remove Hold" : "Hold Invoice"}
+                </button>
+              )}
               <button
                 onClick={() => {
                   setShowActionsMenu(false);
@@ -284,18 +323,19 @@ export default function InvoiceTableRow({
                 {invoice.shipmentId ? "Manage Shipment" : "Create Shipment"}
               </button>
               {invoice.status !== "inactive" &&
-              invoice.status !== "abandoned" ? (
-                <button
-                  onClick={() => {
-                    setShowActionsMenu(false);
-                    onDelete(invoice);
-                  }}
-                  className="flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-md text-left"
-                >
-                  <XCircle className="h-4 w-4" />
-                  Mark Abandoned
-                </button>
-              ) : (
+                invoice.status !== "abandoned" && (
+                  <button
+                    onClick={() => {
+                      setShowActionsMenu(false);
+                      onDelete(invoice);
+                    }}
+                    className="flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-md text-left"
+                  >
+                    <XCircle className="h-4 w-4" />
+                    Mark Abandoned
+                  </button>
+                )}
+              {invoice.status === "inactive" && (
                 <button
                   onClick={() => {
                     setShowActionsMenu(false);

@@ -8,6 +8,7 @@ export interface InvoiceItem {
   quantity: number;
   price: number;
   unit?: string;
+  depositFee?: number | null;
 }
 
 export interface Invoice {
@@ -30,6 +31,7 @@ export interface Invoice {
   isLayaway: boolean;
   createdAt: string;
   description?: string | null;
+  isHold?: boolean;
   termsId?: number | null;
   termsSnapshot?: string[] | null;
   liveTypeId?: number | null;
@@ -100,7 +102,8 @@ export type InvoiceStatusFilter =
   | "overdue"
   | "partial"
   | "abandoned"
-  | "inactive";
+  | "inactive"
+  | "hold";
 export type InvoiceTypeFilter = "all" | "cash" | "layaway";
 export type InvoiceLiveTypeFilter = string;
 export type InvoiceShipmentFilter =
@@ -199,9 +202,15 @@ interface UseInvoicesReturn {
   handleDeleteConfirm: (options?: {
     editReason?: string;
     targetStatus?: "abandoned" | "inactive" | "reactivate";
-    paymentAction?: "credit" | "transfer" | "none";
+    paymentAction?: "credit" | "transfer" | "refund" | "none";
+    feeAction?: "restocking" | "deposit" | "none";
+    feeMethodId?: number;
     targetInvoiceId?: number | null;
+    refundProofDataUrl?: string;
+    refundProofFileName?: string;
+    refundProofMimeType?: string;
   }) => Promise<void>;
+  handleToggleHold: (invoice: Invoice) => Promise<void>;
   handleExportCSV: () => void;
   handleExportPDF: () => void;
   handlePageChange: (page: number) => void;
@@ -266,7 +275,7 @@ export function useInvoices(
   );
 
   const [sortBy, setSortByState] = useState(
-    searchParams.get("sortBy") || "date",
+    searchParams.get("sortBy") || "invoiceNumber",
   );
   const [sortDirection, setSortDirectionState] = useState<"asc" | "desc">(
     (searchParams.get("sortDirection") as "asc" | "desc") || "desc",
@@ -356,6 +365,9 @@ export function useInvoices(
     } else if (val === "abandoned") {
       setTypeFilter("all");
       setStatusFilter("abandoned");
+    } else if (val === "hold") {
+      setTypeFilter("all");
+      setStatusFilter("hold");
     } else {
       setTypeFilter("all");
       setStatusFilter(val);
@@ -399,15 +411,15 @@ export function useInvoices(
   const handleItemsPerPageChange = setItemsPerPage;
 
   const setSortBy = (field: string) => {
-    // Toggle direction if same field, otherwise set to desc
     if (field === sortBy) {
       const newDir = sortDirection === "asc" ? "desc" : "asc";
       setSortDirectionState(newDir);
       updateUrl({ sortBy: field, sortDirection: newDir, page: "1" });
     } else {
+      const defaultDir = field === "client" ? "asc" : "desc";
       setSortByState(field);
-      setSortDirectionState("desc");
-      updateUrl({ sortBy: field, sortDirection: "desc", page: "1" });
+      setSortDirectionState(defaultDir);
+      updateUrl({ sortBy: field, sortDirection: defaultDir, page: "1" });
     }
     setCurrentPage(1);
   };
@@ -501,7 +513,7 @@ export function useInvoices(
       const params = new URLSearchParams();
       params.set("page", currentPage.toString());
       params.set("limit", itemsPerPage.toString());
-      if (statusFilter !== "all") params.set("status", statusFilter);
+      params.set("status", statusFilter);
       if (typeFilter !== "all") params.set("type", typeFilter);
       if (liveTypeFilter !== "all") params.set("liveType", liveTypeFilter);
       if (shipmentFilter !== "all") params.set("shipment", shipmentFilter);
@@ -569,14 +581,17 @@ export function useInvoices(
   const handleDeleteConfirm = async (options?: {
     editReason?: string;
     targetStatus?: "abandoned" | "inactive" | "reactivate";
-    paymentAction?: "credit" | "transfer" | "none";
+    paymentAction?: "credit" | "transfer" | "refund" | "none";
+    feeAction?: "restocking" | "deposit" | "none";
+    feeMethodId?: number;
     targetInvoiceId?: number | null;
+    refundProofDataUrl?: string;
+    refundProofFileName?: string;
+    refundProofMimeType?: string;
   }) => {
     if (!deletingInvoice) return;
 
-    const isReactivating =
-      deletingInvoice.status === "inactive" ||
-      deletingInvoice.status === "abandoned";
+    const isReactivating = deletingInvoice.status === "inactive";
     const reasonPrompt = isReactivating
       ? "Please enter reason for reactivating this invoice:"
       : "Please enter reason for marking this invoice as abandoned:";
@@ -597,7 +612,12 @@ export function useInvoices(
             (isReactivating ? "reactivate" : "abandoned"),
           editReason: editReason.trim(),
           paymentAction: options?.paymentAction,
+          feeAction: options?.feeAction,
+          feeMethodId: options?.feeMethodId,
           targetInvoiceId: options?.targetInvoiceId ?? null,
+          refundProofDataUrl: options?.refundProofDataUrl,
+          refundProofFileName: options?.refundProofFileName,
+          refundProofMimeType: options?.refundProofMimeType,
         }),
       });
 
@@ -619,6 +639,51 @@ export function useInvoices(
       showError("Failed to delete invoice");
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const handleToggleHold = async (invoice: Invoice) => {
+    const nextIsHold = !invoice.isHold;
+
+    try {
+      const res = await fetch(`/api/invoices/${invoice.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientName: invoice.clientName,
+          customerId: invoice.customerId ?? null,
+          items: invoice.items,
+          subtotal: invoice.subtotal,
+          tax: invoice.tax,
+          discount: invoice.discount,
+          shippingFee: invoice.shippingFee ?? 0,
+          insuranceAmount: invoice.insuranceAmount ?? 0,
+          invoiceDate: invoice.invoiceDate,
+          dueDate: invoice.dueDate,
+          dueDateReason: invoice.dueDateReason ?? null,
+          description: invoice.description ?? null,
+          isLayaway: invoice.isLayaway,
+          termsId: invoice.termsId ?? null,
+          liveTypeId: invoice.liveTypeId ?? null,
+          isHold: nextIsHold,
+          editReason: nextIsHold
+            ? "Marked invoice as hold"
+            : "Removed hold from invoice",
+        }),
+      });
+
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || "Failed to update hold status");
+      }
+
+      showSuccess(
+        nextIsHold ? "Invoice marked as hold" : "Invoice removed from hold",
+      );
+      await fetchInvoices();
+    } catch (error: any) {
+      console.error("Failed to update hold status:", error);
+      showError(error.message || "Failed to update hold status");
     }
   };
 
@@ -807,6 +872,7 @@ export function useInvoices(
     handleOpenPaymentModal,
     handleDeleteClick,
     handleDeleteConfirm,
+    handleToggleHold,
     handleExportCSV,
     handleExportPDF,
     handlePageChange,

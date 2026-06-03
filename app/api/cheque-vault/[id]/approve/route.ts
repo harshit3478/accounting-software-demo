@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { requireAdmin } from "@/lib/auth";
+import { requireSuperAdmin } from "@/lib/auth";
 import { stampPaymentCode } from "@/lib/payment-code";
 import { updateInvoiceAfterPayment } from "@/lib/invoice-utils";
-import { invalidateDashboard } from "@/lib/cache-helpers";
+import { invalidateDashboard, invalidatePayments } from "@/lib/cache-helpers";
 import { sendChequeStatusNotification } from "@/lib/email";
 
 export async function PUT(
@@ -11,7 +11,7 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const admin = await requireAdmin();
+    const admin = await requireSuperAdmin();
     const { id } = await params;
     const chequeId = parseInt(id);
 
@@ -50,6 +50,7 @@ export async function PUT(
     }
 
     const paymentRefs: string[] = [];
+    const paymentIds: number[] = [];
     const warnings: string[] = [];
 
     // Check for overpayment per invoice
@@ -78,7 +79,7 @@ export async function PUT(
         update: {},
       });
 
-      // Create one Payment per allocation
+      // One payment per linked invoice — each appears on the Payments tab
       for (const alloc of cheque.invoiceAllocations) {
         const payment = await tx.payment.create({
           data: {
@@ -88,13 +89,14 @@ export async function PUT(
             paymentDate: cheque.chequeDate,
             userId: admin.id,
             source: "cheque_vault",
-            notes: `Cheque #${cheque.chequeNumber} approved by ${admin.name}`,
+            notes: `Cheque vault #${chequeId} · Cheque #${cheque.chequeNumber} · ${alloc.invoice.invoiceNumber} · Approved by ${admin.name}`,
             isMatched: true,
           },
         });
 
         const ref = await stampPaymentCode(tx, payment.id);
         paymentRefs.push(ref);
+        paymentIds.push(payment.id);
       }
 
       // Mark cheque as approved
@@ -113,6 +115,7 @@ export async function PUT(
       await updateInvoiceAfterPayment(alloc.invoiceId);
     }
     invalidateDashboard();
+    invalidatePayments();
 
     // Fire-and-forget email
     if (cheque.uploadedBy.email) {
@@ -129,6 +132,8 @@ export async function PUT(
     const response: any = {
       message: "Cheque approved and payments recorded",
       paymentRefs,
+      paymentIds,
+      paymentsCreated: paymentIds.length,
     };
 
     if (warnings.length) {
@@ -140,8 +145,8 @@ export async function PUT(
     if (error.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    if (error.message === "Forbidden") {
-      return NextResponse.json({ error: "Admin access required" }, { status: 403 });
+    if (error.message === "Super admin access required") {
+      return NextResponse.json({ error: "Super admin access required" }, { status: 403 });
     }
     console.error("[cheque-vault/[id]/approve PUT]", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

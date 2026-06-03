@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useToastContext } from "../components/ToastContext";
+import { canDeleteChequeRequest } from "../lib/cheque-vault-permissions";
 
 export type ChequeStatus = "PENDING" | "APPROVED" | "REJECTED" | "NEEDS_CORRECTION";
 
@@ -131,7 +132,10 @@ export function useChequeVault() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to approve");
       const refs: string[] = data.paymentRefs || [];
-      showSuccess(`Cheque approved. Payment ref${refs.length > 1 ? "s" : ""}: ${refs.join(", ")}`);
+      const count = data.paymentsCreated ?? refs.length;
+      showSuccess(
+        `Cheque approved. ${count} payment${count === 1 ? "" : "s"} created (${refs.join(", ")}) — visible on the Payments tab.`,
+      );
       await fetchCheques();
       return data;
     } catch (error: any) {
@@ -172,6 +176,55 @@ export function useChequeVault() {
       return true;
     } catch (error: any) {
       showError(error.message || "Failed to request correction");
+      return false;
+    }
+  };
+
+  const handleDelete = async (id: number): Promise<boolean> => {
+    try {
+      const res = await fetch(`/api/cheque-vault/${id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to delete");
+      showSuccess("Cheque request deleted");
+      if (selectedCheque?.id === id) {
+        setShowDetailModal(false);
+        setSelectedCheque(null);
+      }
+      await fetchCheques();
+      return true;
+    } catch (error: any) {
+      showError(error.message || "Failed to delete cheque request");
+      return false;
+    }
+  };
+
+  const handleUpdateDetails = async (
+    chequeId: number,
+    fields: {
+      chequeNumber: string;
+      payeeName: string;
+      amount: number;
+      chequeDate: string;
+      bankName: string | null;
+      customerEmail: string | null;
+    },
+  ): Promise<boolean> => {
+    try {
+      const res = await fetch(`/api/cheque-vault/${chequeId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(fields),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to update cheque");
+      showSuccess("Cheque details saved");
+      if (selectedCheque?.id === chequeId) {
+        setSelectedCheque(data.cheque);
+      }
+      await fetchCheques();
+      return true;
+    } catch (error: any) {
+      showError(error.message || "Failed to save cheque details");
       return false;
     }
   };
@@ -239,7 +292,10 @@ export function useChequeVault() {
     handleApprove,
     handleReject,
     handleRequestCorrection,
+    handleUpdateDetails,
     handleUpdateAllocations,
+    handleDelete,
+    canDeleteChequeRequest,
 
     stats,
   };

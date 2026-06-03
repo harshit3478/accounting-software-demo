@@ -13,6 +13,7 @@ interface InvoiceTableProps {
   onPay: (invoice: Invoice) => void;
   onLink?: (invoice: Invoice) => void;
   onDelete: (invoice: Invoice) => void;
+  onToggleHold?: (invoice: Invoice) => void;
   onShip: (invoice: Invoice) => void;
   onFilterByClient?: (customerId: number, clientName: string) => void;
   onPrintPDF?: (invoice: Invoice) => void;
@@ -40,6 +41,7 @@ export default function InvoiceTable({
   onPay,
   onLink,
   onDelete,
+  onToggleHold,
   onShip,
   onFilterByClient,
   onPrintPDF,
@@ -150,8 +152,13 @@ export default function InvoiceTable({
                   title="Select all visible invoices"
                 />
               </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 w-[130px]">
-                Invoice #
+              <th
+                onClick={() => onSortChange("invoiceNumber")}
+                className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors bg-gray-50 w-[130px]"
+              >
+                <div className="flex items-center gap-1">
+                  Invoice # {getSortIcon("invoiceNumber")}
+                </div>
               </th>
               <th
                 onClick={() => onSortChange("client")}
@@ -197,6 +204,9 @@ export default function InvoiceTable({
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">
                 Status
               </th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">
+                Hold
+              </th>
               <th
                 className="px-2 sm:px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 w-14 sm:w-[118px]"
                 title="Shipping"
@@ -220,6 +230,7 @@ export default function InvoiceTable({
                 onPay={onPay}
                 onLink={onLink}
                 onDelete={onDelete}
+                onToggleHold={onToggleHold}
                 onShip={onShip}
                 onFilterByClient={onFilterByClient}
                 onPrintPDF={onPrintPDF}

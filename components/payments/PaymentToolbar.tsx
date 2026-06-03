@@ -21,10 +21,11 @@ import { Calendar as CalendarComponent } from "../ui/calendar";
 import { format } from "date-fns";
 import type {
   PaymentMethodFilter,
-  PaymentStatusFilter,
   DateRange,
   PaymentMethodType,
 } from "../../hooks/usePayments";
+import type { PaymentStatusFilter } from "../../lib/payment-display-status";
+import { getPaymentDisplayStatusLabel } from "../../lib/payment-display-status";
 
 interface PaymentToolbarProps {
   filterMethod: PaymentMethodFilter;
@@ -114,8 +115,9 @@ export default function PaymentToolbar({
 
   const getStatusLabel = (status: PaymentStatusFilter) => {
     if (status === "all") return "All Payments";
-    if (status === "abandoned") return "Abandoned";
-    return "Active Only";
+    if (status === "refund") return "Refund";
+    if (status === "deposit_fee") return "Deposit Fee";
+    return getPaymentDisplayStatusLabel("active");
   };
 
   return (
@@ -195,7 +197,7 @@ export default function PaymentToolbar({
               <Button variant="outline" size="sm" className="h-9 border-dashed">
                 <Filter className="h-4 w-4 mr-2" />
                 Status
-                {filterStatus !== "active" && (
+                {filterStatus !== "all" && (
                   <>
                     <span className="mx-2 h-4 w-[1px] bg-gray-200" />
                     <span className="text-blue-600">
@@ -207,8 +209,9 @@ export default function PaymentToolbar({
             </PopoverTrigger>
             <PopoverContent className="w-[200px] p-0" align="start">
               <div className="p-2">
-                {(["active", "abandoned", "all"] as PaymentStatusFilter[]).map(
-                  (status) => (
+                {(
+                  ["all", "active", "refund", "deposit_fee"] as PaymentStatusFilter[]
+                ).map((status) => (
                     <div
                       key={status}
                       className={`px-3 py-2 text-sm rounded-md cursor-pointer hover:bg-gray-100 flex items-center ${
@@ -220,8 +223,7 @@ export default function PaymentToolbar({
                     >
                       {getStatusLabel(status)}
                     </div>
-                  ),
-                )}
+                  ))}
               </div>
             </PopoverContent>
           </Popover>
@@ -276,7 +278,7 @@ export default function PaymentToolbar({
           </Popover>
 
           {(filterMethod !== "all" ||
-            filterStatus !== "active" ||
+            filterStatus !== "all" ||
             dateRange ||
             searchQuery) && (
             <Button
@@ -285,7 +287,7 @@ export default function PaymentToolbar({
               className="h-9 px-2 lg:px-3"
               onClick={() => {
                 onFilterChange("all");
-                onStatusChange("active");
+                onStatusChange("all");
                 onSearchChange("");
                 onDateRangeChange(null);
               }}

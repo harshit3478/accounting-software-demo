@@ -1,7 +1,7 @@
 -- AlterTable
 ALTER TABLE `invoices`
-ADD COLUMN IF NOT EXISTS `liveTypeId` INTEGER NULL,
-    ADD COLUMN IF NOT EXISTS `liveTypeSnapshot` VARCHAR(255) NULL;
+    ADD COLUMN `liveTypeId` INTEGER NULL,
+    ADD COLUMN `liveTypeSnapshot` VARCHAR(255) NULL;
 -- CreateTable
 CREATE TABLE IF NOT EXISTS `live_types` (
     `id` INTEGER NOT NULL AUTO_INCREMENT,

@@ -60,12 +60,25 @@ export default function UserManagementTab({ showSuccess, showError }: UserManage
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
+    const email = newUser.email.trim().toLowerCase();
+    if (!email || !newUser.name.trim()) {
+      showError('Email and name are required');
+      return;
+    }
+    if (users.some((u) => u.email.toLowerCase() === email)) {
+      showError('A user with this email already exists');
+      return;
+    }
     setSaving(true);
     try {
       const res = await fetch('/api/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newUser),
+        body: JSON.stringify({
+          ...newUser,
+          email,
+          name: newUser.name.trim(),
+        }),
       });
       if (res.ok) {
         showSuccess('User created successfully');

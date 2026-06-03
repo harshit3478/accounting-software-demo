@@ -132,8 +132,11 @@ export default function InvoiceToolbar({
                 {statusFilter !== "all" && (
                   <>
                     <span className="mx-2 h-4 w-[1px] bg-gray-200" />
-                    <span className="text-blue-600 capitalize">
-                      {statusFilter}
+                    <span className="text-blue-600">
+                      {statusFilter === "hold"
+                        ? "Hold"
+                        : statusFilter.charAt(0).toUpperCase() +
+                          statusFilter.slice(1)}
                     </span>
                   </>
                 )}
@@ -142,26 +145,27 @@ export default function InvoiceToolbar({
             <PopoverContent className="w-[200px] p-0" align="start">
               <div className="p-2">
                 {[
-                  "all",
-                  "pending",
-                  "paid",
-                  "overdue",
-                  "partial",
-                  "abandoned",
-                  "inactive",
-                ].map((status) => (
+                  { value: "all", label: "All Invoices" },
+                  { value: "pending", label: "Pending" },
+                  { value: "paid", label: "Paid" },
+                  { value: "overdue", label: "Overdue" },
+                  { value: "partial", label: "Partial" },
+                  { value: "hold", label: "Hold" },
+                  { value: "abandoned", label: "Abandoned" },
+                  { value: "inactive", label: "Inactive" },
+                ].map(({ value, label }) => (
                   <div
-                    key={status}
-                    className={`px-3 py-2 text-sm rounded-md cursor-pointer hover:bg-gray-100 capitalize ${
-                      statusFilter === status
+                    key={value}
+                    className={`px-3 py-2 text-sm rounded-md cursor-pointer hover:bg-gray-100 ${
+                      statusFilter === value
                         ? "bg-blue-50 text-blue-700 font-medium"
                         : "text-gray-700"
                     }`}
                     onClick={() =>
-                      onStatusFilterChange(status as InvoiceStatusFilter)
+                      onStatusFilterChange(value as InvoiceStatusFilter)
                     }
                   >
-                    {status}
+                    {label}
                   </div>
                 ))}
               </div>

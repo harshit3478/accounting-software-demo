@@ -2,12 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "../../../../../lib/prisma";
 import { requireAuth } from "../../../../../lib/auth";
 import { updateInvoiceAfterPayment } from "../../../../../lib/invoice-utils";
+import { createLateFeePayment } from "../../../../../lib/late-fee";
 
 interface MatchRequest {
   matches: Array<{
     invoiceId: number;
     amount: number;
   }>;
+  lateFeeAmount?: number;
+  lateFeeWaivedReason?: string;
 }
 
 export async function POST(
@@ -19,6 +22,11 @@ export async function POST(
     const { id } = await params;
     const paymentId = parseInt(id);
     const body: MatchRequest = await request.json();
+    const normalizedLateFeeAmount = Number(body.lateFeeAmount ?? 0);
+    const normalizedLateFeeWaivedReason =
+      typeof body.lateFeeWaivedReason === "string"
+        ? body.lateFeeWaivedReason.trim()
+        : "";
 
     // Validate payment exists
     const payment = await prisma.payment.findUnique({
@@ -180,6 +188,40 @@ export async function POST(
         where: { id: paymentId },
         data: { isMatched: isFullyMatched },
       });
+
+      if (normalizedLateFeeWaivedReason) {
+        await tx.payment.update({
+          where: { id: paymentId },
+          data: {
+            notes: [
+              payment.notes || "",
+              `Late fee waived: ${normalizedLateFeeWaivedReason}`,
+            ]
+              .filter(Boolean)
+              .join(" | "),
+          },
+        });
+      }
+
+      if (normalizedLateFeeAmount > 0 && body.matches.length > 0) {
+        await createLateFeePayment(tx, {
+          invoiceId: body.matches[0].invoiceId,
+          methodId: payment.methodId,
+          paymentDate: payment.paymentDate,
+          amount: normalizedLateFeeAmount,
+          userId: user.id,
+          reason: normalizedLateFeeWaivedReason || null,
+        });
+
+        await tx.invoice.update({
+          where: { id: body.matches[0].invoiceId },
+          data: {
+            amount: {
+              increment: normalizedLateFeeAmount,
+            },
+          },
+        });
+      }
 
       console.log(`Payment ${paymentId} matched:`, {
         paymentAmount,

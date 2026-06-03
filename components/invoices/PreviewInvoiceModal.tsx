@@ -218,7 +218,13 @@ export default function PreviewInvoiceModal({
                     className="border-b border-gray-100 last:border-b-0"
                   >
                     <td className="px-4 py-3 text-sm text-gray-900">
-                      {item.name}
+                      <div className="font-medium">{item.name}</div>
+                      {Number(item.depositFee || 0) > 0 && (
+                        <div className="mt-1 text-xs text-amber-700">
+                          Deposit fee: $
+                          {Number(item.depositFee || 0).toFixed(2)}
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-900 text-right">
                       {item.quantity} {item.unit || "grams"}

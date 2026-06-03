@@ -3,6 +3,12 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useToastContext } from "../components/ToastContext";
+import type {
+  PaymentDisplayStatus,
+  PaymentStatusFilter,
+} from "../lib/payment-display-status";
+
+export type { PaymentStatusFilter } from "../lib/payment-display-status";
 
 export interface PaymentMethodType {
   id: number;
@@ -28,6 +34,9 @@ export interface Payment {
   abandonedAt?: string | null;
   abandonedBy?: number | null;
   abandonReason?: string | null;
+  refundProofUrl?: string | null;
+  refundProofFileName?: string | null;
+  displayStatus?: PaymentDisplayStatus;
   abandonedByUser?: {
     id: number;
     name: string;
@@ -73,8 +82,7 @@ export interface PaymentStats {
 }
 
 export type PaymentMethodFilter = "all" | string; // 'all' or methodId as string
-export type PaymentStatusFilter = "active" | "abandoned" | "all";
-export type PaymentSortField = "date" | "amount" | "client";
+export type PaymentSortField = "id" | "date" | "amount" | "client";
 export type SortDirection = "asc" | "desc";
 
 export interface DateRange {
@@ -167,7 +175,7 @@ export function usePayments(): UsePaymentsReturn {
     (searchParams.get("method") as PaymentMethodFilter) || "all",
   );
   const [filterStatus, setFilterStatusState] = useState<PaymentStatusFilter>(
-    (searchParams.get("status") as PaymentStatusFilter) || "active",
+    (searchParams.get("status") as PaymentStatusFilter) || "all",
   );
   const [searchQuery, setSearchQueryState] = useState(
     searchParams.get("search") || "",
@@ -183,7 +191,7 @@ export function usePayments(): UsePaymentsReturn {
       : null,
   );
 
-  const [sortBy, setSortBy] = useState<PaymentSortField>("date");
+  const [sortBy, setSortBy] = useState<PaymentSortField>("id");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
 
   // Server handles sorting - just pass through
@@ -282,7 +290,9 @@ export function usePayments(): UsePaymentsReturn {
       setSortDirection(sortDirection === "asc" ? "desc" : "asc");
     } else {
       setSortBy(field);
-      setSortDirection("asc");
+      setSortDirection(
+        field === "id" || field === "date" || field === "amount" ? "desc" : "asc",
+      );
     }
   };
 
@@ -319,7 +329,7 @@ export function usePayments(): UsePaymentsReturn {
       params.set("page", currentPage.toString());
       params.set("limit", itemsPerPage.toString());
       if (filterMethod !== "all") params.set("method", filterMethod);
-      if (filterStatus !== "active") params.set("status", filterStatus);
+      if (filterStatus !== "all") params.set("status", filterStatus);
       if (debouncedSearchQuery) params.set("search", debouncedSearchQuery);
       if (dateRange) {
         params.set("startDate", dateRange.startDate);
@@ -566,7 +576,7 @@ export function usePayments(): UsePaymentsReturn {
       // Build query string with current filters
       const params = new URLSearchParams();
       if (filterMethod !== "all") params.set("method", filterMethod);
-      if (filterStatus !== "active") params.set("status", filterStatus);
+      if (filterStatus !== "all") params.set("status", filterStatus);
       if (debouncedSearchQuery) params.set("search", debouncedSearchQuery);
       if (dateRange) {
         params.set("startDate", dateRange.startDate);

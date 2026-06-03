@@ -15,6 +15,10 @@ import ShippingFeeRulesTab from "../../components/settings/ShippingFeeRulesTab";
 import InsuranceRulesTab from "../../components/settings/InsuranceRulesTab";
 import QuickBooksTab from "../../components/settings/QuickBooksTab";
 import LayawaySettingsTab from "../../components/settings/LayawaySettingsTab";
+import LateFeeTab from "../../components/settings/LateFeeTab";
+import DepositFeeRulesTab from "../../components/settings/DepositFeeRulesTab";
+import RestockingFeeTab from "../../components/settings/RestockingFeeTab";
+import RecalculationFeeTab from "../../components/settings/RecalculationFeeTab";
 import DueDateReasonsTab from "../../components/settings/DueDateReasonsTab";
 import {
   CreditCard,
@@ -43,6 +47,10 @@ const TABS = [
   { id: "insurance-rules", label: "Insurance Rules", icon: Shield },
   { id: "due-date-reasons", label: "Due Date Reasons", icon: CalendarClock },
   { id: "layaway", label: "Layaway", icon: Layers },
+  { id: "late-fee", label: "Late Fee", icon: CalendarClock },
+  { id: "deposit-fees", label: "Deposit Fees", icon: Shield },
+  { id: "restocking-fee", label: "Restocking Fee", icon: Shield },
+  { id: "recalculation-fee", label: "Recalculation Fee", icon: CalendarClock },
   { id: "quickbooks", label: "QuickBooks", icon: Link2 },
 ] as const;
 
@@ -101,6 +109,23 @@ function SettingsContent() {
       case "layaway":
         return (
           <LayawaySettingsTab showSuccess={showSuccess} showError={showError} />
+        );
+      case "late-fee":
+        return <LateFeeTab showSuccess={showSuccess} showError={showError} />;
+      case "deposit-fees":
+        return (
+          <DepositFeeRulesTab showSuccess={showSuccess} showError={showError} />
+        );
+      case "restocking-fee":
+        return (
+          <RestockingFeeTab showSuccess={showSuccess} showError={showError} />
+        );
+      case "recalculation-fee":
+        return (
+          <RecalculationFeeTab
+            showSuccess={showSuccess}
+            showError={showError}
+          />
         );
       case "quickbooks":
         return (

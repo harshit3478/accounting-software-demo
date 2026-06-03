@@ -1,11 +1,18 @@
 "use client";
 
 import { ChequeVaultRecord, ChequeStatus } from "@/hooks/useChequeVault";
+import {
+  canDeleteChequeRequest,
+  canEditChequeRequest,
+} from "@/lib/cheque-vault-permissions";
+import { useAuth } from "@/lib/AuthContext";
 
 interface ChequeVaultTableProps {
   cheques: ChequeVaultRecord[];
   isLoading: boolean;
+  currentUserId?: number | null;
   onViewCheque: (cheque: ChequeVaultRecord) => void;
+  onDeleteCheque?: (cheque: ChequeVaultRecord) => void;
 }
 
 const STATUS_STYLES: Record<ChequeStatus, string> = {
@@ -33,8 +40,11 @@ function formatDate(dateStr: string) {
 export default function ChequeVaultTable({
   cheques,
   isLoading,
+  currentUserId,
   onViewCheque,
+  onDeleteCheque,
 }: ChequeVaultTableProps) {
+  const { isSuperAdmin } = useAuth();
   if (isLoading) {
     return (
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -142,12 +152,33 @@ export default function ChequeVaultTable({
                   </span>
                 </td>
                 <td className="px-4 py-3 text-right">
-                  <button
-                    onClick={(e) => { e.stopPropagation(); onViewCheque(cheque); }}
-                    className="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors"
-                  >
-                    View
-                  </button>
+                  <div className="flex items-center justify-end gap-2">
+                    {onDeleteCheque &&
+                      canDeleteChequeRequest(cheque, currentUserId) && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onDeleteCheque(cheque);
+                          }}
+                          className="px-3 py-1 text-xs bg-red-50 hover:bg-red-100 text-red-700 rounded-lg transition-colors"
+                        >
+                          Delete
+                        </button>
+                      )}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onViewCheque(cheque);
+                      }}
+                      className="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors"
+                    >
+                      {canEditChequeRequest(cheque, currentUserId, {
+                        isSuperAdmin,
+                      })
+                        ? "Edit"
+                        : "View"}
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}

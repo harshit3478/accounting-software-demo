@@ -3,6 +3,10 @@
 import { useState, useEffect } from "react";
 import Modal from "./Modal";
 import LucideIcon from "../LucideIcon";
+import {
+  buildLateFeeReason,
+  findOverdueLayawayInstallmentClient,
+} from "../../lib/late-fee-client";
 
 interface PaymentMethodType {
   id: number;
@@ -45,6 +49,12 @@ export default function PaymentModal({
   const [selectedMethodId, setSelectedMethodId] = useState<number | null>(null);
   const [paymentDate, setPaymentDate] = useState("");
   const [paymentNotes, setPaymentNotes] = useState("");
+  const [lateFeeSetting, setLateFeeSetting] = useState({
+    amount: 0,
+    isActive: false,
+  });
+  const [applyLateFee, setApplyLateFee] = useState<boolean | null>(null);
+  const [lateFeeWaivedReason, setLateFeeWaivedReason] = useState("");
   const [isRecording, setIsRecording] = useState(false);
 
   useEffect(() => {
@@ -56,6 +66,18 @@ export default function PaymentModal({
           setPaymentMethods(active);
           if (active.length > 0 && !selectedMethodId) {
             setSelectedMethodId(active[0].id);
+          }
+        })
+        .catch(() => {});
+
+      fetch("/api/late-fee")
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data) {
+            setLateFeeSetting({
+              amount: Number(data.amount ?? 0),
+              isActive: !!data.isActive,
+            });
           }
         })
         .catch(() => {});
@@ -72,12 +94,42 @@ export default function PaymentModal({
           prev || (paymentMethods.length > 0 ? paymentMethods[0].id : null),
       );
       setPaymentNotes("");
+      setApplyLateFee(null);
+      setLateFeeWaivedReason("");
     }
   }, [invoice, isOpen]);
+
+  const overdueInstallment =
+    invoice && paymentDate
+      ? findOverdueLayawayInstallmentClient(invoice, paymentDate)
+      : null;
+  const shouldPromptLateFee =
+    !!invoice &&
+    !!overdueInstallment &&
+    lateFeeSetting.isActive &&
+    lateFeeSetting.amount > 0;
 
   const handleRecordPayment = async () => {
     if (!invoice || paymentAmount <= 0) {
       return { success: false, error: "Please enter a valid payment amount" };
+    }
+
+    if (shouldPromptLateFee && applyLateFee === null) {
+      return {
+        success: false,
+        error: "Please choose whether to apply or waive the late fee",
+      };
+    }
+
+    if (
+      shouldPromptLateFee &&
+      applyLateFee === false &&
+      !lateFeeWaivedReason.trim()
+    ) {
+      return {
+        success: false,
+        error: "Please provide a reason for waiving the late fee",
+      };
     }
 
     const remainingBalance = invoice.amount - invoice.paidAmount;
@@ -93,6 +145,18 @@ export default function PaymentModal({
           methodId: selectedMethodId,
           paymentDate,
           notes: paymentNotes,
+          lateFeeAmount:
+            shouldPromptLateFee && applyLateFee === true
+              ? lateFeeSetting.amount
+              : 0,
+          lateFeeReason:
+            shouldPromptLateFee && applyLateFee === true && overdueInstallment
+              ? buildLateFeeReason(overdueInstallment)
+              : "",
+          lateFeeWaivedReason:
+            shouldPromptLateFee && applyLateFee === false
+              ? lateFeeWaivedReason.trim()
+              : "",
         }),
       });
 
@@ -137,7 +201,14 @@ export default function PaymentModal({
       </button>
       <button
         onClick={handleRecordPayment}
-        disabled={isRecording || paymentAmount <= 0}
+        disabled={
+          isRecording ||
+          paymentAmount <= 0 ||
+          (shouldPromptLateFee && applyLateFee === null) ||
+          (shouldPromptLateFee &&
+            applyLateFee === false &&
+            !lateFeeWaivedReason.trim())
+        }
         className="px-6 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors disabled:bg-green-400 disabled:cursor-not-allowed flex items-center"
       >
         {isRecording ? (
@@ -299,6 +370,60 @@ export default function PaymentModal({
               className="w-full px-4 py-2 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
             />
           </div>
+
+          {shouldPromptLateFee && overdueInstallment && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-3">
+              <div>
+                <p className="text-sm font-semibold text-amber-900">
+                  Installment due date has passed
+                </p>
+                <p className="text-xs text-amber-800 mt-1">
+                  {overdueInstallment.label} was due on{" "}
+                  {new Date(overdueInstallment.dueDate).toLocaleDateString()}.
+                  Apply late fee to this invoice? Admin late fee: $
+                  {lateFeeSetting.amount.toFixed(2)}
+                </p>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setApplyLateFee(true)}
+                  className={`px-3 py-2 rounded-lg text-sm border ${
+                    applyLateFee === true
+                      ? "bg-amber-600 text-white border-amber-600"
+                      : "bg-white text-amber-900 border-amber-200"
+                  }`}
+                >
+                  Apply late fee
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setApplyLateFee(false)}
+                  className={`px-3 py-2 rounded-lg text-sm border ${
+                    applyLateFee === false
+                      ? "bg-white text-amber-900 border-amber-500"
+                      : "bg-white text-amber-900 border-amber-200"
+                  }`}
+                >
+                  Waive late fee
+                </button>
+              </div>
+              {applyLateFee === false && (
+                <div>
+                  <label className="block text-sm font-medium text-amber-900 mb-2">
+                    Reason for waiving late fee
+                  </label>
+                  <textarea
+                    value={lateFeeWaivedReason}
+                    onChange={(e) => setLateFeeWaivedReason(e.target.value)}
+                    className="w-full px-4 py-2 border border-amber-200 rounded-lg text-gray-900 focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                    rows={3}
+                    placeholder="Explain why the late fee is not being charged"
+                  />
+                </div>
+              )}
+            </div>
+          )}
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "../../../lib/prisma";
 import { requireAuth } from "../../../lib/auth";
+import { LINKABLE_INVOICE_STATUSES } from "../../../lib/invoice-linkable-status";
 import {
   generateInvoiceNumber,
   calculateInvoiceStatus,
@@ -15,6 +16,10 @@ import {
   calculateLayawayFeeFromItems,
   normalizeLayawayFeeRates,
 } from "../../../lib/layaway-fees";
+import {
+  calculateDepositFeeForItem,
+  normalizeDepositFeeRules,
+} from "../../../lib/deposit-fees";
 import { invalidateDashboard } from "../../../lib/cache-helpers";
 
 async function getConfiguredInsuranceBands(): Promise<InsuranceBand[]> {
@@ -82,6 +87,40 @@ async function getConfiguredLayawayFeeRates() {
   }
 }
 
+async function getConfiguredDepositFeeRules() {
+  const ruleModel = (prisma as any)?.depositFeeRule;
+  if (!ruleModel) {
+    return [];
+  }
+
+  try {
+    const rows = await ruleModel.findMany({
+      where: { isActive: true },
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
+    });
+
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return [];
+    }
+
+    return normalizeDepositFeeRules(
+      rows.map((row: any) => ({
+        minAmount: row.minAmount?.toNumber
+          ? row.minAmount.toNumber()
+          : row.minAmount,
+        maxAmount: row.maxAmount?.toNumber
+          ? row.maxAmount.toNumber()
+          : row.maxAmount,
+        fee: row.fee?.toNumber ? row.fee.toNumber() : Number(row.fee || 0),
+        isActive: row.isActive,
+        sortOrder: row.sortOrder,
+      })),
+    );
+  } catch {
+    return [];
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const user = await requireAuth();
@@ -105,7 +144,7 @@ export async function GET(request: NextRequest) {
     const liveType = searchParams.get("liveType") || "all";
 
     // Sort params
-    const sortBy = searchParams.get("sortBy") || "date";
+    const sortBy = searchParams.get("sortBy") || "invoiceNumber";
     const sortDirection = (searchParams.get("sortDirection") || "desc") as
       | "asc"
       | "desc";
@@ -132,17 +171,32 @@ export async function GET(request: NextRequest) {
 
     // Build where clause
     const where: any = {};
+    const showHeldInvoices = status === "hold";
+    if (showHeldInvoices) {
+      where.isHold = true;
+    }
 
-    // By default, exclude inactive/abandoned invoices unless explicitly requested
-    if (
+    // Status scope: "all" shows every billing status in one list
+    if (showHeldInvoices) {
+      // Hold is an overlay flag, not a billing status.
+    } else if (status === "linkable" || status === "unpaid") {
+      where.status = { in: [...LINKABLE_INVOICE_STATUSES] };
+    } else if (
       status === "inactive" ||
       (status === "abandoned" && supportsAbandonedStatus)
     ) {
       where.status = status;
-    } else if (showInactive) {
-      // Show all including inactive/abandoned — no status filter applied here
+    } else if (status === "all" || showInactive) {
+      // No status restriction — include pending, paid, abandoned, inactive, etc.
+    } else if (
+      status === "pending" ||
+      status === "paid" ||
+      status === "overdue" ||
+      status === "partial"
+    ) {
+      where.status = status;
     } else {
-      // Default: exclude inactive/abandoned
+      // Unknown status param: same as operational default (exclude inactive/abandoned)
       where.status = supportsAbandonedStatus
         ? { notIn: ["inactive", "abandoned"] }
         : { not: "inactive" };
@@ -154,11 +208,6 @@ export async function GET(request: NextRequest) {
         { invoiceNumber: { contains: search } },
         { clientName: { contains: search } },
       ];
-    }
-
-    // Status filter (applied on top of inactive exclusion)
-    if (status !== "all" && status !== "inactive" && status !== "abandoned") {
-      where.status = status;
     }
 
     // Customer filter — see all invoices for a specific client
@@ -299,8 +348,14 @@ export async function GET(request: NextRequest) {
         orderBy = { dueDate: sortDirection };
         break;
       case "date":
+        orderBy = [
+          { invoiceDate: sortDirection },
+          { invoiceNumber: sortDirection },
+        ];
+        break;
+      case "invoiceNumber":
       default:
-        orderBy = { createdAt: sortDirection };
+        orderBy = { invoiceNumber: sortDirection };
         break;
     }
 
@@ -383,6 +438,7 @@ export async function GET(request: NextRequest) {
             ),
           }
         : null,
+      isHold: !!invoice.isHold,
       editHistory: (invoice.editHistory || []).map((entry: any) => ({
         ...entry,
         createdAt: entry.createdAt?.toISOString
@@ -601,6 +657,7 @@ export async function POST(request: NextRequest) {
         ? Number(insuranceAmount)
         : calculateInsuranceAmount(insuranceCalculationBase, insuranceBands);
     const layawayFeeRates = await getConfiguredLayawayFeeRates();
+    const depositFeeRules = await getConfiguredDepositFeeRules();
     const layawayMonths = Number(layawayPlan?.months || 0);
     const layawayFeeAmount = isLayaway
       ? calculateLayawayFeeFromItems(
@@ -609,6 +666,12 @@ export async function POST(request: NextRequest) {
           layawayFeeRates,
         )
       : 0;
+    const normalizedItems = Array.isArray(items)
+      ? items.map((item: any) => ({
+          ...item,
+          depositFee: calculateDepositFeeForItem(item, depositFeeRules),
+        }))
+      : items || null;
     const totalAmount =
       preShippingTotal +
       parseFloat(shippingFeeAmount) +
@@ -672,12 +735,13 @@ export async function POST(request: NextRequest) {
       resolvedLiveTypeSnapshot = `${foundLiveType.name} (${foundLiveType.country})`;
     }
 
+    const invoiceSource = source || "manual";
     const invoice = await (prisma as any).invoice.create({
       data: {
         userId: user.id,
         invoiceNumber,
         clientName: normalizedClientName,
-        items: items || null,
+        items: normalizedItems,
         subtotal: parseFloat(subtotal),
         tax: parseFloat(taxAmount),
         discount: parseFloat(discountAmount),
@@ -694,12 +758,23 @@ export async function POST(request: NextRequest) {
         description,
         customerId: resolvedCustomerId,
         externalInvoiceNumber: externalInvoiceNumber || null,
-        source: source || "manual",
+        source: invoiceSource,
         termsId: attachedTermsId,
         termsSnapshot: termsSnapshot || null,
         liveTypeId: resolvedLiveTypeId,
         liveTypeSnapshot: resolvedLiveTypeSnapshot,
         shippingFeeRuleId: shippingFeeRuleId || null,
+      },
+    });
+
+    await prisma.invoiceEditHistory.create({
+      data: {
+        invoiceId: invoice.id,
+        editedById: user.id,
+        reason: "Invoice created",
+        changes: {
+          source: { from: null, to: invoiceSource },
+        },
       },
     });
 

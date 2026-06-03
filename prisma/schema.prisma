@@ -77,6 +77,7 @@ model User {
   paymentEdits               PaymentEditHistory[]
   creditTransactions         CustomerCreditTransaction[]
   shippingFeeRulesCreated    ShippingFeeRule[]
+  depositFeeRulesCreated     DepositFeeRule[]
   dueDateReasonsCreated      DueDateReason[]
   liveTypesCreated           LiveType[]
   chequesUploaded            ChequeVault[]               @relation("ChequeUploadedBy")
@@ -115,6 +116,7 @@ model Invoice {
   dueDateReason String?       @db.Text
   status        InvoiceStatus @default(pending)
   isLayaway     Boolean       @default(false)
+  isHold        Boolean       @default(false)
 
   description String?
   createdAt   DateTime @default(now())
@@ -183,6 +185,24 @@ model ShippingFeeRule {
   @@map("shipping_fee_rules")
 }
 
+model DepositFeeRule {
+  id        Int      @id @default(autoincrement())
+  name      String
+  minAmount Decimal? @db.Decimal(10, 2)
+  maxAmount Decimal? @db.Decimal(10, 2)
+  fee       Decimal  @db.Decimal(10, 2)
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdBy Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  creator User @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+
+  @@index([isActive, sortOrder])
+  @@map("deposit_fee_rules")
+}
+
 model InsuranceRule {
   id          Int      @id @default(autoincrement())
   maxValue    Decimal  @db.Decimal(10, 2)
@@ -234,10 +254,12 @@ model Payment {
   isMatched Boolean @default(true)
 
   // Abandonment status & tracking (for security/audit)
-  isAbandoned   Boolean   @default(false)
-  abandonedAt   DateTime?
-  abandonedBy   Int?
-  abandonReason String?   @db.Text
+  isAbandoned         Boolean   @default(false)
+  abandonedAt         DateTime?
+  abandonedBy         Int?
+  abandonReason       String?   @db.Text
+  refundProofUrl      String?   @db.VarChar(500)
+  refundProofFileName String?   @db.VarChar(255)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -468,6 +490,37 @@ model LayawayFeeSetting {
   @@unique([unitName, months])
   @@index([isActive, sortOrder])
   @@map("layaway_fee_settings")
+}
+
+model LateFeeSetting {
+  id        Int      @id @default(autoincrement())
+  amount    Decimal  @db.Decimal(10, 2)
+  isActive  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("late_fee_settings")
+}
+
+model RecalculationFeeSetting {
+  id          Int      @id @default(autoincrement())
+  ratePercent Decimal  @db.Decimal(10, 2)
+  isActive    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("recalculation_fee_settings")
+}
+
+model RestockingFeeSetting {
+  id           Int      @id @default(autoincrement())
+  amount       Decimal  @db.Decimal(10, 2)
+  isPercentage Boolean  @default(false)
+  isActive     Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("restocking_fee_settings")
 }
 
 model LayawayPlan {

@@ -4,12 +4,20 @@ import { requireAuth } from "../../../../lib/auth";
 import { updateInvoiceAfterPayment } from "../../../../lib/invoice-utils";
 import { Prisma } from "@prisma/client";
 import { stampPaymentCode } from "../../../../lib/payment-code";
+import { createLateFeePayment } from "../../../../lib/late-fee";
 
 export async function POST(request: NextRequest) {
   try {
     const user = await requireAuth();
     const body = await request.json();
-    const { paymentId, invoiceId, amount } = body;
+    const {
+      paymentId,
+      invoiceId,
+      amount,
+      lateFeeAmount,
+      lateFeeReason,
+      lateFeeWaivedReason,
+    } = body;
 
     if (!paymentId || !invoiceId || !amount) {
       return NextResponse.json(
@@ -19,6 +27,11 @@ export async function POST(request: NextRequest) {
     }
 
     const amountToLink = new Prisma.Decimal(amount);
+    const normalizedLateFeeAmount = Number(lateFeeAmount ?? 0);
+    const normalizedLateFeeReason =
+      typeof lateFeeReason === "string" ? lateFeeReason.trim() : "";
+    const normalizedLateFeeWaivedReason =
+      typeof lateFeeWaivedReason === "string" ? lateFeeWaivedReason.trim() : "";
 
     if (amountToLink.isNegative() || amountToLink.isZero()) {
       return NextResponse.json(
@@ -130,6 +143,40 @@ export async function POST(request: NextRequest) {
           userId: user.id,
         },
       });
+
+      if (normalizedLateFeeWaivedReason) {
+        await tx.payment.update({
+          where: { id: paymentId },
+          data: {
+            notes: [
+              payment.notes || "",
+              `Late fee waived: ${normalizedLateFeeWaivedReason}`,
+            ]
+              .filter(Boolean)
+              .join(" | "),
+          },
+        });
+      }
+
+      if (normalizedLateFeeAmount > 0) {
+        await createLateFeePayment(tx, {
+          invoiceId,
+          methodId: payment.methodId,
+          paymentDate: payment.paymentDate,
+          amount: normalizedLateFeeAmount,
+          userId: user.id,
+          reason: normalizedLateFeeReason || null,
+        });
+
+        await tx.invoice.update({
+          where: { id: invoiceId },
+          data: {
+            amount: {
+              increment: normalizedLateFeeAmount,
+            },
+          },
+        });
+      }
 
       // 4. If this is a regular payment and it still has remaining balance,
       // split the remainder into customer-scoped store credit so it cannot be
