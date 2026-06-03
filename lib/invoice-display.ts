@@ -127,6 +127,242 @@ export interface RemovedItemDepositFeeDisplayEntry {
   label: string;
 }
 
+export function isAbandonedInvoice(invoice: { status?: string }): boolean {
+  return invoice.status === "abandoned";
+}
+
+export function getInvoiceAmountDue(invoice: {
+  status?: string;
+  amount?: number | null;
+  paidAmount?: number | null;
+}): number {
+  if (isAbandonedInvoice(invoice)) {
+    return 0;
+  }
+  return Math.max(
+    Number(invoice.amount || 0) - Number(invoice.paidAmount || 0),
+    0,
+  );
+}
+
+export function getInvoiceTotalForDisplay(invoice: {
+  status?: string;
+  amount?: number | null;
+}): number {
+  if (isAbandonedInvoice(invoice)) {
+    return 0;
+  }
+  return Number(invoice.amount || 0);
+}
+
+function getPaymentSourceTotal(
+  payments: Array<{ source?: string; amount?: number }> | null | undefined,
+  source: string,
+): number {
+  return (payments || []).reduce(
+    (sum, payment) =>
+      payment.source === source ? sum + Number(payment.amount || 0) : sum,
+    0,
+  );
+}
+
+export function getAbandonedRetainedFeeDisplay(invoice: {
+  status?: string;
+  isLayaway?: boolean;
+  payments?: Array<{ source?: string; amount?: number }> | null;
+  editHistory?: InvoiceEditHistoryLike[] | null;
+}): { label: string; amount: number } | null {
+  if (!isAbandonedInvoice(invoice)) {
+    return null;
+  }
+
+  const restockingFromPayments = getPaymentSourceTotal(
+    invoice.payments,
+    "restocking_fee",
+  );
+  const depositFromPayments = getPaymentSourceTotal(
+    invoice.payments,
+    "deposit_fee",
+  );
+
+  const abandonEntry = (invoice.editHistory || []).find(
+    (entry) => (entry.changes as { status?: { to?: string } })?.status?.to === "abandoned",
+  );
+  const changes = abandonEntry?.changes as
+    | {
+        feeType?: { to?: string | null };
+        feeAmount?: { to?: number | null };
+      }
+    | undefined;
+  const feeType = changes?.feeType?.to;
+  const feeAmountFromHistory = Number(changes?.feeAmount?.to || 0);
+
+  if (invoice.isLayaway) {
+    const amount =
+      restockingFromPayments > 0
+        ? restockingFromPayments
+        : feeType === "restocking"
+          ? feeAmountFromHistory
+          : 0;
+    return amount > 0
+      ? { label: "Restocking Fee:", amount: Number(amount.toFixed(2)) }
+      : null;
+  }
+
+  const amount =
+    depositFromPayments > 0
+      ? depositFromPayments
+      : feeType === "deposit"
+        ? feeAmountFromHistory
+        : 0;
+  return amount > 0
+    ? { label: "Deposit Fee:", amount: Number(amount.toFixed(2)) }
+    : null;
+}
+
+export function buildInvoicePdfSummaryRows(
+  invoice: InvoiceDisplayLike & {
+    status?: string;
+    payments?: Array<{ source?: string; amount?: number }> | null;
+    editHistory?: InvoiceEditHistoryLike[] | null;
+    items?: Array<{ depositFee?: number | null }> | null;
+  },
+  options?: { includeSubtotal?: boolean },
+): Array<{ label: string; value: number }> {
+  if (isAbandonedInvoice(invoice)) {
+    const retainedFee = getAbandonedRetainedFeeDisplay(invoice);
+    return retainedFee
+      ? [{ label: retainedFee.label, value: retainedFee.amount }]
+      : [];
+  }
+
+  const layawayFee = getVisibleLayawayFee(invoice);
+  const totalDepositAmount = (invoice.items || []).reduce(
+    (sum, item) => sum + Number(item.depositFee || 0),
+    0,
+  );
+
+  const rows = [
+    ...(options?.includeSubtotal
+      ? [{ label: "Subtotal:", value: Number(invoice.subtotal || 0) }]
+      : []),
+    { label: "Shipping Fee:", value: Number(invoice.shippingFee || 0) },
+    { label: "Insurance:", value: Number(invoice.insuranceAmount || 0) },
+    { label: "Layaway Fee:", value: layawayFee },
+    { label: "Total Deposit Amount:", value: totalDepositAmount },
+    {
+      label: "Late Fee:",
+      value: getPaymentSourceTotal(invoice.payments, "late_fee"),
+    },
+    {
+      label: "Deposit Fee:",
+      value: getPaymentSourceTotal(invoice.payments, "deposit_fee"),
+    },
+    {
+      label: "Restocking Fee:",
+      value: getPaymentSourceTotal(invoice.payments, "restocking_fee"),
+    },
+  ];
+
+  return rows.filter((row) => row.value !== 0);
+}
+
+export function isRefundPayment(payment: {
+  isRefund?: boolean;
+  isAbandoned?: boolean;
+  refundProofUrl?: string | null;
+}): boolean {
+  return (
+    !!payment.isRefund ||
+    !!(payment.isAbandoned && payment.refundProofUrl)
+  );
+}
+
+export function getInvoicePaymentsForPdf(invoice: {
+  status?: string;
+  payments?: Array<{
+    id?: number;
+    source?: string;
+    isRefund?: boolean;
+    isAbandoned?: boolean;
+    refundProofUrl?: string | null;
+  }> | null;
+  abandonmentRefunds?: Array<{
+    id?: number;
+    source?: string;
+    isRefund?: boolean;
+    isAbandoned?: boolean;
+    refundProofUrl?: string | null;
+  }> | null;
+}): NonNullable<typeof invoice.payments> {
+  const payments = invoice.payments || [];
+  if (!isAbandonedInvoice(invoice)) {
+    return payments;
+  }
+
+  const feePayments = payments.filter(
+    (payment) =>
+      payment.source === "deposit_fee" ||
+      payment.source === "restocking_fee",
+  );
+
+  const refunds =
+    (invoice.abandonmentRefunds?.length
+      ? invoice.abandonmentRefunds
+      : payments.filter(isRefundPayment)) || [];
+
+  const seenIds = new Set<number>();
+  const merged = [...feePayments];
+  for (const refund of refunds) {
+    if (refund.id != null) {
+      if (seenIds.has(refund.id)) continue;
+      seenIds.add(refund.id);
+    }
+    merged.push(refund);
+  }
+  return merged;
+}
+
+export function getInvoicePdfPaymentLabel(payment: {
+  source?: string;
+  paymentDate?: string;
+  date?: string;
+  isRefund?: boolean;
+  isAbandoned?: boolean;
+  refundProofUrl?: string | null;
+  method?: { name?: string } | string | null;
+}): string {
+  if (payment.source === "deposit_fee") {
+    return "Deposit fee retained:";
+  }
+  if (payment.source === "restocking_fee") {
+    return "Restocking fee retained:";
+  }
+  if (isRefundPayment(payment)) {
+    const dateStr = new Date(
+      payment.paymentDate || payment.date || "",
+    ).toLocaleDateString("en-US", {
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    });
+    return `Refund on ${dateStr}:`;
+  }
+
+  const dateStr = new Date(
+    payment.paymentDate || payment.date || "",
+  ).toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+  const methodName =
+    typeof payment.method === "object"
+      ? payment.method?.name || "payment"
+      : String(payment.method || "payment");
+  return `Payment on ${dateStr} using ${methodName.toLowerCase()}:`;
+}
+
 export function getRemovedItemDepositFeeDisplayEntries(
   editHistory?: InvoiceEditHistoryLike[] | null,
 ): RemovedItemDepositFeeDisplayEntry[] {

@@ -7,7 +7,6 @@ import {
   type LayawayFeeRate,
   normalizeLayawayFeeRates,
 } from "../../lib/layaway-fees";
-import { calculateRecalculationFeeAmount } from "../../lib/recalculation-fee-calculator";
 import InvoiceItemsEditor from "./InvoiceItemsEditor";
 import InvoiceSummary from "./InvoiceSummary";
 import Modal from "./Modal";
@@ -151,7 +150,7 @@ export default function EditInvoiceModal({
   const [layawayDownPayment, setLayawayDownPayment] = useState(0);
   const [layawayNotes, setLayawayNotes] = useState("");
   const [recalculationFeeSetting, setRecalculationFeeSetting] = useState({
-    ratePercent: 0,
+    amount: 0,
     isActive: false,
   });
   const [termsOptions, setTermsOptions] = useState<TermOption[]>([]);
@@ -281,7 +280,7 @@ export default function EditInvoiceModal({
         .then((data) => {
           if (data) {
             setRecalculationFeeSetting({
-              ratePercent: Number(data.ratePercent ?? 0),
+              amount: Number(data.amount ?? data.ratePercent ?? 0),
               isActive: !!data.isActive,
             });
           }
@@ -474,14 +473,7 @@ export default function EditInvoiceModal({
   const shouldOfferRecalculationFee =
     hasLayawayReconfigurationChanged &&
     recalculationFeeSetting.isActive &&
-    recalculationFeeSetting.ratePercent > 0;
-
-  const expectedRecalculationFeeAmount = shouldOfferRecalculationFee
-    ? calculateRecalculationFeeAmount(
-        calculateRemainingBalance(),
-        recalculationFeeSetting.ratePercent,
-      )
-    : 0;
+    recalculationFeeSetting.amount > 0;
 
   const buildLayawayInstallments = () => {
     const remainingBalance = calculateRemainingBalance();
@@ -1449,7 +1441,7 @@ export default function EditInvoiceModal({
               <div className="mt-3 flex justify-between border-t border-purple-200 pt-3">
                 <span>Recalculation fee</span>
                 <span className="font-semibold text-purple-800">
-                  ${expectedRecalculationFeeAmount.toFixed(2)}
+                  ${recalculationFeeSetting.amount.toFixed(2)}
                 </span>
               </div>
             </div>

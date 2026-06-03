@@ -308,8 +308,7 @@ function InvoicesPageContent() {
         invoice={paymentInvoice}
       />
 
-      {deletingInvoice?.status === "inactive" ||
-      deletingInvoice?.status === "abandoned" ? (
+      {deletingInvoice?.status === "inactive" ? (
         <ConfirmModal
           isOpen={showDeleteConfirm}
           onClose={() => {

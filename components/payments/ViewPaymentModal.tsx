@@ -228,10 +228,14 @@ export default function ViewPaymentModal({
 
           {/* Abandonment Info */}
           {payment.isAbandoned && payment.abandonedAt && (
-            <div className="border border-red-200 rounded-lg p-5 bg-red-50">
-              <h4 className="text-sm font-medium text-red-700 mb-3 flex items-center">
+            <div
+              className={`border rounded-lg p-5 ${payment.refundProofUrl ? "border-orange-200 bg-orange-50" : "border-red-200 bg-red-50"}`}
+            >
+              <h4
+                className={`text-sm font-medium mb-3 flex items-center ${payment.refundProofUrl ? "text-orange-700" : "text-red-700"}`}
+              >
                 <svg
-                  className="w-5 h-5 mr-2 text-red-600"
+                  className={`w-5 h-5 mr-2 ${payment.refundProofUrl ? "text-orange-600" : "text-red-600"}`}
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -243,12 +247,22 @@ export default function ViewPaymentModal({
                     d="M12 9v2m0 4v2m0 4v2M7.08 6.06L8.5 7.5m3 3l1.42 1.42M7.08 17.94L8.5 16.5m3-3l1.42-1.42m6.36-1.42L16.5 7.5m-3-3l-1.42-1.42M16.92 17.94L15.5 16.5m3-3l-1.42-1.42"
                   />
                 </svg>
-                Payment Abandoned
+                {payment.refundProofUrl ? "Refund" : "Payment Abandoned"}
               </h4>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-red-600">Status:</span>
-                  <span className="font-medium text-red-700">Abandoned</span>
+                  <span
+                    className={
+                      payment.refundProofUrl ? "text-orange-600" : "text-red-600"
+                    }
+                  >
+                    Status:
+                  </span>
+                  <span
+                    className={`font-medium ${payment.refundProofUrl ? "text-orange-700" : "text-red-700"}`}
+                  >
+                    {payment.refundProofUrl ? "Refund" : "Abandoned"}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-red-600">Abandoned on:</span>

@@ -117,8 +117,7 @@ function PaymentsPageContent() {
     // The modal and API call are now handled in PaymentTableRow
     // This callback just needs to refresh the active payments list
     showSuccess("Payment abandoned successfully!");
-    // Reset filter to 'active' to exclude abandoned payments from the list
-    setFilterStatus("active");
+    setFilterStatus("all");
     // Refresh immediately so the row disappears even when the filter was already active
     await fetchPayments();
   };

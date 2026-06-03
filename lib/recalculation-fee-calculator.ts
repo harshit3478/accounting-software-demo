@@ -1,8 +1,7 @@
 export function calculateRecalculationFeeAmount(
-  remainingAmount: number,
-  ratePercent: number,
+  _remainingAmount: number,
+  fixedAmount: number,
 ) {
-  const safeRemaining = Math.max(0, Number(remainingAmount) || 0);
-  const safeRate = Math.max(0, Number(ratePercent) || 0);
-  return Number(((safeRemaining * safeRate) / 100).toFixed(2));
+  const safeAmount = Math.max(0, Number(fixedAmount) || 0);
+  return Number(safeAmount.toFixed(2));
 }

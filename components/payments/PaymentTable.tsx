@@ -134,9 +134,9 @@ export default function PaymentTable({
         <table className="min-w-full divide-y divide-gray-200 relative table-fixed">
           <thead className="bg-gray-50 sticky top-0 z-10 shadow-sm">
             <tr>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 w-[12%]">
+              <SortableHeader field="id" className="w-[12%]">
                 Payment Id
-              </th>
+              </SortableHeader>
               <SortableHeader field="date" className="w-[10%]">
                 Date
               </SortableHeader>
@@ -146,13 +146,16 @@ export default function PaymentTable({
               <SortableHeader field="client" className="w-[20%]">
                 Client
               </SortableHeader>
-              <SortableHeader field="amount" className="w-[10%]">
+              <SortableHeader field="amount" className="w-[9%]">
                 Amount
               </SortableHeader>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 w-[12%]">
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 w-[10%]">
+                Status
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 w-[11%]">
                 Method
               </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 w-[28%]">
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 w-[22%]">
                 Notes
               </th>
               <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 w-[8%]">

@@ -275,7 +275,7 @@ export function useInvoices(
   );
 
   const [sortBy, setSortByState] = useState(
-    searchParams.get("sortBy") || "date",
+    searchParams.get("sortBy") || "invoiceNumber",
   );
   const [sortDirection, setSortDirectionState] = useState<"asc" | "desc">(
     (searchParams.get("sortDirection") as "asc" | "desc") || "desc",
@@ -411,15 +411,15 @@ export function useInvoices(
   const handleItemsPerPageChange = setItemsPerPage;
 
   const setSortBy = (field: string) => {
-    // Toggle direction if same field, otherwise set to desc
     if (field === sortBy) {
       const newDir = sortDirection === "asc" ? "desc" : "asc";
       setSortDirectionState(newDir);
       updateUrl({ sortBy: field, sortDirection: newDir, page: "1" });
     } else {
+      const defaultDir = field === "client" ? "asc" : "desc";
       setSortByState(field);
-      setSortDirectionState("desc");
-      updateUrl({ sortBy: field, sortDirection: "desc", page: "1" });
+      setSortDirectionState(defaultDir);
+      updateUrl({ sortBy: field, sortDirection: defaultDir, page: "1" });
     }
     setCurrentPage(1);
   };
@@ -513,7 +513,7 @@ export function useInvoices(
       const params = new URLSearchParams();
       params.set("page", currentPage.toString());
       params.set("limit", itemsPerPage.toString());
-      if (statusFilter !== "all") params.set("status", statusFilter);
+      params.set("status", statusFilter);
       if (typeFilter !== "all") params.set("type", typeFilter);
       if (liveTypeFilter !== "all") params.set("liveType", liveTypeFilter);
       if (shipmentFilter !== "all") params.set("shipment", shipmentFilter);
@@ -591,9 +591,7 @@ export function useInvoices(
   }) => {
     if (!deletingInvoice) return;
 
-    const isReactivating =
-      deletingInvoice.status === "inactive" ||
-      deletingInvoice.status === "abandoned";
+    const isReactivating = deletingInvoice.status === "inactive";
     const reasonPrompt = isReactivating
       ? "Please enter reason for reactivating this invoice:"
       : "Please enter reason for marking this invoice as abandoned:";

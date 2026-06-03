@@ -2,12 +2,24 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { BUSINESS_CONFIG } from "./business-config";
 import {
+  buildInvoicePdfSummaryRows,
+  getInvoiceAmountDue,
+  getInvoicePaymentsForPdf,
+  getInvoicePdfPaymentLabel,
+  getInvoiceTotalForDisplay,
   getRecalculationFeeDisplayEntries,
   getRemovedItemDepositFeeDisplayEntries,
-  getVisibleLayawayFee,
+  isAbandonedInvoice,
   resolveInvoiceDate,
   resolveLiveTypeLabel,
 } from "./invoice-display";
+
+function formatUsd(amount: number): string {
+  return `$${amount.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
 
 interface Invoice {
   id: number;
@@ -56,10 +68,24 @@ interface Invoice {
     }>;
   } | null;
   payments?: Array<{
+    id?: number;
     amount: number;
     paymentDate: string;
     method?: { name: string } | null;
     source?: string;
+    isRefund?: boolean;
+    isAbandoned?: boolean;
+    refundProofUrl?: string | null;
+  }> | null;
+  abandonmentRefunds?: Array<{
+    id?: number;
+    amount: number;
+    paymentDate: string;
+    method?: { name: string } | null;
+    source?: string;
+    isRefund?: boolean;
+    isAbandoned?: boolean;
+    refundProofUrl?: string | null;
   }> | null;
   liveTypeId?: number | null;
   liveTypeSnapshot?: string | null;
@@ -76,14 +102,6 @@ interface Invoice {
 }
 
 const { colors } = BUSINESS_CONFIG;
-
-function getPaymentSourceTotal(invoice: Invoice, source: string): number {
-  return (invoice.payments || []).reduce(
-    (sum, payment) =>
-      payment.source === source ? sum + Number(payment.amount || 0) : sum,
-    0,
-  );
-}
 
 function getCurrentItemDepositFeeTotal(invoice: Invoice): number {
   return (invoice.items || []).reduce(
@@ -236,9 +254,9 @@ export function generateInvoicesPDF(
     invoice.invoiceNumber,
     invoice.clientName,
     new Date(invoice.createdAt).toLocaleDateString(),
-    `$${invoice.amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+    formatUsd(getInvoiceTotalForDisplay(invoice)),
     `$${invoice.paidAmount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-    `$${(invoice.amount - invoice.paidAmount).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+    formatUsd(getInvoiceAmountDue(invoice)),
     invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1),
   ]);
 
@@ -468,12 +486,12 @@ export async function generateSingleInvoicePDF(
     invoice.invoiceDate,
     invoice.createdAt,
   );
-  const layawayFee = getVisibleLayawayFee(invoice);
   const removedItemDepositFeeEntries = getRemovedItemDepositFeeDisplayEntries(
     invoice.editHistory || [],
   );
-  const totalDepositAmount = getCurrentItemDepositFeeTotal(invoice);
   const liveTypeLabel = resolveLiveTypeLabel(invoice);
+  const amtDue = getInvoiceAmountDue(invoice);
+  const invoiceTotal = getInvoiceTotalForDisplay(invoice);
 
   const metaRows = [
     { label: "Invoice Number:", value: invoice.invoiceNumber },
@@ -532,7 +550,6 @@ export async function generateSingleInvoicePDF(
   // });
 
   // Amount Due row with grey highlight
-  const amtDue = Number(invoice.amount) - Number(invoice.paidAmount);
   doc.setFillColor(240, 240, 240);
   doc.rect(rightColX, metaY - 4, R - rightColX, 9, "F");
   doc.setFontSize(9);
@@ -627,21 +644,15 @@ export async function generateSingleInvoicePDF(
   // doc.text(`$${Number(invoice.amount).toFixed(2)}`, R, y, { align: "right" });
   // y += 6;
 
-  // Each recorded payment (sorted in ascending order by date)
-  if (invoice.payments && invoice.payments.length > 0) {
-    const sortedPayments = [...invoice.payments].sort(
+  const paymentsToShow = getInvoicePaymentsForPdf(invoice);
+
+  if (paymentsToShow.length > 0) {
+    const sortedPayments = [...paymentsToShow].sort(
       (a, b) =>
         new Date(a.paymentDate).getTime() - new Date(b.paymentDate).getTime(),
     );
     sortedPayments.forEach((p) => {
-      const dateStr = new Date(p.paymentDate).toLocaleDateString("en-US", {
-        month: "long",
-        day: "numeric",
-        year: "numeric",
-      });
-      const methodName = p.method?.name || "payment";
-      const label = `Payment on ${dateStr} using ${methodName.toLowerCase()}:`;
-      // Wrap long labels
+      const label = getInvoicePdfPaymentLabel(p);
       const labelLines = doc.splitTextToSize(label, totalsLabelX - L - 5);
       doc.text(labelLines, totalsLabelX, y, { align: "right" });
       doc.text(`$${Number(p.amount).toFixed(2)}`, R, y, { align: "right" });
@@ -657,29 +668,13 @@ export async function generateSingleInvoicePDF(
 
   // ── 7A. SUMMARY (AFTER TABLE) ─────────────────────────────
 
-  const summaryRows = [
-    { label: "Subtotal:", value: Number(invoice.subtotal || 0) },
-    { label: "Shipping Fee:", value: Number(invoice.shippingFee || 0) },
-    { label: "Insurance:", value: Number(invoice.insuranceAmount || 0) },
-    { label: "Layaway Fee:", value: layawayFee },
-    { label: "Total Deposit Amount:", value: totalDepositAmount },
-    {
-      label: "Late Fee:",
-      value: getPaymentSourceTotal(invoice, "late_fee"),
-    },
-    {
-      label: "Deposit Fee:",
-      value: getPaymentSourceTotal(invoice, "deposit_fee"),
-    },
-    {
-      label: "Restocking Fee:",
-      value: getPaymentSourceTotal(invoice, "restocking_fee"),
-    },
-  ].filter((row) => row.value !== 0);
+  const summaryRows = buildInvoicePdfSummaryRows(invoice, {
+    includeSubtotal: true,
+  });
 
-  const recalculationFeeEntries = getRecalculationFeeDisplayEntries(
-    invoice.editHistory || [],
-  );
+  const recalculationFeeEntries = isAbandonedInvoice(invoice)
+    ? []
+    : getRecalculationFeeDisplayEntries(invoice.editHistory || []);
 
   const summaryLabelX = 130;
 
@@ -689,7 +684,7 @@ export async function generateSingleInvoicePDF(
 
   summaryRows.forEach((row) => {
     doc.text(row.label, summaryLabelX, y, { align: "right" });
-    doc.text(`$${row.value.toFixed(2)}`, R, y, { align: "right" });
+    doc.text(`$${Number(row.value || 0).toFixed(2)}`, R, y, { align: "right" });
     y += 6;
   });
 
@@ -701,16 +696,18 @@ export async function generateSingleInvoicePDF(
     y += labelLines.length > 1 ? labelLines.length * 5 + 1 : 6;
   });
 
-  removedItemDepositFeeEntries.forEach((entry) => {
-    const label =
-      entry.action === "skip"
-        ? `${entry.label}: ${entry.reason}`
-        : `${entry.label} (${new Date(entry.date).toLocaleDateString()})`;
-    const labelLines = doc.splitTextToSize(label, R - L - 35);
-    doc.text(labelLines, summaryLabelX, y, { align: "right" });
-    doc.text(`$${entry.amount.toFixed(2)}`, R, y, { align: "right" });
-    y += labelLines.length > 1 ? labelLines.length * 5 + 1 : 6;
-  });
+  if (!isAbandonedInvoice(invoice)) {
+    removedItemDepositFeeEntries.forEach((entry) => {
+      const label =
+        entry.action === "skip"
+          ? `${entry.label}: ${entry.reason}`
+          : `${entry.label} (${new Date(entry.date).toLocaleDateString()})`;
+      const labelLines = doc.splitTextToSize(label, R - L - 35);
+      doc.text(labelLines, summaryLabelX, y, { align: "right" });
+      doc.text(`$${entry.amount.toFixed(2)}`, R, y, { align: "right" });
+      y += labelLines.length > 1 ? labelLines.length * 5 + 1 : 6;
+    });
+  }
 
   // Separator line
   doc.setDrawColor(180, 180, 180);
@@ -719,7 +716,7 @@ export async function generateSingleInvoicePDF(
 
   doc.setFont("helvetica", "bold");
   doc.text("Invoice Total:", summaryLabelX, y, { align: "right" });
-  doc.text(`$${Number(invoice.amount).toFixed(2)}`, R, y, { align: "right" });
+  doc.text(`$${invoiceTotal.toFixed(2)}`, R, y, { align: "right" });
   y += 6;
   doc.text("Amount Due:", summaryLabelX, y, { align: "right" });
   doc.text(`$${amtDue.toFixed(2)}`, R, y, { align: "right" });
@@ -727,7 +724,9 @@ export async function generateSingleInvoicePDF(
 
   // ── 8. NOTES / TERMS ──────────────────────────────────────────────────────
   const hasDescription = !!invoice.description;
-  const hasLayaway = !!(invoice.isLayaway && invoice.layawayPlan);
+  const hasLayaway =
+    !!(invoice.isLayaway && invoice.layawayPlan) &&
+    !isAbandonedInvoice(invoice);
   const hasTerms = effectiveTermLines.length > 0;
 
   if (hasDescription || hasLayaway || hasTerms) {
@@ -960,12 +959,12 @@ export function buildSingleInvoicePdfBuffer(
     day: "numeric",
     year: "numeric",
   });
-  const layawayFee = getVisibleLayawayFee(invoice);
   const removedItemDepositFeeEntries = getRemovedItemDepositFeeDisplayEntries(
     invoice.editHistory || [],
   );
-  const totalDepositAmount = getCurrentItemDepositFeeTotal(invoice);
   const liveTypeLabel = resolveLiveTypeLabel(invoice);
+  const amtDue = getInvoiceAmountDue(invoice);
+  const invoiceTotal = getInvoiceTotalForDisplay(invoice);
   [
     ["Invoice Number:", invoice.invoiceNumber],
     ["Invoice Date:", invoiceDate],
@@ -982,7 +981,6 @@ export function buildSingleInvoicePdfBuffer(
     metaY += 6;
   });
 
-  const amtDue = Number(invoice.amount) - Number(invoice.paidAmount);
   doc.setFillColor(240, 240, 240);
   doc.rect(105, metaY - 4, R - 105, 9, "F");
   doc.setFontSize(9);
@@ -1063,19 +1061,15 @@ export function buildSingleInvoicePdfBuffer(
     y = (doc as any).lastAutoTable.finalY + 10;
   }
 
-  if (invoice.payments && invoice.payments.length > 0) {
-    const sortedPayments = [...invoice.payments].sort(
+  const paymentsToShow = getInvoicePaymentsForPdf(invoice);
+
+  if (paymentsToShow.length > 0) {
+    const sortedPayments = [...paymentsToShow].sort(
       (a, b) =>
         new Date(a.paymentDate).getTime() - new Date(b.paymentDate).getTime(),
     );
     sortedPayments.forEach((p) => {
-      const dateStr = new Date(p.paymentDate).toLocaleDateString("en-US", {
-        month: "long",
-        day: "numeric",
-        year: "numeric",
-      });
-      const methodName = p.method?.name || "payment";
-      const label = `Payment on ${dateStr} using ${methodName.toLowerCase()}:`;
+      const label = getInvoicePdfPaymentLabel(p);
       const labelLines = doc.splitTextToSize(label, 115);
       doc.text(labelLines, 130, y, { align: "right" });
       doc.text(`$${Number(p.amount).toFixed(2)}`, R, y, { align: "right" });
@@ -1088,35 +1082,18 @@ export function buildSingleInvoicePdfBuffer(
   doc.line(110, y, R, y);
   y += 6;
 
-  const summaryRows = [
-    { label: "Shipping Fee:", value: Number(invoice.shippingFee || 0) },
-    { label: "Insurance:", value: Number(invoice.insuranceAmount || 0) },
-    { label: "Layaway Fee:", value: layawayFee },
-    { label: "Total Deposit Amount:", value: totalDepositAmount },
-    {
-      label: "Late Fee:",
-      value: getPaymentSourceTotal(invoice, "late_fee"),
-    },
-    {
-      label: "Deposit Fee:",
-      value: getPaymentSourceTotal(invoice, "deposit_fee"),
-    },
-    {
-      label: "Restocking Fee:",
-      value: getPaymentSourceTotal(invoice, "restocking_fee"),
-    },
-  ].filter((row) => row.value !== 0);
+  const summaryRows = buildInvoicePdfSummaryRows(invoice);
 
-  const recalculationFeeEntries = getRecalculationFeeDisplayEntries(
-    invoice.editHistory || [],
-  );
+  const recalculationFeeEntries = isAbandonedInvoice(invoice)
+    ? []
+    : getRecalculationFeeDisplayEntries(invoice.editHistory || []);
 
   doc.setFontSize(9);
   doc.setFont("helvetica", "normal");
   doc.setTextColor(26, 26, 26);
   summaryRows.forEach((row) => {
     doc.text(row.label, 130, y, { align: "right" });
-    doc.text(`$${row.value.toFixed(2)}`, R, y, { align: "right" });
+    doc.text(`$${Number(row.value || 0).toFixed(2)}`, R, y, { align: "right" });
     y += 6;
   });
 
@@ -1128,16 +1105,18 @@ export function buildSingleInvoicePdfBuffer(
     y += labelLines.length > 1 ? labelLines.length * 5 + 1 : 6;
   });
 
-  removedItemDepositFeeEntries.forEach((entry) => {
-    const label =
-      entry.action === "skip"
-        ? `${entry.label}: ${entry.reason}`
-        : `${entry.label} (${new Date(entry.date).toLocaleDateString()})`;
-    const labelLines = doc.splitTextToSize(label, 115);
-    doc.text(labelLines, 130, y, { align: "right" });
-    doc.text(`$${entry.amount.toFixed(2)}`, R, y, { align: "right" });
-    y += labelLines.length > 1 ? labelLines.length * 5 + 1 : 6;
-  });
+  if (!isAbandonedInvoice(invoice)) {
+    removedItemDepositFeeEntries.forEach((entry) => {
+      const label =
+        entry.action === "skip"
+          ? `${entry.label}: ${entry.reason}`
+          : `${entry.label} (${new Date(entry.date).toLocaleDateString()})`;
+      const labelLines = doc.splitTextToSize(label, 115);
+      doc.text(labelLines, 130, y, { align: "right" });
+      doc.text(`$${entry.amount.toFixed(2)}`, R, y, { align: "right" });
+      y += labelLines.length > 1 ? labelLines.length * 5 + 1 : 6;
+    });
+  }
 
   doc.setDrawColor(180, 180, 180);
   doc.line(110, y, R, y);
@@ -1145,14 +1124,16 @@ export function buildSingleInvoicePdfBuffer(
 
   doc.setFont("helvetica", "bold");
   doc.text("Invoice Total:", 130, y, { align: "right" });
-  doc.text(`$${Number(invoice.amount).toFixed(2)}`, R, y, { align: "right" });
+  doc.text(`$${invoiceTotal.toFixed(2)}`, R, y, { align: "right" });
   y += 6;
   doc.text("Amount Due:", 130, y, { align: "right" });
   doc.text(`$${amtDue.toFixed(2)}`, R, y, { align: "right" });
   y += 10;
 
   const hasDescription = !!invoice.description;
-  const hasLayaway = !!(invoice.isLayaway && invoice.layawayPlan);
+  const hasLayaway =
+    !!(invoice.isLayaway && invoice.layawayPlan) &&
+    !isAbandonedInvoice(invoice);
   const hasTerms = effectiveTermLines.length > 0;
 
   if (hasDescription || hasLayaway || hasTerms) {

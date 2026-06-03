@@ -2,9 +2,15 @@
 
 import { BUSINESS_CONFIG } from "../../lib/business-config";
 import {
+  buildInvoicePdfSummaryRows,
+  getInvoiceAmountDue,
+  getInvoicePaymentsForPdf,
+  getInvoicePdfPaymentLabel,
+  getInvoiceTotalForDisplay,
   getRecalculationFeeDisplayEntries,
   getRemovedItemDepositFeeDisplayEntries,
   getVisibleLayawayFee,
+  isAbandonedInvoice,
   resolveLiveTypeLabel,
   resolveInvoiceDate,
 } from "../../lib/invoice-display";
@@ -86,6 +92,7 @@ interface Invoice {
 interface InvoiceImageTemplateProps {
   invoice: Invoice;
   payments: Payment[];
+  abandonmentRefunds?: Payment[];
   terms?: string[] | null;
 }
 
@@ -115,9 +122,21 @@ function fmtShortDate(dateString: string) {
 export default function InvoiceImageTemplate({
   invoice,
   payments,
+  abandonmentRefunds = [],
   terms,
 }: InvoiceImageTemplateProps) {
-  const amtDue = invoice.amount - invoice.paidAmount;
+  const abandoned = isAbandonedInvoice(invoice);
+  const amtDue = getInvoiceAmountDue(invoice);
+  const invoiceTotal = getInvoiceTotalForDisplay(invoice);
+  const paymentsToShow = getInvoicePaymentsForPdf({
+    status: invoice.status,
+    payments,
+    abandonmentRefunds,
+  });
+  const abandonedSummaryRows = buildInvoicePdfSummaryRows(
+    { ...invoice, payments: paymentsToShow },
+    { includeSubtotal: true },
+  );
   const biz = BUSINESS_CONFIG;
   const shippingFee = Number(invoice.shippingFee || 0);
   const insuranceAmount = Number(invoice.insuranceAmount || 0);
@@ -585,6 +604,23 @@ export default function InvoiceImageTemplate({
         }}
       >
         <div style={{ width: "320px" }}>
+          {abandoned ? (
+            abandonedSummaryRows.map((row) => (
+              <div
+                key={row.label}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  padding: "5px 0",
+                  fontSize: "13px",
+                }}
+              >
+                <span style={{ color: "#333333" }}>{row.label}</span>
+                <span style={{ fontWeight: 600 }}>{fmt(row.value)}</span>
+              </div>
+            ))
+          ) : (
+            <>
           <div
             style={{
               display: "flex",
@@ -749,6 +785,8 @@ export default function InvoiceImageTemplate({
               <span style={{ fontWeight: 600 }}>{fmt(entry.amount)}</span>
             </div>
           ))}
+            </>
+          )}
           <div
             style={{
               height: "1px",
@@ -765,28 +803,20 @@ export default function InvoiceImageTemplate({
               fontSize: "13px",
             }}
           >
-            <span style={{ color: "#333333" }}>Total:</span>
-            <span style={{ fontWeight: 600 }}>{fmt(invoice.amount)}</span>
+            <span style={{ color: "#333333" }}>
+              {abandoned ? "Invoice Total:" : "Total:"}
+            </span>
+            <span style={{ fontWeight: 600 }}>{fmt(invoiceTotal)}</span>
           </div>
 
           {/* Each payment */}
-          {[...payments]
+          {[...paymentsToShow]
             .sort(
               (a, b) =>
                 new Date(a.date || a.createdAt).getTime() -
                 new Date(b.date || b.createdAt).getTime(),
             )
-            .map((p, i) => {
-              const methodName =
-                typeof p.method === "object" ? p.method.name : String(p.method);
-              const dateStr = new Date(
-                p.date || p.createdAt,
-              ).toLocaleDateString("en-US", {
-                month: "long",
-                day: "numeric",
-                year: "numeric",
-              });
-              return (
+            .map((p, i) => (
                 <div
                   key={i}
                   style={{
@@ -799,14 +829,13 @@ export default function InvoiceImageTemplate({
                   <span
                     style={{ color: "#555555", flex: 1, paddingRight: "8px" }}
                   >
-                    Payment on {dateStr} using {methodName.toLowerCase()}:
+                    {getInvoicePdfPaymentLabel(p)}
                   </span>
                   <span style={{ color: "#333333", whiteSpace: "nowrap" }}>
                     {fmt(p.amount)}
                   </span>
                 </div>
-              );
-            })}
+              ))}
 
           {/* Separator */}
           <div

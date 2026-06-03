@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "../../../../lib/prisma";
 import { requireAuth } from "../../../../lib/auth";
+import { buildPaymentStatusWhere } from "../../../../lib/payment-display-status";
 
 export async function GET(request: NextRequest) {
   try {
@@ -10,27 +11,13 @@ export async function GET(request: NextRequest) {
     // Use same filter params as main payments list
     const search = searchParams.get("search") || "";
     const method = searchParams.get("method") || "all";
-    const status = searchParams.get("status") || "active";
+    const status = searchParams.get("status") || "all";
     const startDate = searchParams.get("startDate");
     const endDate = searchParams.get("endDate");
 
-    let where: any = {};
-
-    if (status === "abandoned") {
-      where.isAbandoned = true;
-      where.refundProofUrl = null;
-    } else if (status === "refund") {
-      where.isAbandoned = true;
-      where.refundProofUrl = { not: null };
-    } else if (status === "deposit_fee") {
-      where.isAbandoned = false;
-      where.source = "deposit_fee";
-    } else if (status === "all") {
-      delete where.isAbandoned;
-    } else {
-      where.isAbandoned = false;
-      where.source = { notIn: ["deposit_fee", "restocking_fee"] };
-    }
+    let where: any = {
+      ...buildPaymentStatusWhere(status),
+    };
 
     // Search filter
     if (search) {
@@ -95,7 +82,7 @@ export async function GET(request: NextRequest) {
         },
       },
       orderBy: {
-        paymentDate: "desc",
+        id: "desc",
       },
     });
 

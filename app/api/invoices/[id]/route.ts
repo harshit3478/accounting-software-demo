@@ -5,7 +5,10 @@ import { invalidateDashboard } from "../../../../lib/cache-helpers";
 import { calculateInvoiceStatus } from "../../../../lib/invoice-utils";
 import { updateInvoiceAfterPayment } from "../../../../lib/invoice-utils";
 import { Prisma } from "@prisma/client";
-import { stampPaymentCode } from "../../../../lib/payment-code";
+import {
+  formatPaymentCode,
+  stampPaymentCode,
+} from "../../../../lib/payment-code";
 import {
   DEFAULT_LAYAWAY_FEE_RATES,
   calculateLayawayFeeFromItems,
@@ -21,6 +24,7 @@ import {
 } from "../../../../lib/recalculation-fee";
 import { calculateRestockingFeeAmount } from "../../../../lib/restocking-fee";
 import { uploadToR2 } from "../../../../lib/r2-client";
+import { allocatePaymentAmounts } from "../../../../lib/allocate-payment-amounts";
 
 async function getConfiguredLayawayFeeRates() {
   const rateModel = (prisma as any)?.layawayFeeSetting;
@@ -655,12 +659,12 @@ export async function PUT(
               hasLayawayPlanConfigChanged &&
               normalizedRecalculationFeeAction === "apply" &&
               recalcFeeSetting.isActive &&
-              recalcFeeSetting.ratePercent > 0;
+              recalcFeeSetting.amount > 0;
 
             const recalcFeeAmount = shouldApplyRecalculationFee
               ? calculateRecalculationFeeAmount(
                   totalForPlan,
-                  recalcFeeSetting.ratePercent,
+                  recalcFeeSetting.amount,
                 )
               : 0;
             if (recalcFeeAmount > 0) {
@@ -903,6 +907,12 @@ export async function DELETE(
       | "overdue"
       | "partial";
     if (requestedTargetStatus === "reactivate") {
+      if (existingInvoice.status === "abandoned") {
+        return NextResponse.json(
+          { error: "Abandoned invoices cannot be reactivated." },
+          { status: 400 },
+        );
+      }
       targetStatus = calculateInvoiceStatus(
         existingInvoice.amount.toNumber(),
         existingInvoice.paidAmount.toNumber(),
@@ -932,6 +942,8 @@ export async function DELETE(
       paymentAction ?? "none";
     let normalizedFeeAction: "restocking" | "deposit" | "none" =
       feeAction ?? "none";
+    let feePaymentId: number | null = null;
+    let refundPaymentIds: number[] = [];
 
     const updated = await prisma.$transaction(
       async (tx) => {
@@ -1039,6 +1051,11 @@ export async function DELETE(
             )?.id;
 
           if (normalizedPaymentAction === "refund") {
+            if (movedAmount <= 0.009) {
+              throw new Error(
+                "No refundable payment balance remains after the selected fee.",
+              );
+            }
             if (!refundProofDataUrl) {
               throw new Error("Refund proof image is required.");
             }
@@ -1069,6 +1086,12 @@ export async function DELETE(
               mimeType,
             );
             storedRefundProofFileName = safeFileName;
+          }
+
+          if (normalizedPaymentAction === "refund" && paymentTotal <= 0.009) {
+            throw new Error(
+              "Refund is only available when the invoice has payments.",
+            );
           }
 
           if (paymentTotal > 0.009) {
@@ -1263,19 +1286,52 @@ export async function DELETE(
 
             if (normalizedPaymentAction === "refund") {
               const refundReason = `Payments refunded from abandoned invoice ${existingInvoice.invoiceNumber}. ${reason}`;
+              const refundAllocationItems: Array<{ id: number; amount: number }> =
+                [];
 
-              if (realDirectPayments.length > 0) {
-                await tx.payment.updateMany({
-                  where: { id: { in: realDirectPayments.map((p) => p.id) } },
+              for (const payment of realDirectPayments) {
+                refundAllocationItems.push({
+                  id: payment.id,
+                  amount: payment.amount.toNumber(),
+                });
+              }
+
+              const matchedAmountByPaymentId = new Map<number, number>();
+              for (const match of matchedPaymentsWithoutDirectOverlap) {
+                if (directPaymentIds.has(match.paymentId)) continue;
+                matchedAmountByPaymentId.set(
+                  match.paymentId,
+                  (matchedAmountByPaymentId.get(match.paymentId) || 0) +
+                    match.amount.toNumber(),
+                );
+              }
+              for (const [paymentId, amount] of matchedAmountByPaymentId) {
+                refundAllocationItems.push({ id: paymentId, amount });
+              }
+
+              const refundAllocations = allocatePaymentAmounts(
+                refundAllocationItems,
+                movedAmount,
+              );
+
+              const refundPaymentUpdate = {
+                invoiceId: null,
+                isMatched: false,
+                isAbandoned: true,
+                abandonedAt: new Date(),
+                abandonedBy: user.id,
+                abandonReason: refundReason,
+                refundProofUrl,
+                refundProofFileName: storedRefundProofFileName,
+              };
+
+              for (const payment of realDirectPayments) {
+                const refundAmount = refundAllocations.get(payment.id) ?? 0;
+                await tx.payment.update({
+                  where: { id: payment.id },
                   data: {
-                    invoiceId: null,
-                    isMatched: false,
-                    isAbandoned: true,
-                    abandonedAt: new Date(),
-                    abandonedBy: user.id,
-                    abandonReason: refundReason,
-                    refundProofUrl,
-                    refundProofFileName: storedRefundProofFileName,
+                    ...refundPaymentUpdate,
+                    amount: new Prisma.Decimal(refundAmount),
                   },
                 });
               }
@@ -1290,21 +1346,18 @@ export async function DELETE(
                 });
               }
 
-              for (const match of matchedPaymentsWithoutDirectOverlap) {
+              for (const paymentId of matchedAmountByPaymentId.keys()) {
+                const refundAmount = refundAllocations.get(paymentId) ?? 0;
                 await tx.payment.update({
-                  where: { id: match.paymentId },
+                  where: { id: paymentId },
                   data: {
-                    invoiceId: null,
-                    isMatched: false,
-                    isAbandoned: true,
-                    abandonedAt: new Date(),
-                    abandonedBy: user.id,
-                    abandonReason: refundReason,
-                    refundProofUrl,
-                    refundProofFileName: storedRefundProofFileName,
+                    ...refundPaymentUpdate,
+                    amount: new Prisma.Decimal(refundAmount),
                   },
                 });
               }
+
+              refundPaymentIds = refundAllocationItems.map((item) => item.id);
             }
 
             for (const pid of affectedPaymentIds) {
@@ -1383,6 +1436,7 @@ export async function DELETE(
             });
 
             await stampPaymentCode(tx, feePayment.id);
+            feePaymentId = feePayment.id;
           }
         }
 
@@ -1390,7 +1444,9 @@ export async function DELETE(
           where: { id: invoiceId },
           data: {
             status: targetStatus,
-            ...(targetStatus === "abandoned" ? { paidAmount: feeAmount } : {}),
+            ...(targetStatus === "abandoned"
+              ? { amount: 0, paidAmount: feeAmount }
+              : {}),
           },
         });
 
@@ -1423,6 +1479,32 @@ export async function DELETE(
                           feeType: {
                             from: null,
                             to: normalizedFeeAction,
+                          },
+                        }
+                      : {}),
+                    ...(feePaymentId
+                      ? {
+                          feePaymentId: {
+                            from: null,
+                            to: feePaymentId,
+                          },
+                          feePaymentCode: {
+                            from: null,
+                            to: formatPaymentCode(feePaymentId),
+                          },
+                        }
+                      : {}),
+                    ...(refundPaymentIds.length > 0
+                      ? {
+                          refundPaymentIds: {
+                            from: [],
+                            to: refundPaymentIds,
+                          },
+                          refundPaymentCodes: {
+                            from: [],
+                            to: refundPaymentIds.map((id) =>
+                              formatPaymentCode(id),
+                            ),
                           },
                         }
                       : {}),

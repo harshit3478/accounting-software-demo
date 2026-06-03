@@ -143,7 +143,7 @@ export async function GET(request: NextRequest) {
     const liveType = searchParams.get("liveType") || "all";
 
     // Sort params
-    const sortBy = searchParams.get("sortBy") || "date";
+    const sortBy = searchParams.get("sortBy") || "invoiceNumber";
     const sortDirection = (searchParams.get("sortDirection") || "desc") as
       | "asc"
       | "desc";
@@ -175,7 +175,7 @@ export async function GET(request: NextRequest) {
       where.isHold = true;
     }
 
-    // By default, exclude inactive/abandoned invoices unless explicitly requested
+    // Status scope: "all" shows every billing status in one list
     if (showHeldInvoices) {
       // Hold is an overlay flag, not a billing status.
     } else if (
@@ -183,10 +183,17 @@ export async function GET(request: NextRequest) {
       (status === "abandoned" && supportsAbandonedStatus)
     ) {
       where.status = status;
-    } else if (showInactive) {
-      // Show all including inactive/abandoned — no status filter applied here
+    } else if (status === "all" || showInactive) {
+      // No status restriction — include pending, paid, abandoned, inactive, etc.
+    } else if (
+      status === "pending" ||
+      status === "paid" ||
+      status === "overdue" ||
+      status === "partial"
+    ) {
+      where.status = status;
     } else {
-      // Default: exclude inactive/abandoned
+      // Unknown status param: same as operational default (exclude inactive/abandoned)
       where.status = supportsAbandonedStatus
         ? { notIn: ["inactive", "abandoned"] }
         : { not: "inactive" };
@@ -198,16 +205,6 @@ export async function GET(request: NextRequest) {
         { invoiceNumber: { contains: search } },
         { clientName: { contains: search } },
       ];
-    }
-
-    // Status filter (applied on top of inactive exclusion)
-    if (
-      status !== "all" &&
-      status !== "inactive" &&
-      status !== "abandoned" &&
-      status !== "hold"
-    ) {
-      where.status = status;
     }
 
     // Customer filter — see all invoices for a specific client
@@ -348,8 +345,14 @@ export async function GET(request: NextRequest) {
         orderBy = { dueDate: sortDirection };
         break;
       case "date":
+        orderBy = [
+          { invoiceDate: sortDirection },
+          { invoiceNumber: sortDirection },
+        ];
+        break;
+      case "invoiceNumber":
       default:
-        orderBy = { createdAt: sortDirection };
+        orderBy = { invoiceNumber: sortDirection };
         break;
     }
 

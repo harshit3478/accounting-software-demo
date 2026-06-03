@@ -323,18 +323,19 @@ export default function InvoiceTableRow({
                 {invoice.shipmentId ? "Manage Shipment" : "Create Shipment"}
               </button>
               {invoice.status !== "inactive" &&
-              invoice.status !== "abandoned" ? (
-                <button
-                  onClick={() => {
-                    setShowActionsMenu(false);
-                    onDelete(invoice);
-                  }}
-                  className="flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-md text-left"
-                >
-                  <XCircle className="h-4 w-4" />
-                  Mark Abandoned
-                </button>
-              ) : (
+                invoice.status !== "abandoned" && (
+                  <button
+                    onClick={() => {
+                      setShowActionsMenu(false);
+                      onDelete(invoice);
+                    }}
+                    className="flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-md text-left"
+                  >
+                    <XCircle className="h-4 w-4" />
+                    Mark Abandoned
+                  </button>
+                )}
+              {invoice.status === "inactive" && (
                 <button
                   onClick={() => {
                     setShowActionsMenu(false);

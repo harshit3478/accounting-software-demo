@@ -7,6 +7,10 @@ import { Button } from "../ui/button";
 import { generatePaymentReceiptPDF } from "../../lib/payment-receipt";
 import AbandonPaymentModal from "./AbandonPaymentModal";
 import type { Payment } from "../../hooks/usePayments";
+import {
+  getPaymentDisplayStatus,
+  getPaymentDisplayStatusLabel,
+} from "../../lib/payment-display-status";
 
 interface PaymentTableRowProps {
   payment: Payment;
@@ -88,8 +92,25 @@ export default function PaymentTableRow({
     handlePrintReceipt();
   };
 
+  const displayStatus =
+    payment.displayStatus ?? getPaymentDisplayStatus(payment);
+  const statusLabel = getPaymentDisplayStatusLabel(displayStatus);
+
+  const getStatusBadgeClass = () => {
+    switch (displayStatus) {
+      case "refund":
+        return "bg-orange-100 text-orange-800";
+      case "deposit_fee":
+        return "bg-purple-100 text-purple-800";
+      case "restocking_fee":
+        return "bg-indigo-100 text-indigo-800";
+      default:
+        return "bg-emerald-100 text-emerald-800";
+    }
+  };
+
   const isUnmatched =
-    !payment.isAbandoned &&
+    displayStatus === "active" &&
     !payment.invoice &&
     (!payment.paymentMatches || payment.paymentMatches.length === 0);
 
@@ -171,14 +192,14 @@ export default function PaymentTableRow({
         )}
       </td>
       <td className="px-4 py-3 text-sm font-semibold text-gray-900">
-        <div className="flex items-center gap-2">
-          <span>${formatAmount(payment.amount)}</span>
-          {payment.isAbandoned && (
-            <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-700">
-              Abandoned
-            </span>
-          )}
-        </div>
+        ${formatAmount(payment.amount)}
+      </td>
+      <td className="px-4 py-3">
+        <span
+          className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${getStatusBadgeClass()}`}
+        >
+          {statusLabel}
+        </span>
       </td>
       <td className="px-4 py-3">
         <span
@@ -248,7 +269,7 @@ export default function PaymentTableRow({
                   Edit Notes
                 </button>
               )}
-              {onAbandon && !payment.isAbandoned && (
+              {onAbandon && displayStatus === "active" && (
                 <button
                   onClick={handleOpenAbandonModal}
                   disabled={isAbandoning}

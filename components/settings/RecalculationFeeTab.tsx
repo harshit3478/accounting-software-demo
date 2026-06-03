@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { FiSave } from "react-icons/fi";
 
 interface RecalculationFeeSetting {
-  ratePercent: number;
+  amount: number;
   isActive: boolean;
 }
 
@@ -14,7 +14,7 @@ interface RecalculationFeeTabProps {
 }
 
 const DEFAULT_SETTING: RecalculationFeeSetting = {
-  ratePercent: 0,
+  amount: 0,
   isActive: false,
 };
 
@@ -41,7 +41,7 @@ export default function RecalculationFeeTab({
 
         const data = await res.json();
         setSetting({
-          ratePercent: Number(data?.ratePercent ?? 0),
+          amount: Number(data?.amount ?? data?.ratePercent ?? 0),
           isActive: !!data?.isActive,
         });
       } catch (error: any) {
@@ -55,8 +55,8 @@ export default function RecalculationFeeTab({
   }, [showError]);
 
   const handleSave = async () => {
-    if (!Number.isFinite(setting.ratePercent) || setting.ratePercent < 0) {
-      showError("Recalculation fee rate must be a valid non-negative number");
+    if (!Number.isFinite(setting.amount) || setting.amount < 0) {
+      showError("Recalculation fee amount must be a valid non-negative number");
       return;
     }
 
@@ -77,7 +77,7 @@ export default function RecalculationFeeTab({
 
       const data = await res.json();
       setSetting({
-        ratePercent: Number(data?.ratePercent ?? setting.ratePercent),
+        amount: Number(data?.amount ?? data?.ratePercent ?? setting.amount),
         isActive: !!data?.isActive,
       });
       showSuccess("Recalculation fee setting saved");
@@ -95,8 +95,8 @@ export default function RecalculationFeeTab({
           Recalculating Fee
         </h2>
         <p className="text-gray-600 text-sm">
-          Apply a percentage fee to the remaining layaway balance when the term
-          length changes. Set the rate to 0 to disable it.
+          Apply a fixed fee when a layaway term or payment frequency changes.
+          Set the amount to 0 to disable it.
         </p>
       </div>
 
@@ -108,24 +108,25 @@ export default function RecalculationFeeTab({
         <div className="space-y-4 max-w-lg">
           <div className="p-4 rounded-lg border border-gray-200 bg-white">
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Recalculation fee rate (%)
+              Recalculation fee amount ($)
             </label>
             <input
               type="number"
               min="0"
               step="0.01"
-              value={setting.ratePercent}
+              value={setting.amount}
               onChange={(e) =>
                 setSetting((prev) => ({
                   ...prev,
-                  ratePercent: Number(e.target.value),
+                  amount: Number(e.target.value),
                 }))
               }
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
               placeholder="0.00"
             />
             <p className="text-xs text-gray-500 mt-2">
-              Fee is calculated from the remaining unpaid layaway balance.
+              This fixed amount is added when the admin applies the
+              recalculation fee.
             </p>
           </div>
 

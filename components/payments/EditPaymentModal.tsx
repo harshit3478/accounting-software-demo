@@ -61,7 +61,7 @@ export default function EditPaymentModal({
         setPaymentMethods([]);
       });
 
-    fetch("/api/invoices?status=all&limit=200&sortBy=date&sortDirection=desc")
+    fetch("/api/invoices?status=all&limit=200&sortBy=invoiceNumber&sortDirection=desc")
       .then((res) => (res.ok ? res.json() : { invoices: [] }))
       .then((data) => {
         const rows = Array.isArray(data?.invoices) ? data.invoices : [];

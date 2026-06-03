@@ -2,7 +2,7 @@ import prisma from "./prisma";
 import { calculateRecalculationFeeAmount } from "./recalculation-fee-calculator";
 
 export interface RecalculationFeeSettingSnapshot {
-  ratePercent: number;
+  amount: number;
   isActive: boolean;
 }
 
@@ -11,11 +11,11 @@ export async function getRecalculationFeeSettingSnapshot(): Promise<Recalculatio
     orderBy: { updatedAt: "desc" },
   });
   if (!row) {
-    return { ratePercent: 0, isActive: false };
+    return { amount: 0, isActive: false };
   }
 
   return {
-    ratePercent: Number(row.ratePercent ?? 0),
+    amount: Number(row.ratePercent ?? 0),
     isActive: !!row.isActive,
   };
 }

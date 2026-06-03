@@ -6,6 +6,10 @@ import { invalidateDashboard } from "../../../lib/cache-helpers";
 import { sendPaymentConfirmation } from "../../../lib/email";
 import { stampPaymentCode } from "../../../lib/payment-code";
 import { createLateFeePayment } from "../../../lib/late-fee";
+import {
+  buildPaymentStatusWhere,
+  getPaymentDisplayStatus,
+} from "../../../lib/payment-display-status";
 
 export async function GET(request: NextRequest) {
   try {
@@ -21,28 +25,13 @@ export async function GET(request: NextRequest) {
     const invoiceId = searchParams.get("invoiceId");
     const search = searchParams.get("search") || "";
     const method = searchParams.get("method") || "all";
-    const status = searchParams.get("status") || "active";
+    const status = searchParams.get("status") || "all";
     const startDate = searchParams.get("startDate");
     const endDate = searchParams.get("endDate");
 
-    let where: any = {};
-
-    // Status filter
-    if (status === "abandoned") {
-      where.isAbandoned = true;
-      where.refundProofUrl = null;
-    } else if (status === "refund") {
-      where.isAbandoned = true;
-      where.refundProofUrl = { not: null };
-    } else if (status === "deposit_fee") {
-      where.isAbandoned = false;
-      where.source = "deposit_fee";
-    } else if (status === "all") {
-      delete where.isAbandoned;
-    } else {
-      where.isAbandoned = false;
-      where.source = { notIn: ["deposit_fee", "restocking_fee"] };
-    }
+    let where: any = {
+      ...buildPaymentStatusWhere(status),
+    };
 
     // Filter by invoiceId if provided
     if (invoiceId) {
@@ -81,7 +70,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Sort params
-    const sortBy = searchParams.get("sortBy") || "date";
+    const sortBy = searchParams.get("sortBy") || "id";
     const sortDirection = (searchParams.get("sortDirection") || "desc") as
       | "asc"
       | "desc";
@@ -96,8 +85,11 @@ export async function GET(request: NextRequest) {
         orderBy = { invoice: { clientName: sortDirection } };
         break;
       case "date":
-      default:
         orderBy = { paymentDate: sortDirection };
+        break;
+      case "id":
+      default:
+        orderBy = { id: sortDirection };
         break;
     }
 
@@ -149,6 +141,7 @@ export async function GET(request: NextRequest) {
     // Convert Decimal to number for JSON serialization
     const serializedPayments = payments.map((payment: any) => ({
       ...payment,
+      displayStatus: getPaymentDisplayStatus(payment),
       amount: payment.amount.toNumber(),
       abandonedByUser: payment.abandonedByUser
         ? {

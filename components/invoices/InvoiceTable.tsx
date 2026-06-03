@@ -152,8 +152,13 @@ export default function InvoiceTable({
                   title="Select all visible invoices"
                 />
               </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 w-[130px]">
-                Invoice #
+              <th
+                onClick={() => onSortChange("invoiceNumber")}
+                className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors bg-gray-50 w-[130px]"
+              >
+                <div className="flex items-center gap-1">
+                  Invoice # {getSortIcon("invoiceNumber")}
+                </div>
               </th>
               <th
                 onClick={() => onSortChange("client")}

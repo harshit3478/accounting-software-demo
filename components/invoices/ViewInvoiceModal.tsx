@@ -8,6 +8,7 @@ import { generateSingleInvoicePDF } from "../../lib/pdf-export";
 import { exportElementAsJPEG } from "../../lib/image-export";
 import InvoiceImageTemplate from "./InvoiceImageTemplate";
 import {
+  getInvoicePaymentsForPdf,
   getRecalculationFeeDisplayEntries,
   getRemovedItemDepositFeeDisplayEntries,
   getVisibleLayawayFee,
@@ -16,11 +17,14 @@ import {
   buildLateFeeReason,
   findOverdueLayawayInstallmentClient,
 } from "../../lib/late-fee-client";
+import { formatPaymentCode } from "../../lib/payment-code";
 
 interface Payment {
   id: number;
   amount: number;
   source?: string;
+  paymentCode?: string;
+  isRefund?: boolean;
   method:
     | {
         id: number;
@@ -160,6 +164,7 @@ export default function ViewInvoiceModal({
   invoice,
 }: ViewInvoiceModalProps) {
   const [payments, setPayments] = useState<Payment[]>([]);
+  const [abandonmentRefunds, setAbandonmentRefunds] = useState<Payment[]>([]);
   const [isLoadingPayments, setIsLoadingPayments] = useState(false);
   const [updatingInstallment, setUpdatingInstallment] = useState<number | null>(
     null,
@@ -224,17 +229,26 @@ export default function ViewInvoiceModal({
       .catch(() => {});
   }, []);
 
+  const mapPaymentForPdf = (p: Payment) => ({
+    id: p.id,
+    amount: p.amount,
+    paymentDate: p.date || p.createdAt,
+    method:
+      typeof p.method === "object" ? p.method : { name: String(p.method) },
+    source: p.source,
+    isRefund: p.isRefund,
+  });
+
   const buildPDFInvoice = () => ({
     ...invoice!,
-    amount: localInvoiceAmount,
+    amount:
+      invoice!.status === "abandoned" ? 0 : localInvoiceAmount,
     paidAmount: localPaidAmount,
-    payments: payments.map((p) => ({
-      amount: p.amount,
-      paymentDate: p.date || p.createdAt,
-      method:
-        typeof p.method === "object" ? p.method : { name: String(p.method) },
-      source: p.source,
-    })),
+    payments: getInvoicePaymentsForPdf({
+      status: invoice!.status,
+      payments: payments.map(mapPaymentForPdf),
+      abandonmentRefunds: abandonmentRefunds.map(mapPaymentForPdf),
+    }),
   });
 
   const handlePrintPDF = async () => {
@@ -659,15 +673,24 @@ export default function ViewInvoiceModal({
       const res = await fetch(`/api/invoices/${invoice.id}/payments`);
       if (res.ok) {
         const data = await res.json();
-        setPayments(data);
-        const totalPaid = Array.isArray(data)
-          ? data.reduce(
-              (sum: number, payment: Payment) =>
-                sum + Number(payment.amount || 0),
-              0,
-            )
-          : 0;
-        setLocalPaidAmount(totalPaid);
+        const paymentList: Payment[] = Array.isArray(data)
+          ? data
+          : data.payments || [];
+        const refundList: Payment[] = Array.isArray(data)
+          ? []
+          : data.abandonmentRefunds || [];
+        setPayments(paymentList);
+        setAbandonmentRefunds(refundList);
+        if (invoice.status === "abandoned") {
+          setLocalPaidAmount(Number(invoice.paidAmount || 0));
+        } else {
+          const totalPaid = paymentList.reduce(
+            (sum: number, payment: Payment) =>
+              sum + Number(payment.amount || 0),
+            0,
+          );
+          setLocalPaidAmount(totalPaid);
+        }
       }
     } catch (error) {
       console.error("Failed to fetch payments:", error);
@@ -783,6 +806,21 @@ export default function ViewInvoiceModal({
     (sum, payment) => sum + Number(payment.amount || 0),
     0,
   );
+  const formatPaymentNumber = (payment: { paymentCode?: string; id: number }) =>
+    payment.paymentCode || formatPaymentCode(payment.id);
+
+  const abandonHistoryEntry = (invoice.editHistory || []).find(
+    (entry) => entry.changes?.status?.to === "abandoned",
+  );
+  const historyFeePaymentCode = abandonHistoryEntry?.changes?.feePaymentCode
+    ?.to as string | undefined;
+  const historyFeeType = abandonHistoryEntry?.changes?.feeType?.to as
+    | string
+    | undefined;
+  const historyRefundPaymentCodes = (
+    (abandonHistoryEntry?.changes?.refundPaymentCodes?.to as string[]) || []
+  ).filter(Boolean);
+
   const refundHistoryEntries = (invoice.editHistory || [])
     .map((entry) => ({
       id: entry.id,
@@ -790,8 +828,149 @@ export default function ViewInvoiceModal({
       reason: entry.reason,
       proofUrl: entry.changes?.refundProof?.url as string | undefined,
       proofFileName: entry.changes?.refundProof?.fileName as string | undefined,
+      refundPaymentCodes: (entry.changes?.refundPaymentCodes?.to as string[]) || [],
     }))
     .filter((entry) => !!entry.proofUrl);
+
+  const displayedAbandonmentRefunds =
+    abandonmentRefunds.length > 0
+      ? abandonmentRefunds
+      : historyRefundPaymentCodes.map((code, index) => ({
+          id: index,
+          amount: Number(abandonHistoryEntry?.changes?.movedAmount?.to || 0),
+          paymentCode: code,
+          date: abandonHistoryEntry?.createdAt || invoice.createdAt,
+          notes: null,
+          createdAt: abandonHistoryEntry?.createdAt || invoice.createdAt,
+          method: { id: 0, name: "Refund", icon: null, color: "#EA580C" },
+          isRefund: true,
+        }));
+
+  const abandonPaymentDisposition = abandonHistoryEntry?.changes
+    ?.paymentDisposition?.to as string | undefined;
+  const showRefundInHistory =
+    abandonPaymentDisposition === "refund" ||
+    displayedAbandonmentRefunds.length > 0;
+
+  type PaymentHistoryRole =
+    | "payment"
+    | "refund"
+    | "deposit_fee"
+    | "restocking_fee";
+
+  const paymentHistoryDisplay = (() => {
+    if (invoice.status !== "abandoned") {
+      return payments.map((payment) => ({
+        payment,
+        role: (payment.source === "deposit_fee"
+          ? "deposit_fee"
+          : payment.source === "restocking_fee"
+            ? "restocking_fee"
+            : "payment") as PaymentHistoryRole,
+      }));
+    }
+
+    const rows: Array<{ payment: Payment; role: PaymentHistoryRole }> = [];
+
+    if (showRefundInHistory) {
+      for (const refundPayment of displayedAbandonmentRefunds) {
+        rows.push({ payment: refundPayment, role: "refund" });
+      }
+    }
+
+    for (const payment of payments) {
+      if (payment.source === "deposit_fee") {
+        rows.push({ payment, role: "deposit_fee" });
+      } else if (payment.source === "restocking_fee") {
+        rows.push({ payment, role: "restocking_fee" });
+      }
+    }
+
+    const hasFeeRow = rows.some(
+      (row) => row.role === "deposit_fee" || row.role === "restocking_fee",
+    );
+    if (!hasFeeRow && historyFeePaymentCode) {
+      rows.push({
+        payment: {
+          id: Number(abandonHistoryEntry?.changes?.feePaymentId?.to || 0),
+          amount: Number(abandonHistoryEntry?.changes?.feeAmount?.to || 0),
+          paymentCode: historyFeePaymentCode,
+          date: abandonHistoryEntry?.createdAt || invoice.createdAt,
+          notes: null,
+          createdAt: abandonHistoryEntry?.createdAt || invoice.createdAt,
+          method: {
+            id: 0,
+            name:
+              historyFeeType === "restocking" ? "Restocking Fee" : "Deposit Fee",
+            icon: null,
+            color: "#7C3AED",
+          },
+          source:
+            historyFeeType === "restocking" ? "restocking_fee" : "deposit_fee",
+        },
+        role:
+          historyFeeType === "restocking" ? "restocking_fee" : "deposit_fee",
+      });
+    }
+
+    return rows.sort((a, b) => b.payment.id - a.payment.id);
+  })();
+
+  const getPaymentHistoryRoleLabel = (role: PaymentHistoryRole) => {
+    switch (role) {
+      case "refund":
+        return "Refund";
+      case "deposit_fee":
+        return "Deposit Fee";
+      case "restocking_fee":
+        return "Restocking Fee";
+      default:
+        return "Payment";
+    }
+  };
+
+  const getPaymentHistoryRoleBadgeClass = (role: PaymentHistoryRole) => {
+    switch (role) {
+      case "refund":
+        return "bg-orange-100 text-orange-800";
+      case "deposit_fee":
+        return "bg-purple-100 text-purple-800";
+      case "restocking_fee":
+        return "bg-indigo-100 text-indigo-800";
+      default:
+        return "bg-gray-100 text-gray-700";
+    }
+  };
+
+  const getAbandonHistoryPaymentSummary = (
+    entry: NonNullable<Invoice["editHistory"]>[number],
+  ) => {
+    if (entry.changes?.status?.to !== "abandoned") return null;
+
+    const parts: string[] = [];
+    const disposition = entry.changes?.paymentDisposition?.to as
+      | string
+      | undefined;
+    const refundCodes = (
+      (entry.changes?.refundPaymentCodes?.to as string[]) || []
+    ).filter(Boolean);
+    const feeCode = entry.changes?.feePaymentCode?.to as string | undefined;
+    const feeType = entry.changes?.feeType?.to as string | undefined;
+
+    if (disposition === "refund" && refundCodes.length > 0) {
+      parts.push(
+        `Refund payment${refundCodes.length > 1 ? "s" : ""}: ${refundCodes.join(", ")}`,
+      );
+    }
+    if (feeCode) {
+      parts.push(
+        `${feeType === "restocking" ? "Restocking fee" : "Deposit fee"} payment: ${feeCode}`,
+      );
+    }
+
+    return parts.length > 0 ? parts.join(" · ") : null;
+  };
+
   const recalculationFeeEntries = getRecalculationFeeDisplayEntries(
     invoice.editHistory || [],
   );
@@ -1272,6 +1451,7 @@ export default function ViewInvoiceModal({
                   className="flex justify-between gap-4 text-xs text-amber-700"
                 >
                   <span>
+                    {formatPaymentNumber(payment)} —{" "}
                     {payment.notes || "Deposit fee retained"} (
                     {new Date(payment.date).toLocaleDateString()})
                   </span>
@@ -1310,6 +1490,7 @@ export default function ViewInvoiceModal({
                   className="flex justify-between gap-4 text-xs text-orange-700"
                 >
                   <span>
+                    {formatPaymentNumber(payment)} —{" "}
                     {payment.notes || "Restocking fee retained"} (
                     {new Date(payment.date).toLocaleDateString()})
                   </span>
@@ -1398,119 +1579,128 @@ export default function ViewInvoiceModal({
                   "{invoice.layawayPlan.notes}"
                 </p>
               )}
-              {invoice.layawayPlan.installments.length > 0 && (
-                <div className="border border-purple-200 rounded-lg overflow-hidden">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="bg-purple-100 border-b border-purple-200">
-                        <th className="px-4 py-2 text-left text-xs font-semibold text-purple-800 uppercase">
-                          Label
-                        </th>
-                        <th className="px-4 py-2 text-right text-xs font-semibold text-purple-800 uppercase">
-                          Due Date
-                        </th>
-                        <th className="px-4 py-2 text-right text-xs font-semibold text-purple-800 uppercase">
-                          Amount
-                        </th>
-                        <th className="px-4 py-2 text-center text-xs font-semibold text-purple-800 uppercase">
-                          Status
-                        </th>
-                        <th className="px-4 py-2 text-center text-xs font-semibold text-purple-800 uppercase w-[80px]">
-                          Action
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-purple-100">
-                      {localInstallments.map((inst) => (
-                        <tr
-                          key={inst.id}
-                          className={inst.isPaid ? "bg-green-50/50" : ""}
-                        >
-                          <td className="px-4 py-2 text-sm text-gray-900">
-                            {inst.label}
-                          </td>
-                          <td className="px-4 py-2 text-sm text-gray-900 text-right">
-                            {formatDate(inst.dueDate)}
-                          </td>
-                          <td className="px-4 py-2 text-sm text-gray-900 text-right">
-                            {formatCurrency(inst.amount)}
-                          </td>
-                          <td className="px-4 py-2 text-center">
-                            {inst.isPaid ? (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-                                Paid{" "}
-                                {inst.paidDate
-                                  ? `on ${new Date(inst.paidDate).toLocaleDateString()}`
-                                  : ""}
-                              </span>
-                            ) : (
-                              <span
-                                className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                                  new Date(inst.dueDate) < new Date()
-                                    ? "bg-red-100 text-red-800"
-                                    : "bg-amber-100 text-amber-800"
-                                }`}
-                              >
-                                {new Date(inst.dueDate) < new Date()
-                                  ? "Overdue"
-                                  : "Pending"}
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-4 py-2 text-center">
-                            <button
-                              onClick={() => {
-                                if (inst.isPaid) {
-                                  unlinkInstallmentPayment(inst);
-                                } else {
-                                  openMarkPaidModal(inst);
-                                }
-                              }}
-                              disabled={
-                                updatingInstallment === inst.id ||
-                                invoice.layawayPlan!.isCancelled
-                              }
-                              className={`text-xs px-2.5 py-1 rounded font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                                inst.isPaid
-                                  ? "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                                  : "bg-green-600 text-white hover:bg-green-700"
-                              }`}
-                              title={
-                                inst.isPaid ? "Unlink payment" : "Mark as paid"
-                              }
-                            >
-                              {updatingInstallment === inst.id ? (
-                                <svg
-                                  className="animate-spin h-3.5 w-3.5 mx-auto"
-                                  fill="none"
-                                  viewBox="0 0 24 24"
-                                >
-                                  <circle
-                                    className="opacity-25"
-                                    cx="12"
-                                    cy="12"
-                                    r="10"
-                                    stroke="currentColor"
-                                    strokeWidth="4"
-                                  ></circle>
-                                  <path
-                                    className="opacity-75"
-                                    fill="currentColor"
-                                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                                  ></path>
-                                </svg>
-                              ) : inst.isPaid ? (
-                                "Unlink"
-                              ) : (
-                                "Mark Paid"
-                              )}
-                            </button>
-                          </td>
+              {invoice.status === "abandoned" ? (
+                <p className="text-sm text-purple-800 bg-purple-100/60 rounded-lg px-3 py-2">
+                  Layaway installments are closed for abandoned invoices. See
+                  payment history below for refund or fee payments.
+                </p>
+              ) : (
+                invoice.layawayPlan.installments.length > 0 && (
+                  <div className="border border-purple-200 rounded-lg overflow-hidden">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="bg-purple-100 border-b border-purple-200">
+                          <th className="px-4 py-2 text-left text-xs font-semibold text-purple-800 uppercase">
+                            Label
+                          </th>
+                          <th className="px-4 py-2 text-right text-xs font-semibold text-purple-800 uppercase">
+                            Due Date
+                          </th>
+                          <th className="px-4 py-2 text-right text-xs font-semibold text-purple-800 uppercase">
+                            Amount
+                          </th>
+                          <th className="px-4 py-2 text-center text-xs font-semibold text-purple-800 uppercase">
+                            Status
+                          </th>
+                          <th className="px-4 py-2 text-center text-xs font-semibold text-purple-800 uppercase w-[80px]">
+                            Action
+                          </th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody className="divide-y divide-purple-100">
+                        {localInstallments.map((inst) => (
+                          <tr
+                            key={inst.id}
+                            className={inst.isPaid ? "bg-green-50/50" : ""}
+                          >
+                            <td className="px-4 py-2 text-sm text-gray-900">
+                              {inst.label}
+                            </td>
+                            <td className="px-4 py-2 text-sm text-gray-900 text-right">
+                              {formatDate(inst.dueDate)}
+                            </td>
+                            <td className="px-4 py-2 text-sm text-gray-900 text-right">
+                              {formatCurrency(inst.amount)}
+                            </td>
+                            <td className="px-4 py-2 text-center">
+                              {inst.isPaid ? (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                                  Paid{" "}
+                                  {inst.paidDate
+                                    ? `on ${new Date(inst.paidDate).toLocaleDateString()}`
+                                    : ""}
+                                </span>
+                              ) : (
+                                <span
+                                  className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                                    new Date(inst.dueDate) < new Date()
+                                      ? "bg-red-100 text-red-800"
+                                      : "bg-amber-100 text-amber-800"
+                                  }`}
+                                >
+                                  {new Date(inst.dueDate) < new Date()
+                                    ? "Overdue"
+                                    : "Pending"}
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-4 py-2 text-center">
+                              <button
+                                onClick={() => {
+                                  if (inst.isPaid) {
+                                    unlinkInstallmentPayment(inst);
+                                  } else {
+                                    openMarkPaidModal(inst);
+                                  }
+                                }}
+                                disabled={
+                                  updatingInstallment === inst.id ||
+                                  invoice.layawayPlan!.isCancelled
+                                }
+                                className={`text-xs px-2.5 py-1 rounded font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                                  inst.isPaid
+                                    ? "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                                    : "bg-green-600 text-white hover:bg-green-700"
+                                }`}
+                                title={
+                                  inst.isPaid
+                                    ? "Unlink payment"
+                                    : "Mark as paid"
+                                }
+                              >
+                                {updatingInstallment === inst.id ? (
+                                  <svg
+                                    className="animate-spin h-3.5 w-3.5 mx-auto"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <circle
+                                      className="opacity-25"
+                                      cx="12"
+                                      cy="12"
+                                      r="10"
+                                      stroke="currentColor"
+                                      strokeWidth="4"
+                                    ></circle>
+                                    <path
+                                      className="opacity-75"
+                                      fill="currentColor"
+                                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                                    ></path>
+                                  </svg>
+                                ) : inst.isPaid ? (
+                                  "Unlink"
+                                ) : (
+                                  "Mark Paid"
+                                )}
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )
               )}
             </div>
           )}
@@ -1547,26 +1737,42 @@ export default function ViewInvoiceModal({
               )}
             </div>
 
-            {payments.length > 0 ? (
+            {paymentHistoryDisplay.length > 0 ? (
               <div className="space-y-3">
-                {payments.map((payment) => (
+                {paymentHistoryDisplay.map(({ payment, role }) => (
                   <div
-                    key={payment.id}
+                    key={`${role}-${payment.id}-${payment.paymentCode}`}
                     className="border border-gray-200 rounded-lg p-4 hover:border-gray-300 transition-colors"
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex items-start space-x-3">
                         <div className="p-2 bg-gray-50 rounded-lg">
-                          {getPaymentMethodIcon(payment.method)}
+                          {role === "refund" ? (
+                            <span className="text-orange-600 text-sm font-semibold">
+                              RF
+                            </span>
+                          ) : (
+                            getPaymentMethodIcon(payment.method)
+                          )}
                         </div>
                         <div>
-                          <div className="flex items-center space-x-2">
+                          <div className="flex items-center flex-wrap gap-2">
+                            <span className="text-xs font-mono font-semibold text-gray-700">
+                              {formatPaymentNumber(payment)}
+                            </span>
+                            <span
+                              className={`text-xs px-2 py-1 rounded font-medium ${getPaymentHistoryRoleBadgeClass(role)}`}
+                            >
+                              {getPaymentHistoryRoleLabel(role)}
+                            </span>
                             <span className="font-semibold text-gray-900">
                               {formatCurrency(payment.amount)}
                             </span>
-                            <span className="text-xs px-2 py-1 bg-gray-100 text-gray-700 rounded">
-                              {getPaymentMethodInfo(payment.method).name}
-                            </span>
+                            {role === "payment" && (
+                              <span className="text-xs px-2 py-1 bg-gray-100 text-gray-700 rounded">
+                                {getPaymentMethodInfo(payment.method).name}
+                              </span>
+                            )}
                             {payment.type === "matched" && (
                               <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded font-medium">
                                 Matched Payment
@@ -1576,7 +1782,7 @@ export default function ViewInvoiceModal({
                           <p className="text-sm text-gray-600 mt-1">
                             {formatDate(payment.date)}
                           </p>
-                          {payment.createdBy && (
+                          {payment.createdBy && role !== "refund" && (
                             <p className="text-xs text-gray-500 mt-1">
                               Recorded by: {payment.createdBy}
                             </p>
@@ -1612,10 +1818,14 @@ export default function ViewInvoiceModal({
                   />
                 </svg>
                 <p className="text-gray-600 font-medium">
-                  No payments recorded yet
+                  {invoice.status === "abandoned"
+                    ? "No abandonment payments recorded"
+                    : "No payments recorded yet"}
                 </p>
                 <p className="text-sm text-gray-500 mt-1">
-                  Payments will appear here once recorded
+                  {invoice.status === "abandoned"
+                    ? "Refund or fee payment numbers will appear here after abandoning"
+                    : "Payments will appear here once recorded"}
                 </p>
               </div>
             )}
@@ -1639,6 +1849,13 @@ export default function ViewInvoiceModal({
                       <p className="font-medium text-red-800">
                         {new Date(entry.date).toLocaleString()}
                       </p>
+                      {entry.refundPaymentCodes.length > 0 && (
+                        <p className="mt-1 font-mono text-sm text-red-800">
+                          Refund payment
+                          {entry.refundPaymentCodes.length > 1 ? "s" : ""}:{" "}
+                          {entry.refundPaymentCodes.join(", ")}
+                        </p>
+                      )}
                       <p className="mt-1 text-red-700">{entry.reason}</p>
                       <a
                         href={entry.proofUrl}
@@ -1656,18 +1873,28 @@ export default function ViewInvoiceModal({
             )}
             {invoice.editHistory && invoice.editHistory.length > 0 ? (
               <div className="space-y-3">
-                {invoice.editHistory.map((entry) => (
-                  <div
-                    key={entry.id}
-                    className="rounded-lg border border-gray-200 bg-gray-50 p-4"
-                  >
-                    <p className="text-sm text-gray-800">{entry.reason}</p>
-                    <p className="mt-1 text-xs text-gray-500">
-                      {new Date(entry.createdAt).toLocaleString()} by{" "}
-                      {entry.editedBy?.name || "Unknown"}
-                    </p>
-                  </div>
-                ))}
+                {invoice.editHistory.map((entry) => {
+                  const abandonPaymentSummary =
+                    getAbandonHistoryPaymentSummary(entry);
+
+                  return (
+                    <div
+                      key={entry.id}
+                      className="rounded-lg border border-gray-200 bg-gray-50 p-4"
+                    >
+                      <p className="text-sm text-gray-800">{entry.reason}</p>
+                      {abandonPaymentSummary && (
+                        <p className="mt-2 font-mono text-sm font-medium text-orange-800">
+                          {abandonPaymentSummary}
+                        </p>
+                      )}
+                      <p className="mt-1 text-xs text-gray-500">
+                        {new Date(entry.createdAt).toLocaleString()} by{" "}
+                        {entry.editedBy?.name || "Unknown"}
+                      </p>
+                    </div>
+                  );
+                })}
               </div>
             ) : (
               <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4 text-sm text-gray-500">
@@ -1987,10 +2214,12 @@ export default function ViewInvoiceModal({
           <InvoiceImageTemplate
             invoice={{
               ...invoice,
-              amount: localInvoiceAmount,
+              amount:
+                invoice.status === "abandoned" ? 0 : localInvoiceAmount,
               paidAmount: localPaidAmount,
             }}
             payments={payments}
+            abandonmentRefunds={abandonmentRefunds}
             terms={
               invoice?.terms?.lines || invoice?.termsSnapshot || defaultTerms
             }
