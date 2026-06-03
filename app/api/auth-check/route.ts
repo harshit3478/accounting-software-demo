@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
+import { isSuperAdmin } from '@/lib/auth';
 
 export async function GET(request: NextRequest) {
   const token = request.cookies.get('token')?.value;
@@ -17,17 +18,23 @@ export async function GET(request: NextRequest) {
     const canRenameDocuments = decoded.role === 'admin' || privileges?.documents?.rename === true;
     const canDeleteDocuments = decoded.role === 'admin' || privileges?.documents?.delete === true;
 
-    return NextResponse.json({ 
-      authenticated: true, 
-      user: { 
-        id: decoded.userId, 
-        email: decoded.email, 
-        role: decoded.role, 
-        name: decoded.name,
-        canUploadDocuments,
-        canRenameDocuments,
-        canDeleteDocuments
-      }
+    const user = {
+      id: decoded.userId,
+      email: decoded.email,
+      role: decoded.role,
+      name: decoded.name,
+      canUploadDocuments,
+      canRenameDocuments,
+      canDeleteDocuments,
+      isSuperAdmin: isSuperAdmin({
+        id: decoded.userId,
+        email: decoded.email,
+      }),
+    };
+
+    return NextResponse.json({
+      authenticated: true,
+      user,
     });
   } catch (error: any) {
     return NextResponse.json({ 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "../../../lib/prisma";
 import { requireAuth } from "../../../lib/auth";
+import { LINKABLE_INVOICE_STATUSES } from "../../../lib/invoice-linkable-status";
 import {
   generateInvoiceNumber,
   calculateInvoiceStatus,
@@ -178,6 +179,8 @@ export async function GET(request: NextRequest) {
     // Status scope: "all" shows every billing status in one list
     if (showHeldInvoices) {
       // Hold is an overlay flag, not a billing status.
+    } else if (status === "linkable" || status === "unpaid") {
+      where.status = { in: [...LINKABLE_INVOICE_STATUSES] };
     } else if (
       status === "inactive" ||
       (status === "abandoned" && supportsAbandonedStatus)
@@ -732,6 +735,7 @@ export async function POST(request: NextRequest) {
       resolvedLiveTypeSnapshot = `${foundLiveType.name} (${foundLiveType.country})`;
     }
 
+    const invoiceSource = source || "manual";
     const invoice = await (prisma as any).invoice.create({
       data: {
         userId: user.id,
@@ -754,12 +758,23 @@ export async function POST(request: NextRequest) {
         description,
         customerId: resolvedCustomerId,
         externalInvoiceNumber: externalInvoiceNumber || null,
-        source: source || "manual",
+        source: invoiceSource,
         termsId: attachedTermsId,
         termsSnapshot: termsSnapshot || null,
         liveTypeId: resolvedLiveTypeId,
         liveTypeSnapshot: resolvedLiveTypeSnapshot,
         shippingFeeRuleId: shippingFeeRuleId || null,
+      },
+    });
+
+    await prisma.invoiceEditHistory.create({
+      data: {
+        invoiceId: invoice.id,
+        editedById: user.id,
+        reason: "Invoice created",
+        changes: {
+          source: { from: null, to: invoiceSource },
+        },
       },
     });
 

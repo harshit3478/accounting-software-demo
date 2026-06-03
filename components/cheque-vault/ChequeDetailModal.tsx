@@ -1,9 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { ChequeVaultRecord, InvoiceAllocation } from "@/hooks/useChequeVault";
 import InvoiceSearchModal, { AllocationEntry } from "./InvoiceSearchModal";
+import ChequeDocumentPreview from "./ChequeDocumentPreview";
 import { useAuth } from "@/lib/AuthContext";
+import {
+  canDeleteChequeRequest,
+  canEditChequeRequest,
+  canLinkInvoicesOnCheque,
+  isChequeRequestReadOnly,
+} from "@/lib/cheque-vault-permissions";
+import ConfirmModal from "@/components/ConfirmModal";
 
 interface ChequeDetailModalProps {
   isOpen: boolean;
@@ -13,6 +21,18 @@ interface ChequeDetailModalProps {
   onReject: (id: number, reason: string) => Promise<boolean>;
   onRequestCorrection: (id: number, note: string) => Promise<boolean>;
   onUpdateAllocations: (chequeId: number, invoices: { invoiceId: number; allocatedAmount: number }[]) => Promise<boolean>;
+  onUpdateDetails?: (
+    chequeId: number,
+    fields: {
+      chequeNumber: string;
+      payeeName: string;
+      amount: number;
+      chequeDate: string;
+      bankName: string | null;
+      customerEmail: string | null;
+    },
+  ) => Promise<boolean>;
+  onDelete?: (id: number) => Promise<boolean>;
 }
 
 const STATUS_STYLES: Record<string, string> = {
@@ -39,16 +59,47 @@ export default function ChequeDetailModal({
   onReject,
   onRequestCorrection,
   onUpdateAllocations,
+  onUpdateDetails,
+  onDelete,
 }: ChequeDetailModalProps) {
-  const { isAdmin } = useAuth();
+  const { isSuperAdmin, user } = useAuth();
+  const canReviewCheque = isSuperAdmin;
+  const [chequeNumber, setChequeNumber] = useState("");
+  const [payeeName, setPayeeName] = useState("");
+  const [amount, setAmount] = useState("");
+  const [chequeDate, setChequeDate] = useState("");
+  const [bankName, setBankName] = useState("");
+  const [customerEmail, setCustomerEmail] = useState("");
+  const [isSavingDetails, setIsSavingDetails] = useState(false);
   const [actionMode, setActionMode] = useState<"none" | "reject" | "correction">("none");
   const [rejectionReason, setRejectionReason] = useState("");
   const [correctionNote, setCorrectionNote] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [approveResult, setApproveResult] = useState<{ paymentRefs?: string[]; warnings?: string[] } | null>(null);
   const [showInvoiceSearch, setShowInvoiceSearch] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  useEffect(() => {
+    if (!cheque) return;
+    setChequeNumber(cheque.chequeNumber || "");
+    setPayeeName(cheque.payeeName || "");
+    setAmount(String(cheque.amount ?? ""));
+    setChequeDate(
+      cheque.chequeDate
+        ? new Date(cheque.chequeDate).toISOString().split("T")[0]
+        : "",
+    );
+    setBankName(cheque.bankName || "");
+    setCustomerEmail(cheque.customerEmail || "");
+  }, [cheque]);
 
   if (!isOpen || !cheque) return null;
+
+  const readOnly = isChequeRequestReadOnly(cheque);
+  const canEdit =
+    !!onUpdateDetails && canEditChequeRequest(cheque, user?.id, { isSuperAdmin });
+  const canLink = canLinkInvoicesOnCheque(cheque, user?.id, isSuperAdmin);
 
   const handleApprove = async () => {
     setIsSubmitting(true);
@@ -90,7 +141,34 @@ export default function ChequeDetailModal({
   };
 
   const canAction = cheque.status === "PENDING" || cheque.status === "NEEDS_CORRECTION";
+  const canDelete =
+    !!onDelete && canDeleteChequeRequest(cheque, user?.id);
   const hasAllocations = cheque.invoiceAllocations.length > 0;
+
+  const handleDelete = async () => {
+    if (!onDelete) return;
+    setIsDeleting(true);
+    const ok = await onDelete(cheque.id);
+    setIsDeleting(false);
+    if (ok) {
+      setShowDeleteConfirm(false);
+      handleClose();
+    }
+  };
+
+  const handleSaveDetails = async () => {
+    if (!onUpdateDetails || !chequeNumber.trim()) return;
+    setIsSavingDetails(true);
+    await onUpdateDetails(cheque.id, {
+      chequeNumber: chequeNumber.trim(),
+      payeeName: payeeName.trim(),
+      amount: parseFloat(amount) || 0,
+      chequeDate: chequeDate || new Date().toISOString().split("T")[0],
+      bankName: bankName.trim() || null,
+      customerEmail: customerEmail.trim() || null,
+    });
+    setIsSavingDetails(false);
+  };
 
   // Build initial allocations for the modal from current cheque data
   const currentAllocations: AllocationEntry[] = cheque.invoiceAllocations.map((a: InvoiceAllocation) => ({
@@ -112,7 +190,9 @@ export default function ChequeDetailModal({
           {/* Header */}
           <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <h2 className="text-lg font-semibold text-gray-900">Cheque Detail</h2>
+              <h2 className="text-lg font-semibold text-gray-900">
+                {canEdit ? "Edit Cheque Request" : "Cheque Detail"}
+              </h2>
               <span className={`px-2 py-1 rounded-full text-xs font-medium ${STATUS_STYLES[cheque.status]}`}>
                 {cheque.status.replace("_", " ")}
               </span>
@@ -129,20 +209,19 @@ export default function ChequeDetailModal({
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-0 lg:divide-x divide-gray-200">
               {/* Left: Image */}
               <div className="p-6">
-                <p className="text-sm font-medium text-gray-700 mb-3">Cheque Image</p>
+                <p className="text-sm font-medium text-gray-700 mb-3">Cheque Document</p>
                 <div
                   className="bg-gray-100 rounded-lg overflow-hidden border border-gray-200 cursor-pointer hover:opacity-90 transition-opacity"
                   onClick={() => window.open(cheque.imageUrl, "_blank")}
                   title="Click to open full size"
                 >
-                  <img
-                    src={cheque.imageUrl}
-                    alt={`Cheque #${cheque.chequeNumber}`}
-                    className="w-full object-contain max-h-80"
-                    onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                  <ChequeDocumentPreview
+                    imageUrl={cheque.imageUrl}
+                    imageFileName={cheque.imageFileName}
+                    chequeNumber={cheque.chequeNumber}
                   />
                 </div>
-                <p className="text-xs text-gray-400 mt-2 text-center">Click image to view full size</p>
+                <p className="text-xs text-gray-400 mt-2 text-center">Click to open full document</p>
 
                 {cheque.correctionNote && (
                   <div className="mt-4 p-3 bg-orange-50 border border-orange-200 rounded-lg">
@@ -168,27 +247,95 @@ export default function ChequeDetailModal({
 
               {/* Right: Fields */}
               <div className="p-6">
-                <p className="text-sm font-medium text-gray-700 mb-4">Extracted Fields</p>
-                <dl className="space-y-3">
-                  <Field label="Cheque Number" value={cheque.chequeNumber} />
-                  <Field label="Payee Name" value={cheque.payeeName} />
-                  {cheque.customerEmail && (
-                    <Field label="Customer Email" value={cheque.customerEmail} />
+                <div className="flex items-center justify-between mb-4">
+                  <p className="text-sm font-medium text-gray-700">
+                    {canEdit ? "Cheque Details" : "Extracted Fields"}
+                  </p>
+                  {canEdit && (
+                    <button
+                      onClick={handleSaveDetails}
+                      disabled={isSavingDetails || !chequeNumber.trim()}
+                      className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors font-medium"
+                    >
+                      {isSavingDetails ? "Saving..." : "Save Details"}
+                    </button>
                   )}
-                  <Field label="Amount" value={`$${cheque.amount.toFixed(2)}`} />
-                  <Field label="Cheque Date" value={formatDate(cheque.chequeDate)} />
-                  <Field label="Bank Name" value={cheque.bankName} />
+                </div>
+                <dl className="space-y-3">
+                  {canEdit ? (
+                    <>
+                      <EditableField label="Cheque Number *" required>
+                        <input
+                          value={chequeNumber}
+                          onChange={(e) => setChequeNumber(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </EditableField>
+                      <EditableField label="Payee Name">
+                        <input
+                          value={payeeName}
+                          onChange={(e) => setPayeeName(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </EditableField>
+                      <EditableField label="Customer Email">
+                        <input
+                          type="email"
+                          value={customerEmail}
+                          onChange={(e) => setCustomerEmail(e.target.value)}
+                          placeholder="optional"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </EditableField>
+                      <EditableField label="Amount (USD)">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={amount}
+                          onChange={(e) => setAmount(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </EditableField>
+                      <EditableField label="Cheque Date">
+                        <input
+                          type="date"
+                          value={chequeDate}
+                          onChange={(e) => setChequeDate(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </EditableField>
+                      <EditableField label="Bank Name">
+                        <input
+                          value={bankName}
+                          onChange={(e) => setBankName(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </EditableField>
+                    </>
+                  ) : (
+                    <>
+                      <Field label="Cheque Number" value={cheque.chequeNumber} />
+                      <Field label="Payee Name" value={cheque.payeeName} />
+                      {cheque.customerEmail && (
+                        <Field label="Customer Email" value={cheque.customerEmail} />
+                      )}
+                      <Field label="Amount" value={`$${cheque.amount.toFixed(2)}`} />
+                      <Field label="Cheque Date" value={formatDate(cheque.chequeDate)} />
+                      <Field label="Bank Name" value={cheque.bankName} />
+                    </>
+                  )}
 
                   {/* Linked Invoices */}
                   <div>
                     <dt className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">
                       Linked Invoices
-                      {isAdmin && canAction && (
+                      {canLink && (
                         <button
                           onClick={() => setShowInvoiceSearch(true)}
                           className="ml-2 text-xs px-2 py-0.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded transition-colors font-normal normal-case tracking-normal"
                         >
-                          {hasAllocations ? "Edit" : "Link Invoices"}
+                          {hasAllocations ? "Edit Links" : "Link Invoices"}
                         </button>
                       )}
                     </dt>
@@ -235,7 +382,7 @@ export default function ChequeDetailModal({
             )}
 
             {/* Admin action forms */}
-            {isAdmin && canAction && !approveResult && (
+            {canReviewCheque && canAction && !approveResult && (
               <div className="px-6 pb-6">
                 {actionMode === "reject" && (
                   <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
@@ -290,7 +437,7 @@ export default function ChequeDetailModal({
           </div>
 
           {/* Footer — admin actions */}
-          {isAdmin && canAction && !approveResult && actionMode === "none" && (
+          {canReviewCheque && canAction && !approveResult && actionMode === "none" && (
             <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-end gap-3">
               <button onClick={() => setActionMode("reject")} className="px-4 py-2 bg-red-100 text-red-700 text-sm font-medium rounded-lg hover:bg-red-200 transition-colors">
                 Reject
@@ -309,9 +456,27 @@ export default function ChequeDetailModal({
             </div>
           )}
 
-          {(cheque.status === "APPROVED" || cheque.status === "REJECTED" || approveResult) && (
-            <div className="px-6 py-4 border-t border-gray-200 flex justify-end">
-              <button onClick={handleClose} className="px-4 py-2 bg-gray-100 text-gray-700 text-sm rounded-lg hover:bg-gray-200 transition-colors">
+          {(canDelete ||
+            canEdit ||
+            readOnly ||
+            approveResult ||
+            (cheque.status === "NEEDS_CORRECTION" && !canReviewCheque && !canEdit)) && (
+            <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between gap-3">
+              {canDelete ? (
+                <button
+                  onClick={() => setShowDeleteConfirm(true)}
+                  disabled={isDeleting}
+                  className="px-4 py-2 bg-red-50 text-red-700 text-sm font-medium rounded-lg hover:bg-red-100 disabled:opacity-50 transition-colors"
+                >
+                  Delete Request
+                </button>
+              ) : (
+                <span />
+              )}
+              <button
+                onClick={handleClose}
+                className="px-4 py-2 bg-gray-100 text-gray-700 text-sm rounded-lg hover:bg-gray-200 transition-colors ml-auto"
+              >
                 Close
               </button>
             </div>
@@ -319,11 +484,23 @@ export default function ChequeDetailModal({
         </div>
       </div>
 
+      <ConfirmModal
+        isOpen={showDeleteConfirm}
+        title="Delete cheque request?"
+        message="This pending request will be permanently removed. You cannot delete a request after it has been approved."
+        confirmText="Delete"
+        cancelText="Cancel"
+        danger
+        isLoading={isDeleting}
+        onConfirm={handleDelete}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
+
       <InvoiceSearchModal
         isOpen={showInvoiceSearch}
         onClose={() => setShowInvoiceSearch(false)}
         onConfirm={handleConfirmAllocations}
-        chequeAmount={cheque.amount}
+        chequeAmount={parseFloat(amount) || cheque.amount}
         customerId={linkedCustomerId}
         initialAllocations={currentAllocations}
       />
@@ -336,6 +513,26 @@ function Field({ label, value }: { label: string; value: string | null | undefin
     <div>
       <dt className="text-xs font-medium text-gray-500 uppercase tracking-wider">{label}</dt>
       <dd className="text-sm text-gray-900 mt-0.5">{value || <span className="text-gray-400 italic">Not available</span>}</dd>
+    </div>
+  );
+}
+
+function EditableField({
+  label,
+  children,
+  required,
+}: {
+  label: string;
+  children: ReactNode;
+  required?: boolean;
+}) {
+  return (
+    <div>
+      <dt className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">
+        {label}
+        {required && <span className="text-red-500 normal-case"> (required)</span>}
+      </dt>
+      <dd>{children}</dd>
     </div>
   );
 }

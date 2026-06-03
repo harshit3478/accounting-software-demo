@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { requireAuth } from "@/lib/auth";
+import { isSuperAdmin, requireAuth } from "@/lib/auth";
 import { uploadToR2, deleteFromR2 } from "@/lib/r2-client";
-import { extractChequeData } from "@/lib/cheque-ocr";
-
-const ALLOWED_MIME_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+import { extractChequeDataFromFile } from "@/lib/cheque-ocr";
+import {
+  CHEQUE_VAULT_MAX_FILE_SIZE_BYTES,
+  emptyChequeOcrResult,
+  getChequeVaultFileExtension,
+  isAllowedChequeVaultMimeType,
+} from "@/lib/cheque-vault-upload";
 
 function serializeCheque(cheque: any) {
   return {
@@ -42,8 +45,8 @@ export async function GET(request: NextRequest) {
 
     const where: any = {};
 
-    // Non-admin users can only see their own uploads
-    if (user.role !== "admin") {
+    // Non-admin / non-super-admin users can only see their own uploads
+    if (user.role !== "admin" && !isSuperAdmin(user)) {
       where.uploadedById = user.id;
     } else if (uploadedBy) {
       where.uploadedById = parseInt(uploadedBy);
@@ -110,28 +113,49 @@ export async function POST(request: NextRequest) {
 
   try {
     const user = await requireAuth();
-    const formData = await request.formData();
-    const file = formData.get("file") as File | null;
+    if (isSuperAdmin(user)) {
+      return NextResponse.json(
+        { error: "Super admin cannot upload cheques. Submit requests as another user." },
+        { status: 403 },
+      );
+    }
 
-    if (!file) {
+    const formData = await request.formData();
+    const fileEntries = formData
+      .getAll("file")
+      .filter((entry): entry is File => entry instanceof File && entry.size > 0);
+
+    if (fileEntries.length === 0) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
-    if (!ALLOWED_MIME_TYPES.includes(file.type)) {
+    if (fileEntries.length > 1) {
       return NextResponse.json(
-        { error: "Invalid file type. Only JPEG, PNG, and WebP images are accepted." },
-        { status: 400 }
+        { error: "Only one cheque file can be uploaded per request" },
+        { status: 400 },
       );
     }
 
-    if (file.size > MAX_FILE_SIZE) {
+    const file = fileEntries[0];
+
+    if (!isAllowedChequeVaultMimeType(file.type)) {
+      return NextResponse.json(
+        {
+          error:
+            "Invalid file type. Only JPEG, PNG, WebP images, or PDF are accepted.",
+        },
+        { status: 400 },
+      );
+    }
+
+    if (file.size > CHEQUE_VAULT_MAX_FILE_SIZE_BYTES) {
       return NextResponse.json(
         { error: "File size exceeds 10MB limit." },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    const ext = file.type.split("/")[1].replace("jpeg", "jpg");
+    const ext = getChequeVaultFileExtension(file.type);
     const rand = Math.random().toString(36).substring(2, 10);
     imageFileName = `cheques/${Date.now()}-${rand}.${ext}`;
 
@@ -141,19 +165,12 @@ export async function POST(request: NextRequest) {
     const imageUrl = await uploadToR2(buffer, imageFileName, file.type);
     uploadedToR2 = true;
 
-    // Run OCR — failure is non-blocking
-    const ocrResult = await extractChequeData(buffer, file.type).catch((err) => {
-      console.error("[cheque-vault POST] OCR error:", err);
-      return {
-        chequeNumber: null,
-        payeeName: null,
-        amount: null,
-        chequeDate: null,
-        bankName: null,
-        rawText: "",
-        confidence: "low" as const,
-      };
-    });
+    const ocrResult = await extractChequeDataFromFile(buffer, file.type).catch(
+      (err) => {
+        console.error("[cheque-vault POST] OCR error:", err);
+        return emptyChequeOcrResult();
+      },
+    );
 
     const customerEmail = (formData.get("customerEmail") as string | null)?.trim() || null;
 

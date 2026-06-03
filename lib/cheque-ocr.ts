@@ -8,7 +8,7 @@ export interface ChequeOcrResult {
   confidence: "high" | "low";
 }
 
-const EXTRACTION_PROMPT = `You are analyzing a cheque image. Extract the following fields and return ONLY a valid JSON object with no extra text or markdown.
+const EXTRACTION_PROMPT = `You are analyzing a cheque document (image or PDF scan). Extract the following fields and return ONLY a valid JSON object with no extra text or markdown.
 
 Fields to extract:
 - chequeNumber: The cheque/check number (usually printed in the bottom-right of the MICR line, or top-right corner)
@@ -27,6 +27,42 @@ Return exactly this JSON structure:
   "bankName": "string or null",
   "rawText": "all readable text"
 }`;
+
+/** Route cheque OCR by file type (image or PDF). */
+export async function extractChequeDataFromFile(
+  fileBuffer: Buffer,
+  mimeType: string,
+): Promise<ChequeOcrResult> {
+  if (mimeType === "application/pdf") {
+    return extractChequeDataFromPdf(fileBuffer);
+  }
+  return extractChequeData(fileBuffer, mimeType);
+}
+
+async function extractChequeDataFromPdf(
+  pdfBuffer: Buffer,
+): Promise<ChequeOcrResult> {
+  try {
+    const { pdf } = await import("pdf-to-img");
+    const document = await pdf(pdfBuffer, { scale: 2 });
+
+    let firstPage: Buffer | null = null;
+    for await (const page of document) {
+      firstPage = Buffer.from(page);
+      break;
+    }
+
+    if (!firstPage) {
+      console.error("[OCR] PDF has no renderable pages");
+      return nullResult("low");
+    }
+
+    return extractChequeData(firstPage, "image/png");
+  } catch (error) {
+    console.error("[OCR] PDF to image conversion error:", error);
+    return nullResult("low");
+  }
+}
 
 export async function extractChequeData(
   imageBuffer: Buffer,

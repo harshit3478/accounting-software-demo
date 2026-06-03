@@ -2,7 +2,15 @@
 
 import { useState, useRef, useCallback } from "react";
 import { ChequeVaultRecord } from "@/hooks/useChequeVault";
+import {
+  CHEQUE_VAULT_ACCEPT_ATTRIBUTE,
+  CHEQUE_VAULT_FILE_TYPE_HINT,
+  CHEQUE_VAULT_MAX_FILE_SIZE_BYTES,
+  isAllowedChequeVaultMimeType,
+  isChequeVaultPdfMimeType,
+} from "@/lib/cheque-vault-upload";
 import InvoiceSearchModal, { AllocationEntry } from "./InvoiceSearchModal";
+import ChequeDocumentPreview from "./ChequeDocumentPreview";
 
 interface OcrResult {
   chequeNumber: string | null;
@@ -78,23 +86,31 @@ export default function UploadChequeModal({ isOpen, onClose, onSuccess }: Upload
   const handleClose = () => { resetState(); onClose(); };
 
   const handleFileSelect = (selectedFile: File) => {
-    const allowed = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
-    if (!allowed.includes(selectedFile.type)) {
-      setUploadError("Only JPEG, PNG, and WebP images are accepted.");
+    if (!isAllowedChequeVaultMimeType(selectedFile.type)) {
+      setUploadError("Only JPEG, PNG, WebP images, or PDF are accepted.");
       return;
     }
-    if (selectedFile.size > 10 * 1024 * 1024) {
+    if (selectedFile.size > CHEQUE_VAULT_MAX_FILE_SIZE_BYTES) {
       setUploadError("File size must be under 10MB.");
       return;
     }
     setUploadError(null);
+    if (preview) URL.revokeObjectURL(preview);
     setFile(selectedFile);
-    setPreview(URL.createObjectURL(selectedFile));
+    if (isChequeVaultPdfMimeType(selectedFile.type)) {
+      setPreview(null);
+    } else {
+      setPreview(URL.createObjectURL(selectedFile));
+    }
   };
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
+    if (e.dataTransfer.files.length > 1) {
+      setUploadError("Only one cheque file can be uploaded.");
+      return;
+    }
     const dropped = e.dataTransfer.files[0];
     if (dropped) handleFileSelect(dropped);
   }, []);
@@ -311,11 +327,26 @@ export default function UploadChequeModal({ isOpen, onClose, onSuccess }: Upload
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept="image/jpeg,image/jpg,image/png,image/webp"
+                    accept={CHEQUE_VAULT_ACCEPT_ATTRIBUTE}
                     className="hidden"
-                    onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileSelect(f); }}
+                    onChange={(e) => {
+                      const files = e.target.files;
+                      if (!files?.length) return;
+                      if (files.length > 1) {
+                        setUploadError("Only one cheque file can be uploaded.");
+                        return;
+                      }
+                      handleFileSelect(files[0]);
+                    }}
                   />
-                  {preview ? (
+                  {file && isChequeVaultPdfMimeType(file.type) ? (
+                    <div className="mb-3 text-center">
+                      <p className="text-sm font-medium text-gray-700">{file.name}</p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        PDF — first page will be scanned for fields
+                      </p>
+                    </div>
+                  ) : preview ? (
                     <img src={preview} alt="Preview" className="max-h-48 mx-auto rounded-lg object-contain mb-3" />
                   ) : (
                     <div className="text-gray-400 mb-3">
@@ -327,7 +358,7 @@ export default function UploadChequeModal({ isOpen, onClose, onSuccess }: Upload
                   <p className="text-sm font-medium text-gray-700">
                     {file ? file.name : "Drag & drop or click to select"}
                   </p>
-                  <p className="text-xs text-gray-400 mt-1">JPEG, PNG, WebP — max 10MB</p>
+                  <p className="text-xs text-gray-400 mt-1">{CHEQUE_VAULT_FILE_TYPE_HINT}</p>
                 </div>
 
                 {/* Customer email (step 1) */}

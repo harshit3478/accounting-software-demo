@@ -255,6 +255,17 @@ export async function POST(request: NextRequest) {
           },
         });
 
+        await tx.invoiceEditHistory.create({
+          data: {
+            invoiceId: invoice.id,
+            editedById: user.id,
+            reason: "Invoice created via bulk upload",
+            changes: {
+              source: { from: null, to: "xlsx_upload" },
+            },
+          },
+        });
+
         invoices.push(invoice);
       }
 

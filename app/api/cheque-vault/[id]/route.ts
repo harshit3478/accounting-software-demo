@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { requireAuth } from "@/lib/auth";
+import { isSuperAdmin, requireAuth } from "@/lib/auth";
+import {
+  canDeleteChequeRequest,
+  canEditChequeRequest,
+  canLinkInvoicesOnCheque,
+  isChequeRequestReadOnly,
+} from "@/lib/cheque-vault-permissions";
+import { isLinkableInvoiceStatus } from "@/lib/invoice-linkable-status";
+import { deleteFromR2 } from "@/lib/r2-client";
 
 function serializeCheque(cheque: any) {
   return {
@@ -71,7 +79,11 @@ export async function GET(
       return NextResponse.json({ error: "Cheque not found" }, { status: 404 });
     }
 
-    if (user.role !== "admin" && cheque.uploadedById !== user.id) {
+    if (
+      user.role !== "admin" &&
+      !isSuperAdmin(user) &&
+      cheque.uploadedById !== user.id
+    ) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -106,14 +118,55 @@ export async function PATCH(
       return NextResponse.json({ error: "Cheque not found" }, { status: 404 });
     }
 
-    if (user.role !== "admin") {
+    if (isChequeRequestReadOnly(cheque)) {
+      return NextResponse.json(
+        { error: "Approved or rejected cheques cannot be modified" },
+        { status: 400 },
+      );
+    }
+
+    const wantsFieldUpdate =
+      chequeNumber !== undefined ||
+      payeeName !== undefined ||
+      amount !== undefined ||
+      chequeDate !== undefined ||
+      bankName !== undefined ||
+      customerEmail !== undefined;
+    const wantsInvoiceUpdate = invoices !== undefined;
+
+    if (isSuperAdmin(user)) {
+      if (wantsFieldUpdate) {
+        return NextResponse.json(
+          { error: "Super admin can only link invoices, not edit cheque details" },
+          { status: 403 },
+        );
+      }
+      if (
+        wantsInvoiceUpdate &&
+        !canLinkInvoicesOnCheque(cheque, user.id, true)
+      ) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+      if (!wantsInvoiceUpdate) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+    } else {
       if (cheque.uploadedById !== user.id) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
-      if (cheque.status !== "PENDING" && cheque.status !== "NEEDS_CORRECTION") {
+      if (wantsFieldUpdate && !canEditChequeRequest(cheque, user.id)) {
         return NextResponse.json(
-          { error: "Cannot edit a cheque that has been approved or rejected" },
-          { status: 400 }
+          { error: "You can only edit your own pending requests" },
+          { status: 403 },
+        );
+      }
+      if (
+        wantsInvoiceUpdate &&
+        !canLinkInvoicesOnCheque(cheque, user.id, false)
+      ) {
+        return NextResponse.json(
+          { error: "You can only link invoices on your own pending requests" },
+          { status: 403 },
         );
       }
     }
@@ -134,10 +187,12 @@ export async function PATCH(
           if (!inv) {
             return NextResponse.json({ error: `Invoice ${alloc.invoiceId} not found` }, { status: 404 });
           }
-          if (!["pending", "partial", "overdue"].includes(inv.status)) {
+          if (!isLinkableInvoiceStatus(inv.status)) {
             return NextResponse.json(
-              { error: `Invoice ${alloc.invoiceId} must be pending, partial, or overdue` },
-              { status: 400 }
+              {
+                error: `Invoice ${alloc.invoiceId} must be unpaid (pending, partial, or overdue)`,
+              },
+              { status: 400 },
             );
           }
         }
@@ -213,6 +268,67 @@ export async function PATCH(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     console.error("[cheque-vault/[id] PATCH]", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const user = await requireAuth();
+    const { id } = await params;
+    const chequeId = parseInt(id);
+
+    if (isNaN(chequeId)) {
+      return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
+    }
+
+    const cheque = await prisma.chequeVault.findUnique({
+      where: { id: chequeId },
+      select: {
+        id: true,
+        status: true,
+        uploadedById: true,
+        imageFileName: true,
+      },
+    });
+
+    if (!cheque) {
+      return NextResponse.json({ error: "Cheque not found" }, { status: 404 });
+    }
+
+    if (!canDeleteChequeRequest(cheque, user.id)) {
+      if (cheque.status !== "PENDING") {
+        return NextResponse.json(
+          {
+            error:
+              "Only pending requests can be deleted. Approved or reviewed cheques cannot be removed.",
+          },
+          { status: 400 },
+        );
+      }
+      return NextResponse.json(
+        { error: "You can only delete your own pending requests" },
+        { status: 403 },
+      );
+    }
+
+    await prisma.chequeVault.delete({ where: { id: chequeId } });
+
+    if (cheque.imageFileName) {
+      deleteFromR2(cheque.imageFileName).catch((err) =>
+        console.error("[cheque-vault/[id] DELETE] R2 cleanup failed:", err),
+      );
+    }
+
+    return NextResponse.json({ message: "Cheque request deleted" });
+  } catch (error: any) {
+    if (error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    console.error("[cheque-vault/[id] DELETE]", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
