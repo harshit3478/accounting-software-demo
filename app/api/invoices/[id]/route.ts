@@ -23,6 +23,7 @@ import {
   getRecalculationFeeSettingSnapshot,
 } from "../../../../lib/recalculation-fee";
 import { calculateRestockingFeeAmount } from "../../../../lib/restocking-fee";
+import { buildLayawayInstallmentSchedule } from "../../../../lib/layaway-installments";
 import { uploadToR2 } from "../../../../lib/r2-client";
 import { allocatePaymentAmounts } from "../../../../lib/allocate-payment-amounts";
 
@@ -81,12 +82,9 @@ async function getConfiguredDepositFeeRules() {
 
     return normalizeDepositFeeRules(
       rows.map((row: any) => ({
-        minAmount: row.minAmount?.toNumber
-          ? row.minAmount.toNumber()
-          : row.minAmount,
-        maxAmount: row.maxAmount?.toNumber
-          ? row.maxAmount.toNumber()
-          : row.maxAmount,
+        unitName: row.unitName,
+        minUnit: row.minUnit?.toNumber ? row.minUnit.toNumber() : row.minUnit,
+        maxUnit: row.maxUnit?.toNumber ? row.maxUnit.toNumber() : row.maxUnit,
         fee: row.fee?.toNumber ? row.fee.toNumber() : Number(row.fee || 0),
         isActive: row.isActive,
         sortOrder: row.sortOrder,
@@ -687,56 +685,17 @@ export async function PUT(
               };
             }
 
-            const planBaseDate = hasPaidExistingPlan
-              ? new Date()
-              : new Date(invoiceDateValue);
             const downPayment = hasPaidExistingPlan
               ? 0
               : normalizedLayawayPlan.downPayment;
-            const remaining = totalForPlan + recalcFeeAmount - downPayment;
-            let numInstallments = normalizedLayawayPlan.months;
-            if (normalizedLayawayPlan.paymentFrequency === "bi-weekly") {
-              numInstallments = normalizedLayawayPlan.months * 2;
-            } else if (normalizedLayawayPlan.paymentFrequency === "weekly") {
-              numInstallments = normalizedLayawayPlan.months * 4;
-            }
-
-            const installmentAmount =
-              numInstallments > 0 ? remaining / numInstallments : 0;
-            const installments: {
-              dueDate: Date;
-              amount: number;
-              label: string;
-            }[] = [];
-
-            if (downPayment > 0) {
-              installments.push({
-                dueDate: planBaseDate,
-                amount: downPayment,
-                label: "Down Payment",
-              });
-            }
-
-            for (let i = 1; i <= numInstallments; i++) {
-              const instDate = new Date(planBaseDate);
-              if (normalizedLayawayPlan.paymentFrequency === "monthly") {
-                instDate.setMonth(instDate.getMonth() + i);
-              } else if (
-                normalizedLayawayPlan.paymentFrequency === "bi-weekly"
-              ) {
-                instDate.setDate(instDate.getDate() + i * 14);
-              } else {
-                instDate.setDate(instDate.getDate() + i * 7);
-              }
-
-              const suffix =
-                i === 1 ? "st" : i === 2 ? "nd" : i === 3 ? "rd" : "th";
-              installments.push({
-                dueDate: instDate,
-                amount: installmentAmount,
-                label: `${i}${suffix} Payment`,
-              });
-            }
+            const installments = buildLayawayInstallmentSchedule({
+              invoiceDate: invoiceDateValue,
+              frequency: normalizedLayawayPlan.paymentFrequency,
+              months: normalizedLayawayPlan.months,
+              downPayment,
+              totalAmount: totalForPlan + recalcFeeAmount,
+              includeDownPayment: !hasPaidExistingPlan,
+            });
 
             if (existingPlan) {
               await tx.layawayInstallment.deleteMany({
@@ -872,6 +831,7 @@ export async function DELETE(
     const feeAction = body?.feeAction as
       | "restocking"
       | "deposit"
+      | "both"
       | "none"
       | undefined;
     const refundProofDataUrl =
@@ -940,9 +900,13 @@ export async function DELETE(
     let resolvedTargetInvoiceId: number | null = null;
     let normalizedPaymentAction: "credit" | "transfer" | "refund" | "none" =
       paymentAction ?? "none";
-    let normalizedFeeAction: "restocking" | "deposit" | "none" =
+    let normalizedFeeAction: "restocking" | "deposit" | "both" | "none" =
       feeAction ?? "none";
     let feePaymentId: number | null = null;
+    let restockingFeePaymentId: number | null = null;
+    let depositFeePaymentId: number | null = null;
+    let restockingFeeAmount = 0;
+    let depositFeeAmount = 0;
     let refundPaymentIds: number[] = [];
 
     const updated = await prisma.$transaction(
@@ -952,7 +916,8 @@ export async function DELETE(
 
         if (targetStatus === "abandoned") {
           if (
-            normalizedFeeAction === "restocking" &&
+            (normalizedFeeAction === "restocking" ||
+              normalizedFeeAction === "both") &&
             !existingInvoice.isLayaway
           ) {
             throw new Error(
@@ -1007,25 +972,56 @@ export async function DELETE(
             select: { amount: true, isPercentage: true, isActive: true },
           });
 
-          const calculatedFee =
-            normalizedFeeAction === "restocking"
-              ? calculateRestockingFeeAmount(invoiceTotal, {
-                  amount: Number(restockingSetting?.amount || 0),
-                  isPercentage: !!restockingSetting?.isPercentage,
-                  isActive: !!restockingSetting?.isActive,
-                })
-              : normalizedFeeAction === "deposit"
-                ? Number(depositFeeTotal.toFixed(2))
-                : 0;
-
+          const calculatedRestockingFee = calculateRestockingFeeAmount(
+            invoiceTotal,
+            {
+              amount: Number(restockingSetting?.amount || 0),
+              isPercentage: !!restockingSetting?.isPercentage,
+              isActive: !!restockingSetting?.isActive,
+            },
+          );
+          const calculatedDepositFee = Number(depositFeeTotal.toFixed(2));
           const paymentTotal = Math.round((directTotal + matchedTotal) * 100) / 100;
-          const roundedCalculatedFee = Math.round(calculatedFee * 100) / 100;
-          feeAmount =
-            normalizedFeeAction === "none"
-              ? 0
-              : paymentTotal > 0
+
+          if (normalizedFeeAction === "both") {
+            const roundedRestockingFee =
+              Math.round(calculatedRestockingFee * 100) / 100;
+            const roundedDepositFee =
+              Math.round(calculatedDepositFee * 100) / 100;
+
+            if (paymentTotal > 0) {
+              restockingFeeAmount = Math.min(roundedRestockingFee, paymentTotal);
+              const remainingAfterRestocking = Math.max(
+                paymentTotal - restockingFeeAmount,
+                0,
+              );
+              depositFeeAmount = Math.min(
+                roundedDepositFee,
+                remainingAfterRestocking,
+              );
+            } else {
+              restockingFeeAmount = roundedRestockingFee;
+              depositFeeAmount = roundedDepositFee;
+            }
+
+            feeAmount = restockingFeeAmount + depositFeeAmount;
+          } else if (normalizedFeeAction === "restocking") {
+            const roundedCalculatedFee =
+              Math.round(calculatedRestockingFee * 100) / 100;
+            feeAmount =
+              paymentTotal > 0
                 ? Math.min(roundedCalculatedFee, paymentTotal)
                 : roundedCalculatedFee;
+          } else if (normalizedFeeAction === "deposit") {
+            const roundedCalculatedFee =
+              Math.round(calculatedDepositFee * 100) / 100;
+            feeAmount =
+              paymentTotal > 0
+                ? Math.min(roundedCalculatedFee, paymentTotal)
+                : roundedCalculatedFee;
+          } else {
+            feeAmount = 0;
+          }
           movedAmount = Math.max(
             Math.round((paymentTotal - feeAmount) * 100) / 100,
             0,
@@ -1402,6 +1398,28 @@ export async function DELETE(
             }
           }
 
+          const createRetainedFeePayment = async (
+            amount: number,
+            source: "restocking_fee" | "deposit_fee",
+            label: string,
+          ) => {
+            const feePayment = await tx.payment.create({
+              data: {
+                invoiceId,
+                amount: new Prisma.Decimal(amount),
+                paymentDate: new Date(),
+                methodId: sourceMethodId,
+                notes: `${label} retained from abandoned invoice ${existingInvoice.invoiceNumber}${reason ? ` | ${reason}` : ""}`,
+                userId: user.id,
+                isMatched: true,
+                source,
+              },
+            });
+
+            await stampPaymentCode(tx, feePayment.id);
+            return feePayment.id;
+          };
+
           if (normalizedFeeAction !== "none" && feeAmount > 0.009) {
             if (
               paymentTotal <= 0.009 &&
@@ -1415,28 +1433,38 @@ export async function DELETE(
               );
             }
 
-            const feeLabel =
-              normalizedFeeAction === "restocking"
-                ? "Restocking fee"
-                : "Deposit fee";
-            const feePayment = await tx.payment.create({
-              data: {
-                invoiceId,
-                amount: new Prisma.Decimal(feeAmount),
-                paymentDate: new Date(),
-                methodId: sourceMethodId,
-                notes: `${feeLabel} retained from abandoned invoice ${existingInvoice.invoiceNumber}${reason ? ` | ${reason}` : ""}`,
-                userId: user.id,
-                isMatched: true,
-                source:
-                  normalizedFeeAction === "restocking"
-                    ? "restocking_fee"
-                    : "deposit_fee",
-              },
-            });
-
-            await stampPaymentCode(tx, feePayment.id);
-            feePaymentId = feePayment.id;
+            if (normalizedFeeAction === "both") {
+              if (restockingFeeAmount > 0.009) {
+                restockingFeePaymentId = await createRetainedFeePayment(
+                  restockingFeeAmount,
+                  "restocking_fee",
+                  "Restocking fee",
+                );
+                feePaymentId = restockingFeePaymentId;
+              }
+              if (depositFeeAmount > 0.009) {
+                depositFeePaymentId = await createRetainedFeePayment(
+                  depositFeeAmount,
+                  "deposit_fee",
+                  "Deposit fee",
+                );
+                if (!feePaymentId) {
+                  feePaymentId = depositFeePaymentId;
+                }
+              }
+            } else {
+              const feeLabel =
+                normalizedFeeAction === "restocking"
+                  ? "Restocking fee"
+                  : "Deposit fee";
+              feePaymentId = await createRetainedFeePayment(
+                feeAmount,
+                normalizedFeeAction === "restocking"
+                  ? "restocking_fee"
+                  : "deposit_fee",
+                feeLabel,
+              );
+            }
           }
         }
 
@@ -1492,6 +1520,50 @@ export async function DELETE(
                             from: null,
                             to: formatPaymentCode(feePaymentId),
                           },
+                        }
+                      : {}),
+                    ...(normalizedFeeAction === "both"
+                      ? {
+                          ...(restockingFeeAmount > 0
+                            ? {
+                                restockingFeeAmount: {
+                                  from: 0,
+                                  to: restockingFeeAmount,
+                                },
+                              }
+                            : {}),
+                          ...(depositFeeAmount > 0
+                            ? {
+                                depositFeeAmount: {
+                                  from: 0,
+                                  to: depositFeeAmount,
+                                },
+                              }
+                            : {}),
+                          ...(restockingFeePaymentId
+                            ? {
+                                restockingFeePaymentId: {
+                                  from: null,
+                                  to: restockingFeePaymentId,
+                                },
+                                restockingFeePaymentCode: {
+                                  from: null,
+                                  to: formatPaymentCode(restockingFeePaymentId),
+                                },
+                              }
+                            : {}),
+                          ...(depositFeePaymentId
+                            ? {
+                                depositFeePaymentId: {
+                                  from: null,
+                                  to: depositFeePaymentId,
+                                },
+                                depositFeePaymentCode: {
+                                  from: null,
+                                  to: formatPaymentCode(depositFeePaymentId),
+                                },
+                              }
+                            : {}),
                         }
                       : {}),
                     ...(refundPaymentIds.length > 0

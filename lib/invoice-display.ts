@@ -198,15 +198,45 @@ export function getAbandonedRetainedFeeDisplay(invoice: {
   const feeAmountFromHistory = Number(changes?.feeAmount?.to || 0);
 
   if (invoice.isLayaway) {
+    const combinedFromPayments = restockingFromPayments + depositFromPayments;
+    if (combinedFromPayments > 0) {
+      if (restockingFromPayments > 0 && depositFromPayments > 0) {
+        return {
+          label: "Retained Fees:",
+          amount: Number(combinedFromPayments.toFixed(2)),
+        };
+      }
+
+      return restockingFromPayments > 0
+        ? {
+            label: "Restocking Fee:",
+            amount: Number(restockingFromPayments.toFixed(2)),
+          }
+        : {
+            label: "Deposit Fee:",
+            amount: Number(depositFromPayments.toFixed(2)),
+          };
+    }
+
     const amount =
-      restockingFromPayments > 0
-        ? restockingFromPayments
+      feeType === "both"
+        ? feeAmountFromHistory
         : feeType === "restocking"
           ? feeAmountFromHistory
-          : 0;
-    return amount > 0
-      ? { label: "Restocking Fee:", amount: Number(amount.toFixed(2)) }
-      : null;
+          : feeType === "deposit"
+            ? feeAmountFromHistory
+            : 0;
+    if (amount <= 0) return null;
+
+    return {
+      label:
+        feeType === "both"
+          ? "Retained Fees:"
+          : feeType === "restocking"
+            ? "Restocking Fee:"
+            : "Deposit Fee:",
+      amount: Number(amount.toFixed(2)),
+    };
   }
 
   const amount =
@@ -230,6 +260,29 @@ export function buildInvoicePdfSummaryRows(
   options?: { includeSubtotal?: boolean },
 ): Array<{ label: string; value: number }> {
   if (isAbandonedInvoice(invoice)) {
+    const restockingFee = getPaymentSourceTotal(
+      invoice.payments,
+      "restocking_fee",
+    );
+    const depositFee = getPaymentSourceTotal(invoice.payments, "deposit_fee");
+    const rows: Array<{ label: string; value: number }> = [];
+
+    if (restockingFee > 0) {
+      rows.push({
+        label: "Restocking Fee:",
+        value: Number(restockingFee.toFixed(2)),
+      });
+    }
+    if (depositFee > 0) {
+      rows.push({
+        label: "Deposit Fee:",
+        value: Number(depositFee.toFixed(2)),
+      });
+    }
+    if (rows.length > 0) {
+      return rows;
+    }
+
     const retainedFee = getAbandonedRetainedFeeDisplay(invoice);
     return retainedFee
       ? [{ label: retainedFee.label, value: retainedFee.amount }]

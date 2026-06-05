@@ -6,6 +6,7 @@ import LucideIcon from "../LucideIcon";
 import {
   buildLateFeeReason,
   findOverdueLayawayInstallmentClient,
+  isLateFeeConfigured,
 } from "../../lib/late-fee-client";
 
 interface PaymentMethodType {
@@ -24,6 +25,16 @@ interface Invoice {
   clientName: string;
   amount: number;
   paidAmount: number;
+  isLayaway?: boolean;
+  layawayPlan?: {
+    installments?: Array<{
+      id: number;
+      label: string;
+      dueDate: string;
+      amount: number;
+      isPaid?: boolean;
+    }>;
+  } | null;
   customer?: {
     id: number;
     name: string;
@@ -104,10 +115,7 @@ export default function PaymentModal({
       ? findOverdueLayawayInstallmentClient(invoice, paymentDate)
       : null;
   const shouldPromptLateFee =
-    !!invoice &&
-    !!overdueInstallment &&
-    lateFeeSetting.isActive &&
-    lateFeeSetting.amount > 0;
+    !!invoice && !!overdueInstallment && isLateFeeConfigured(lateFeeSetting);
 
   const handleRecordPayment = async () => {
     if (!invoice || paymentAmount <= 0) {

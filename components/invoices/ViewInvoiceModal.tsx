@@ -16,6 +16,8 @@ import {
 import {
   buildLateFeeReason,
   findOverdueLayawayInstallmentClient,
+  isLateFeeConfigured,
+  isLayawayInstallmentOverdue,
 } from "../../lib/late-fee-client";
 import { formatPaymentCode } from "../../lib/payment-code";
 import { formatUserDisplayName } from "../../lib/user-display";
@@ -409,6 +411,23 @@ export default function ViewInvoiceModal({
     }
   };
 
+  const getLayawayInstallmentsForLateFee = () =>
+    localInstallments.length > 0
+      ? localInstallments
+      : invoice?.layawayPlan?.installments || [];
+
+  const resolveOverdueInstallment = (
+    referenceDate: string | Date,
+    preferredInstallment?: LayawayInstallment | null,
+  ) => {
+    if (!invoice?.isLayaway) return null;
+
+    return findOverdueLayawayInstallmentClient(invoice, referenceDate, {
+      installments: getLayawayInstallmentsForLateFee(),
+      preferredInstallment,
+    });
+  };
+
   const openMarkPaidModal = async (installment: LayawayInstallment) => {
     if (!invoice) return;
 
@@ -423,6 +442,18 @@ export default function ViewInvoiceModal({
     setSelectedUnmatchedPaymentId(null);
     setMarkPaidError(null);
     setMarkPaidModalOpen(true);
+
+    fetch("/api/late-fee")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data) {
+          setLateFeeSetting({
+            amount: Number(data.amount ?? 0),
+            isActive: !!data.isActive,
+          });
+        }
+      })
+      .catch(() => {});
 
     try {
       const [methodRes, unmatchedRes] = await Promise.all([
@@ -456,14 +487,11 @@ export default function ViewInvoiceModal({
   const confirmInstallmentPaid = async () => {
     if (!invoice || !selectedInstallment) return;
 
-    const overdueInstallment =
-      paymentDate && selectedInstallment
-        ? findOverdueLayawayInstallmentClient(invoice, paymentDate)
-        : null;
+    const overdueInstallment = paymentDate
+      ? resolveOverdueInstallment(paymentDate, selectedInstallment)
+      : null;
     const shouldPromptLateFee =
-      !!overdueInstallment &&
-      lateFeeSetting.isActive &&
-      lateFeeSetting.amount > 0;
+      !!overdueInstallment && isLateFeeConfigured(lateFeeSetting);
     const lateFeeAmount =
       shouldPromptLateFee && applyLateFee === true ? lateFeeSetting.amount : 0;
 
@@ -891,7 +919,62 @@ export default function ViewInvoiceModal({
     const hasFeeRow = rows.some(
       (row) => row.role === "deposit_fee" || row.role === "restocking_fee",
     );
-    if (!hasFeeRow && historyFeePaymentCode) {
+    if (!hasFeeRow && historyFeeType === "both") {
+      const historyRestockingFeeCode = abandonHistoryEntry?.changes
+        ?.restockingFeePaymentCode?.to as string | undefined;
+      const historyDepositFeeCode = abandonHistoryEntry?.changes
+        ?.depositFeePaymentCode?.to as string | undefined;
+
+      if (historyRestockingFeeCode) {
+        rows.push({
+          payment: {
+            id: Number(
+              abandonHistoryEntry?.changes?.restockingFeePaymentId?.to || 0,
+            ),
+            amount: Number(
+              abandonHistoryEntry?.changes?.restockingFeeAmount?.to || 0,
+            ),
+            paymentCode: historyRestockingFeeCode,
+            date: abandonHistoryEntry?.createdAt || invoice.createdAt,
+            notes: null,
+            createdAt: abandonHistoryEntry?.createdAt || invoice.createdAt,
+            method: {
+              id: 0,
+              name: "Restocking Fee",
+              icon: null,
+              color: "#7C3AED",
+            },
+            source: "restocking_fee",
+          },
+          role: "restocking_fee",
+        });
+      }
+
+      if (historyDepositFeeCode) {
+        rows.push({
+          payment: {
+            id: Number(
+              abandonHistoryEntry?.changes?.depositFeePaymentId?.to || 0,
+            ),
+            amount: Number(
+              abandonHistoryEntry?.changes?.depositFeeAmount?.to || 0,
+            ),
+            paymentCode: historyDepositFeeCode,
+            date: abandonHistoryEntry?.createdAt || invoice.createdAt,
+            notes: null,
+            createdAt: abandonHistoryEntry?.createdAt || invoice.createdAt,
+            method: {
+              id: 0,
+              name: "Deposit Fee",
+              icon: null,
+              color: "#7C3AED",
+            },
+            source: "deposit_fee",
+          },
+          role: "deposit_fee",
+        });
+      }
+    } else if (!hasFeeRow && historyFeePaymentCode) {
       rows.push({
         payment: {
           id: Number(abandonHistoryEntry?.changes?.feePaymentId?.to || 0),
@@ -964,7 +1047,24 @@ export default function ViewInvoiceModal({
         `Refund payment${refundCodes.length > 1 ? "s" : ""}: ${refundCodes.join(", ")}`,
       );
     }
-    if (feeCode) {
+    if (feeType === "both") {
+      const restockingFeeCode = entry.changes?.restockingFeePaymentCode
+        ?.to as string | undefined;
+      const depositFeeCode = entry.changes?.depositFeePaymentCode?.to as
+        | string
+        | undefined;
+      const bothFeeParts = [
+        restockingFeeCode
+          ? `Restocking fee payment: ${restockingFeeCode}`
+          : null,
+        depositFeeCode ? `Deposit fee payment: ${depositFeeCode}` : null,
+      ].filter(Boolean);
+      if (bothFeeParts.length > 0) {
+        parts.push(bothFeeParts.join(" · "));
+      } else if (feeCode) {
+        parts.push(`Retained fee payments: ${feeCode}`);
+      }
+    } else if (feeCode) {
       parts.push(
         `${feeType === "restocking" ? "Restocking fee" : "Deposit fee"} payment: ${feeCode}`,
       );
@@ -977,14 +1077,30 @@ export default function ViewInvoiceModal({
     invoice.editHistory || [],
   );
   const amountDue = Math.max(localInvoiceAmount - localPaidAmount, 0);
+  const overdueInstallmentToday = invoice
+    ? resolveOverdueInstallment(new Date())
+    : null;
+  const showOverdueLateFeeNotice =
+    !!overdueInstallmentToday &&
+    isLateFeeConfigured(lateFeeSetting) &&
+    invoice?.status !== "abandoned" &&
+    invoice?.status !== "inactive";
+  const lateFeeReferenceDate =
+    markPaidMode === "link" && selectedUnmatchedPaymentId
+      ? unmatchedPayments.find(
+          (payment) => payment.id === selectedUnmatchedPaymentId,
+        )?.paymentDate || paymentDate
+      : paymentDate;
   const overdueInstallment =
-    selectedInstallment && paymentDate
-      ? findOverdueLayawayInstallmentClient(invoice, paymentDate)
+    markPaidModalOpen && lateFeeReferenceDate
+      ? resolveOverdueInstallment(lateFeeReferenceDate, selectedInstallment)
       : null;
   const shouldPromptLateFee =
+    !!overdueInstallment && isLateFeeConfigured(lateFeeSetting);
+  const showLateFeeNotConfiguredNotice =
+    markPaidModalOpen &&
     !!overdueInstallment &&
-    lateFeeSetting.isActive &&
-    lateFeeSetting.amount > 0;
+    !isLateFeeConfigured(lateFeeSetting);
   const localStatus =
     invoice.status === "inactive" || invoice.status === "abandoned"
       ? invoice.status
@@ -1110,6 +1226,19 @@ export default function ViewInvoiceModal({
           {invoiceActionError && (
             <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               {invoiceActionError}
+            </div>
+          )}
+
+          {showOverdueLateFeeNotice && overdueInstallmentToday && (
+            <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              <p className="font-semibold">Late fee applies to this overdue invoice</p>
+              <p className="mt-1 text-amber-800">
+                {overdueInstallmentToday.label} was due on{" "}
+                {new Date(overdueInstallmentToday.dueDate).toLocaleDateString()}
+                . The configured late fee is{" "}
+                {formatCurrency(lateFeeSetting.amount)} and will be offered when
+                you record or link a payment.
+              </p>
             </div>
           )}
 
@@ -1417,6 +1546,14 @@ export default function ViewInvoiceModal({
                   </span>
                 </div>
               )}
+              {showOverdueLateFeeNotice && lateFeeTotal <= 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Late Fee Due:</span>
+                  <span className="font-medium text-amber-700">
+                    {formatCurrency(lateFeeSetting.amount)}
+                  </span>
+                </div>
+              )}
               {lateFeeTotal > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Late Fee:</span>
@@ -1633,17 +1770,26 @@ export default function ViewInvoiceModal({
                                     : ""}
                                 </span>
                               ) : (
-                                <span
-                                  className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                                    new Date(inst.dueDate) < new Date()
-                                      ? "bg-red-100 text-red-800"
-                                      : "bg-amber-100 text-amber-800"
-                                  }`}
-                                >
-                                  {new Date(inst.dueDate) < new Date()
-                                    ? "Overdue"
-                                    : "Pending"}
-                                </span>
+                                <div className="space-y-1">
+                                  <span
+                                    className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                                      isLayawayInstallmentOverdue(inst.dueDate)
+                                        ? "bg-red-100 text-red-800"
+                                        : "bg-amber-100 text-amber-800"
+                                    }`}
+                                  >
+                                    {isLayawayInstallmentOverdue(inst.dueDate)
+                                      ? "Overdue"
+                                      : "Pending"}
+                                  </span>
+                                  {isLayawayInstallmentOverdue(inst.dueDate) &&
+                                    isLateFeeConfigured(lateFeeSetting) && (
+                                      <p className="text-[11px] text-amber-700">
+                                        Late fee:{" "}
+                                        {formatCurrency(lateFeeSetting.amount)}
+                                      </p>
+                                    )}
+                                </div>
                               )}
                             </td>
                             <td className="px-4 py-2 text-center">
@@ -1966,8 +2112,10 @@ export default function ViewInvoiceModal({
               <p className="text-gray-600 mt-1">
                 Amount: {formatCurrency(selectedInstallment.amount)}
               </p>
-              {new Date(selectedInstallment.dueDate) <
-                new Date(paymentDate) && (
+              {isLayawayInstallmentOverdue(
+                selectedInstallment.dueDate,
+                paymentDate,
+              ) && (
                 <p className="mt-1 text-red-600 font-medium">
                   This installment is overdue.
                 </p>
@@ -2136,6 +2284,17 @@ export default function ViewInvoiceModal({
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900"
                 />
               </div>
+            </div>
+          )}
+
+          {showLateFeeNotConfiguredNotice && overdueInstallment && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              <p className="font-semibold">Late fee is not configured</p>
+              <p className="mt-1 text-amber-800">
+                {overdueInstallment.label} is overdue, but no late fee amount is
+                set. Configure it under Settings → Late Fee before applying a
+                fee to this payment.
+              </p>
             </div>
           )}
 

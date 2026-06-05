@@ -1,13 +1,21 @@
 export interface DepositFeeRuleLike {
-  minAmount?: number | null;
-  maxAmount?: number | null;
+  unitName?: string | null;
+  minUnit?: number | null;
+  maxUnit?: number | null;
   fee: number;
   isActive?: boolean;
   sortOrder?: number;
 }
 
 export interface DepositFeeItemLike {
-  price: number;
+  quantity?: number | string | null;
+  unit?: string | null;
+}
+
+function normalizeUnitName(unit: string | null | undefined) {
+  return String(unit || "")
+    .trim()
+    .toLowerCase();
 }
 
 export function normalizeDepositFeeRules<T extends DepositFeeRuleLike>(
@@ -18,30 +26,40 @@ export function normalizeDepositFeeRules<T extends DepositFeeRuleLike>(
     const rightOrder = Number(right.sortOrder || 0);
     if (leftOrder !== rightOrder) return leftOrder - rightOrder;
 
-    const leftMin = left.minAmount ?? Number.NEGATIVE_INFINITY;
-    const rightMin = right.minAmount ?? Number.NEGATIVE_INFINITY;
+    const unitCompare = normalizeUnitName(left.unitName).localeCompare(
+      normalizeUnitName(right.unitName),
+    );
+    if (unitCompare !== 0) return unitCompare;
+
+    const leftMin = left.minUnit ?? Number.NEGATIVE_INFINITY;
+    const rightMin = right.minUnit ?? Number.NEGATIVE_INFINITY;
     if (leftMin !== rightMin) return leftMin - rightMin;
 
     return (
-      Number(left.maxAmount ?? Number.POSITIVE_INFINITY) -
-      Number(right.maxAmount ?? Number.POSITIVE_INFINITY)
+      Number(left.maxUnit ?? Number.POSITIVE_INFINITY) -
+      Number(right.maxUnit ?? Number.POSITIVE_INFINITY)
     );
   });
 }
 
 export function calculateDepositFeeFromRules(
-  amount: number,
+  quantity: number,
+  unitName: string | null | undefined,
   rules: DepositFeeRuleLike[],
 ): number {
-  if (!Number.isFinite(amount) || amount <= 0) return 0;
+  if (!Number.isFinite(quantity) || quantity <= 0) return 0;
 
+  const normalizedUnit = normalizeUnitName(unitName);
   const sortedRules = normalizeDepositFeeRules(
     rules.filter((rule) => rule.isActive !== false),
   );
 
   for (const rule of sortedRules) {
-    const minOk = rule.minAmount == null || amount >= Number(rule.minAmount);
-    const maxOk = rule.maxAmount == null || amount <= Number(rule.maxAmount);
+    const ruleUnit = normalizeUnitName(rule.unitName);
+    if (ruleUnit && normalizedUnit && ruleUnit !== normalizedUnit) continue;
+
+    const minOk = rule.minUnit == null || quantity >= Number(rule.minUnit);
+    const maxOk = rule.maxUnit == null || quantity <= Number(rule.maxUnit);
     if (minOk && maxOk) {
       return Number(Number(rule.fee || 0).toFixed(2));
     }
@@ -54,5 +72,9 @@ export function calculateDepositFeeForItem(
   item: DepositFeeItemLike,
   rules: DepositFeeRuleLike[],
 ): number {
-  return calculateDepositFeeFromRules(Number(item.price || 0), rules);
+  return calculateDepositFeeFromRules(
+    Number(item.quantity || 0),
+    item.unit,
+    rules,
+  );
 }

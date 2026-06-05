@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { FiPlus, FiEdit2, FiTrash2 } from "react-icons/fi";
 
 interface DepositFeeRule {
   id: number;
   name: string;
-  minAmount: number | null;
-  maxAmount: number | null;
+  unitName: string;
+  minUnit: number | null;
+  maxUnit: number | null;
   fee: number;
   isActive: boolean;
   sortOrder: number;
@@ -20,28 +21,52 @@ interface DepositFeeRule {
   updatedAt: string;
 }
 
+interface InvoiceUnit {
+  id: number;
+  name: string;
+  isActive: boolean;
+  isDefault: boolean;
+}
+
 interface DepositFeeRulesTabProps {
   showSuccess: (msg: string) => void;
   showError: (msg: string) => void;
 }
+
+const FALLBACK_UNIT = "grams";
 
 export default function DepositFeeRulesTab({
   showSuccess,
   showError,
 }: DepositFeeRulesTabProps) {
   const [rules, setRules] = useState<DepositFeeRule[]>([]);
+  const [units, setUnits] = useState<InvoiceUnit[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [editingRule, setEditingRule] = useState<DepositFeeRule | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
     name: "",
-    minAmount: "",
-    maxAmount: "",
+    unitName: FALLBACK_UNIT,
+    minUnit: "",
+    maxUnit: "",
     fee: "0",
     sortOrder: "0",
     isActive: true,
   });
+
+  const activeUnits = useMemo(
+    () => units.filter((unit) => unit.isActive),
+    [units],
+  );
+  const unitOptions = activeUnits.length > 0 ? activeUnits : units;
+  const defaultUnitName = useMemo(() => {
+    return (
+      unitOptions.find((unit) => unit.isDefault)?.name ||
+      unitOptions[0]?.name ||
+      FALLBACK_UNIT
+    );
+  }, [unitOptions]);
 
   const fetchRules = async () => {
     setIsLoading(true);
@@ -60,15 +85,40 @@ export default function DepositFeeRulesTab({
     }
   };
 
+  const fetchUnits = async () => {
+    try {
+      const res = await fetch("/api/units?all=true");
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Failed to fetch units");
+      }
+      const data = await res.json();
+      setUnits(
+        Array.isArray(data)
+          ? data.map((unit: any) => ({
+              id: Number(unit.id),
+              name: String(unit.name || FALLBACK_UNIT),
+              isActive: !!unit.isActive,
+              isDefault: !!unit.isDefault,
+            }))
+          : [],
+      );
+    } catch (error: any) {
+      showError(error.message || "Failed to fetch units");
+    }
+  };
+
   useEffect(() => {
+    fetchUnits();
     fetchRules();
   }, []);
 
   const resetForm = () => {
     setForm({
       name: "",
-      minAmount: "",
-      maxAmount: "",
+      unitName: defaultUnitName,
+      minUnit: "",
+      maxUnit: "",
       fee: "0",
       sortOrder: "0",
       isActive: true,
@@ -85,8 +135,9 @@ export default function DepositFeeRulesTab({
     setEditingRule(rule);
     setForm({
       name: rule.name,
-      minAmount: rule.minAmount != null ? String(rule.minAmount) : "",
-      maxAmount: rule.maxAmount != null ? String(rule.maxAmount) : "",
+      unitName: rule.unitName || defaultUnitName,
+      minUnit: rule.minUnit != null ? String(rule.minUnit) : "",
+      maxUnit: rule.maxUnit != null ? String(rule.maxUnit) : "",
       fee: String(rule.fee),
       sortOrder: String(rule.sortOrder ?? 0),
       isActive: !!rule.isActive,
@@ -100,11 +151,17 @@ export default function DepositFeeRulesTab({
       return;
     }
 
+    if (!form.unitName.trim()) {
+      showError("Unit is required");
+      return;
+    }
+
     const payload = {
       ...(editingRule ? { id: editingRule.id } : {}),
       name: form.name.trim(),
-      minAmount: form.minAmount === "" ? null : Number(form.minAmount),
-      maxAmount: form.maxAmount === "" ? null : Number(form.maxAmount),
+      unitName: form.unitName.trim(),
+      minUnit: form.minUnit === "" ? null : Number(form.minUnit),
+      maxUnit: form.maxUnit === "" ? null : Number(form.maxUnit),
       fee: Number(form.fee),
       sortOrder: Number(form.sortOrder || 0),
       isActive: form.isActive,
@@ -116,11 +173,11 @@ export default function DepositFeeRulesTab({
     }
 
     if (
-      payload.minAmount !== null &&
-      payload.maxAmount !== null &&
-      payload.minAmount > payload.maxAmount
+      payload.minUnit !== null &&
+      payload.maxUnit !== null &&
+      payload.minUnit > payload.maxUnit
     ) {
-      showError("Minimum amount cannot be greater than maximum amount");
+      showError("Minimum unit cannot be greater than maximum unit");
       return;
     }
 
@@ -171,14 +228,15 @@ export default function DepositFeeRulesTab({
   };
 
   const formatRange = (rule: DepositFeeRule) => {
-    const min = rule.minAmount;
-    const max = rule.maxAmount;
+    const min = rule.minUnit;
+    const max = rule.maxUnit;
+    const unit = rule.unitName || FALLBACK_UNIT;
 
-    if (min == null && max == null) return "All item prices";
-    if (min != null && max == null) return `Price >= $${min.toFixed(2)}`;
-    if (min == null && max != null) return `Price <= $${max.toFixed(2)}`;
+    if (min == null && max == null) return `All ${unit} quantities`;
+    if (min != null && max == null) return `${unit} >= ${min}`;
+    if (min == null && max != null) return `${unit} <= ${max}`;
 
-    return `Price $${(min as number).toFixed(2)} - $${(max as number).toFixed(2)}`;
+    return `${unit} ${(min as number)} - ${max}`;
   };
 
   return (
@@ -189,8 +247,8 @@ export default function DepositFeeRulesTab({
             Deposit Fee Rules
           </h2>
           <p className="text-gray-600 text-sm">
-            Create price bands that automatically assign a per-item deposit fee
-            during invoice entry.
+            Create unit quantity bands that automatically assign a per-item
+            deposit fee during invoice entry.
           </p>
         </div>
         <button
@@ -225,16 +283,33 @@ export default function DepositFeeRulesTab({
               />
             </div>
             <div>
+              <label className="block text-sm text-gray-600 mb-1">Unit *</label>
+              <select
+                value={form.unitName}
+                onChange={(e) =>
+                  setForm((prev) => ({ ...prev, unitName: e.target.value }))
+                }
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
+              >
+                {unitOptions.map((unit) => (
+                  <option key={unit.id} value={unit.name}>
+                    {unit.name}
+                    {unit.isDefault ? " (Default)" : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
               <label className="block text-sm text-gray-600 mb-1">
-                Min item price ($)
+                Min units
               </label>
               <input
                 type="number"
                 min="0"
                 step="0.01"
-                value={form.minAmount}
+                value={form.minUnit}
                 onChange={(e) =>
-                  setForm((prev) => ({ ...prev, minAmount: e.target.value }))
+                  setForm((prev) => ({ ...prev, minUnit: e.target.value }))
                 }
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
                 placeholder="No minimum"
@@ -242,15 +317,15 @@ export default function DepositFeeRulesTab({
             </div>
             <div>
               <label className="block text-sm text-gray-600 mb-1">
-                Max item price ($)
+                Max units
               </label>
               <input
                 type="number"
                 min="0"
                 step="0.01"
-                value={form.maxAmount}
+                value={form.maxUnit}
                 onChange={(e) =>
-                  setForm((prev) => ({ ...prev, maxAmount: e.target.value }))
+                  setForm((prev) => ({ ...prev, maxUnit: e.target.value }))
                 }
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
                 placeholder="No maximum"

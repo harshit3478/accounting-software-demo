@@ -19,6 +19,10 @@ import {
   normalizeLayawayFeeRates,
   type LayawayFeeRate,
 } from "../../lib/layaway-fees";
+import {
+  buildLayawayInstallmentSchedule,
+  formatLayawayInstallmentDate,
+} from "../../lib/layaway-installments";
 
 interface CustomerOption {
   id: number;
@@ -1567,64 +1571,52 @@ export default function CreateInvoiceModal({
                         <div className="space-y-1 max-h-40 overflow-y-auto">
                           {(() => {
                             const total = calculateTotal();
-                            const dp = Math.min(layawayDownPayment, total);
-                            const remaining = total - dp;
-
-                            let numInstallments: number;
-                            if (layawayFrequency === "monthly")
-                              numInstallments = layawayMonths;
-                            else if (layawayFrequency === "bi-weekly")
-                              numInstallments = layawayMonths * 2;
-                            else numInstallments = layawayMonths * 4;
-
-                            const installmentAmount =
-                              numInstallments > 0
-                                ? remaining / numInstallments
-                                : 0;
-                            const preview: { label: string; amount: number }[] =
-                              [];
-
-                            if (dp > 0)
-                              preview.push({
-                                label: "Down Payment",
-                                amount: dp,
+                            const previewInstallments =
+                              buildLayawayInstallmentSchedule({
+                                invoiceDate: invoiceDate || getTodayDateString(),
+                                frequency: layawayFrequency,
+                                months: layawayMonths,
+                                downPayment: layawayDownPayment,
+                                totalAmount: total,
                               });
-                            for (
-                              let i = 1;
-                              i <= Math.min(numInstallments, 12);
-                              i++
-                            ) {
-                              const suffix =
-                                i === 1
-                                  ? "st"
-                                  : i === 2
-                                    ? "nd"
-                                    : i === 3
-                                      ? "rd"
-                                      : "th";
-                              preview.push({
-                                label: `${i}${suffix} Payment`,
-                                amount: installmentAmount,
-                              });
-                            }
-                            if (numInstallments > 12) {
-                              preview.push({
-                                label: `... and ${numInstallments - 12} more`,
-                                amount: installmentAmount,
-                              });
-                            }
+                            const visibleInstallments = previewInstallments.slice(
+                              0,
+                              12,
+                            );
+                            const hiddenCount =
+                              previewInstallments.length -
+                              visibleInstallments.length;
 
-                            return preview.map((item, idx) => (
-                              <div
-                                key={idx}
-                                className="flex justify-between text-xs text-gray-700"
-                              >
-                                <span>{item.label}</span>
-                                <span className="font-medium">
-                                  ${item.amount.toFixed(2)}
-                                </span>
-                              </div>
-                            ));
+                            return (
+                              <>
+                                {visibleInstallments.map((item, idx) => (
+                                  <div
+                                    key={idx}
+                                    className="flex justify-between text-xs text-gray-700"
+                                  >
+                                    <span>
+                                      {item.label}
+                                      <span className="text-gray-500">
+                                        {" "}
+                                        (
+                                        {formatLayawayInstallmentDate(
+                                          item.dueDate,
+                                        )}
+                                        )
+                                      </span>
+                                    </span>
+                                    <span className="font-medium">
+                                      ${item.amount.toFixed(2)}
+                                    </span>
+                                  </div>
+                                ))}
+                                {hiddenCount > 0 && (
+                                  <div className="flex justify-between text-xs text-gray-500">
+                                    <span>... and {hiddenCount} more</span>
+                                  </div>
+                                )}
+                              </>
+                            );
                           })()}
                         </div>
                         <div className="flex justify-between text-xs font-semibold text-purple-900 mt-2 pt-2 border-t border-purple-200">

@@ -1,5 +1,6 @@
 import prisma from "./prisma";
 import { stampPaymentCode } from "./payment-code";
+import { isLayawayInstallmentOverdue } from "./late-fee-client";
 
 export interface LateFeeSettingSnapshot {
   amount: number;
@@ -39,16 +40,10 @@ export function findOverdueLayawayInstallment(
     return null;
   }
 
-  const paymentDateValue = new Date(paymentDate);
-  if (Number.isNaN(paymentDateValue.getTime())) {
-    return null;
-  }
-
   const overdueInstallment = [...invoice.layawayPlan.installments]
     .filter((installment: any) => {
       if (installment.isPaid) return false;
-      const dueDate = new Date(installment.dueDate);
-      return dueDate.getTime() < paymentDateValue.getTime();
+      return isLayawayInstallmentOverdue(installment.dueDate, paymentDate);
     })
     .sort(
       (left: any, right: any) =>

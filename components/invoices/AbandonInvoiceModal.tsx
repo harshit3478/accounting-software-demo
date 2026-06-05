@@ -44,7 +44,7 @@ interface AbandonInvoiceModalProps {
   onConfirm: (payload: {
     editReason: string;
     paymentAction: "credit" | "transfer" | "refund" | "none";
-    feeAction: "restocking" | "deposit" | "none";
+    feeAction: "restocking" | "deposit" | "both" | "none";
     targetInvoiceId?: number;
     feeMethodId?: number;
     refundProof?: RefundProof;
@@ -62,9 +62,9 @@ export default function AbandonInvoiceModal({
   const [paymentAction, setPaymentAction] = useState<
     "credit" | "transfer" | "refund" | "none"
   >("credit");
-  const [feeAction, setFeeAction] = useState<"restocking" | "deposit" | "none">(
-    "none",
-  );
+  const [feeAction, setFeeAction] = useState<
+    "restocking" | "deposit" | "both" | "none"
+  >("none");
   const [targetInvoiceId, setTargetInvoiceId] = useState<number | null>(null);
   const [customerInvoices, setCustomerInvoices] = useState<InvoiceOption[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>(
@@ -105,13 +105,37 @@ export default function AbandonInvoiceModal({
     !!restockingFeeSetting?.isActive &&
     effectiveRestockingFee > 0;
   const canApplyDeposit = effectiveDepositFee > 0;
+  const canApplyBoth = canApplyRestocking && canApplyDeposit;
   const showFeeHandling = canApplyRestocking || canApplyDeposit;
+  const bothFeeAmounts = (() => {
+    if (!hasPayments) {
+      return {
+        restocking: restockingFeeAmount,
+        deposit: depositFeeTotal,
+        total: restockingFeeAmount + depositFeeTotal,
+      };
+    }
+
+    const restockingPart = Math.min(restockingFeeAmount, paidAmount);
+    const depositPart = Math.min(
+      depositFeeTotal,
+      Math.max(paidAmount - restockingPart, 0),
+    );
+
+    return {
+      restocking: restockingPart,
+      deposit: depositPart,
+      total: restockingPart + depositPart,
+    };
+  })();
   const selectedFeeAmount =
     feeAction === "restocking"
       ? effectiveRestockingFee
       : feeAction === "deposit"
         ? effectiveDepositFee
-        : 0;
+        : feeAction === "both"
+          ? bothFeeAmounts.total
+          : 0;
   const refundableBalance = hasPayments
     ? Math.max(paidAmount - selectedFeeAmount, 0)
     : 0;
@@ -397,6 +421,25 @@ export default function AbandonInvoiceModal({
               </label>
             )}
 
+            {canApplyBoth && (
+              <label className="flex items-start gap-2 text-sm text-gray-700">
+                <input
+                  type="radio"
+                  checked={feeAction === "both"}
+                  onChange={() => setFeeAction("both")}
+                  className="mt-0.5"
+                />
+                Apply both restocking and deposit fees
+                <span className="text-xs text-gray-500">
+                  (restocking ${bothFeeAmounts.restocking.toFixed(2)} + deposit $
+                  {bothFeeAmounts.deposit.toFixed(2)} = $
+                  {bothFeeAmounts.total.toFixed(2)}
+                  {hasPayments ? `, capped by $${paidAmount.toFixed(2)} paid` : ""}
+                  )
+                </span>
+              </label>
+            )}
+
             <label className="flex items-start gap-2 text-sm text-gray-700">
               <input
                 type="radio"
@@ -430,9 +473,20 @@ export default function AbandonInvoiceModal({
                   ))}
                 </select>
                 <p className="mt-1 text-xs text-gray-500">
-                  A {feeAction === "restocking" ? "restocking" : "deposit"} fee
-                  payment of ${selectedFeeAmount.toFixed(2)} will be linked to
-                  this abandoned invoice.
+                  {feeAction === "both" ? (
+                    <>
+                      Restocking fee (${bothFeeAmounts.restocking.toFixed(2)})
+                      and deposit fee (${bothFeeAmounts.deposit.toFixed(2)})
+                      payments totaling ${selectedFeeAmount.toFixed(2)} will be
+                      linked to this abandoned invoice.
+                    </>
+                  ) : (
+                    <>
+                      A {feeAction === "restocking" ? "restocking" : "deposit"}{" "}
+                      fee payment of ${selectedFeeAmount.toFixed(2)} will be
+                      linked to this abandoned invoice.
+                    </>
+                  )}
                 </p>
               </div>
             )}

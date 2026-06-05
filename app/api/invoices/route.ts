@@ -16,6 +16,7 @@ import {
   calculateLayawayFeeFromItems,
   normalizeLayawayFeeRates,
 } from "../../../lib/layaway-fees";
+import { buildLayawayInstallmentSchedule } from "../../../lib/layaway-installments";
 import {
   calculateDepositFeeForItem,
   normalizeDepositFeeRules,
@@ -106,12 +107,9 @@ async function getConfiguredDepositFeeRules() {
 
     return normalizeDepositFeeRules(
       rows.map((row: any) => ({
-        minAmount: row.minAmount?.toNumber
-          ? row.minAmount.toNumber()
-          : row.minAmount,
-        maxAmount: row.maxAmount?.toNumber
-          ? row.maxAmount.toNumber()
-          : row.maxAmount,
+        unitName: row.unitName,
+        minUnit: row.minUnit?.toNumber ? row.minUnit.toNumber() : row.minUnit,
+        maxUnit: row.maxUnit?.toNumber ? row.maxUnit.toNumber() : row.maxUnit,
         fee: row.fee?.toNumber ? row.fee.toNumber() : Number(row.fee || 0),
         isActive: row.isActive,
         sortOrder: row.sortOrder,
@@ -790,44 +788,13 @@ export async function POST(request: NextRequest) {
       const planDownPayment = parseFloat(layawayPlan.downPayment) || 0;
       const planNotes = layawayPlan.notes || null;
 
-      const remaining = totalAmount - planDownPayment;
-      let numInstallments: number;
-      if (planFrequency === "monthly") numInstallments = planMonths;
-      else if (planFrequency === "bi-weekly") numInstallments = planMonths * 2;
-      else numInstallments = planMonths * 4; // weekly
-
-      const installmentAmount =
-        numInstallments > 0 ? remaining / numInstallments : 0;
-      const planBaseDate = new Date(invoiceDateValue);
-
-      const installments: { dueDate: Date; amount: number; label: string }[] =
-        [];
-
-      if (planDownPayment > 0) {
-        installments.push({
-          dueDate: planBaseDate,
-          amount: planDownPayment,
-          label: "Down Payment",
-        });
-      }
-
-      for (let i = 1; i <= numInstallments; i++) {
-        const instDate = new Date(planBaseDate);
-        if (planFrequency === "monthly") {
-          instDate.setMonth(instDate.getMonth() + i);
-        } else if (planFrequency === "bi-weekly") {
-          instDate.setDate(instDate.getDate() + i * 14);
-        } else {
-          instDate.setDate(instDate.getDate() + i * 7);
-        }
-
-        const suffix = i === 1 ? "st" : i === 2 ? "nd" : i === 3 ? "rd" : "th";
-        installments.push({
-          dueDate: instDate,
-          amount: installmentAmount,
-          label: `${i}${suffix} Payment`,
-        });
-      }
+      const installments = buildLayawayInstallmentSchedule({
+        invoiceDate: invoiceDateValue,
+        frequency: planFrequency,
+        months: planMonths,
+        downPayment: planDownPayment,
+        totalAmount,
+      });
 
       await (prisma as any).layawayPlan.create({
         data: {

@@ -7,7 +7,10 @@ import {
   ToastProvider,
   useToastContext,
 } from "../../../components/ToastContext";
-import { findOverdueLayawayInstallmentClient } from "../../../lib/late-fee-client";
+import {
+  findOverdueLayawayInstallmentClient,
+  isLateFeeConfigured,
+} from "../../../lib/late-fee-client";
 
 interface Payment {
   id: number;
@@ -290,8 +293,7 @@ function PaymentMatchingPageContent() {
     !!matchingInvoice &&
     !!selectedPayment &&
     !!overdueInstallment &&
-    lateFeeSetting.isActive &&
-    lateFeeSetting.amount > 0;
+    isLateFeeConfigured(lateFeeSetting);
 
   if (isLoading) {
     return (

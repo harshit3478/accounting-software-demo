@@ -8,6 +8,38 @@ function ensureAdminOrSuper(user: any) {
   }
 }
 
+function serializeRule(rule: any) {
+  return {
+    ...rule,
+    unitName: rule.unitName,
+    minUnit: rule.minUnit?.toNumber ? rule.minUnit.toNumber() : rule.minUnit,
+    maxUnit: rule.maxUnit?.toNumber ? rule.maxUnit.toNumber() : rule.maxUnit,
+    fee: rule.fee?.toNumber ? rule.fee.toNumber() : rule.fee,
+  };
+}
+
+function parseOptionalUnit(value: unknown) {
+  return value === "" || value === null || value === undefined
+    ? null
+    : Number(value);
+}
+
+function validateUnitRange(minUnit: number | null, maxUnit: number | null) {
+  if (minUnit !== null && (!Number.isFinite(minUnit) || minUnit < 0)) {
+    throw new Error("Invalid minimum unit");
+  }
+  if (maxUnit !== null && (!Number.isFinite(maxUnit) || maxUnit < 0)) {
+    throw new Error("Invalid maximum unit");
+  }
+  if (
+    minUnit !== null &&
+    maxUnit !== null &&
+    Number(minUnit) > Number(maxUnit)
+  ) {
+    throw new Error("Minimum unit cannot be greater than maximum unit");
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     await requireAuth();
@@ -28,7 +60,7 @@ export async function GET(request: NextRequest) {
     const where = activeOnly ? { isActive: true } : {};
     const rules = await ruleModel.findMany({
       where,
-      orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
+      orderBy: [{ sortOrder: "asc" }, { unitName: "asc" }, { createdAt: "desc" }],
       include: {
         creator: {
           select: {
@@ -40,18 +72,7 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    return NextResponse.json(
-      rules.map((rule: any) => ({
-        ...rule,
-        minAmount: rule.minAmount?.toNumber
-          ? rule.minAmount.toNumber()
-          : rule.minAmount,
-        maxAmount: rule.maxAmount?.toNumber
-          ? rule.maxAmount.toNumber()
-          : rule.maxAmount,
-        fee: rule.fee?.toNumber ? rule.fee.toNumber() : rule.fee,
-      })),
-    );
+    return NextResponse.json(rules.map(serializeRule));
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
@@ -62,11 +83,16 @@ export async function POST(request: NextRequest) {
     const user = await requireAuth();
     ensureAdminOrSuper(user);
 
-    const { name, minAmount, maxAmount, fee, isActive, sortOrder } =
+    const { name, unitName, minUnit, maxUnit, fee, isActive, sortOrder } =
       await request.json();
 
     if (!name || !String(name).trim()) {
       throw new Error("Rule name is required");
+    }
+
+    const parsedUnitName = String(unitName || "").trim();
+    if (!parsedUnitName) {
+      throw new Error("Unit is required");
     }
 
     const parsedFee = Number(fee);
@@ -74,34 +100,16 @@ export async function POST(request: NextRequest) {
       throw new Error("Valid fee is required");
     }
 
-    const parsedMin =
-      minAmount === "" || minAmount === null || minAmount === undefined
-        ? null
-        : Number(minAmount);
-    const parsedMax =
-      maxAmount === "" || maxAmount === null || maxAmount === undefined
-        ? null
-        : Number(maxAmount);
-
-    if (parsedMin !== null && (!Number.isFinite(parsedMin) || parsedMin < 0)) {
-      throw new Error("Invalid minimum amount");
-    }
-    if (parsedMax !== null && (!Number.isFinite(parsedMax) || parsedMax < 0)) {
-      throw new Error("Invalid maximum amount");
-    }
-    if (
-      parsedMin !== null &&
-      parsedMax !== null &&
-      Number(parsedMin) > Number(parsedMax)
-    ) {
-      throw new Error("Minimum amount cannot be greater than maximum amount");
-    }
+    const parsedMin = parseOptionalUnit(minUnit);
+    const parsedMax = parseOptionalUnit(maxUnit);
+    validateUnitRange(parsedMin, parsedMax);
 
     const created = await (prisma as any).depositFeeRule.create({
       data: {
         name: String(name).trim(),
-        minAmount: parsedMin,
-        maxAmount: parsedMax,
+        unitName: parsedUnitName,
+        minUnit: parsedMin,
+        maxUnit: parsedMax,
         fee: parsedFee,
         isActive: typeof isActive === "boolean" ? isActive : true,
         sortOrder: Number.isFinite(Number(sortOrder)) ? Number(sortOrder) : 0,
@@ -109,16 +117,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return NextResponse.json({
-      ...created,
-      minAmount: created.minAmount?.toNumber
-        ? created.minAmount.toNumber()
-        : created.minAmount,
-      maxAmount: created.maxAmount?.toNumber
-        ? created.maxAmount.toNumber()
-        : created.maxAmount,
-      fee: created.fee?.toNumber ? created.fee.toNumber() : created.fee,
-    });
+    return NextResponse.json(serializeRule(created));
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
@@ -129,7 +128,7 @@ export async function PUT(request: NextRequest) {
     const user = await requireAuth();
     ensureAdminOrSuper(user);
 
-    const { id, name, minAmount, maxAmount, fee, isActive, sortOrder } =
+    const { id, name, unitName, minUnit, maxUnit, fee, isActive, sortOrder } =
       await request.json();
 
     const ruleId = Number(id);
@@ -144,6 +143,12 @@ export async function PUT(request: NextRequest) {
       data.name = String(name).trim();
     }
 
+    if (unitName !== undefined) {
+      const parsedUnitName = String(unitName || "").trim();
+      if (!parsedUnitName) throw new Error("Unit is required");
+      data.unitName = parsedUnitName;
+    }
+
     if (fee !== undefined) {
       const parsedFee = Number(fee);
       if (!Number.isFinite(parsedFee) || parsedFee < 0) {
@@ -152,25 +157,23 @@ export async function PUT(request: NextRequest) {
       data.fee = parsedFee;
     }
 
-    if (minAmount !== undefined) {
-      data.minAmount =
-        minAmount === "" || minAmount === null ? null : Number(minAmount);
+    if (minUnit !== undefined) {
+      data.minUnit = parseOptionalUnit(minUnit);
       if (
-        data.minAmount !== null &&
-        (!Number.isFinite(data.minAmount) || data.minAmount < 0)
+        data.minUnit !== null &&
+        (!Number.isFinite(data.minUnit) || data.minUnit < 0)
       ) {
-        throw new Error("Invalid minimum amount");
+        throw new Error("Invalid minimum unit");
       }
     }
 
-    if (maxAmount !== undefined) {
-      data.maxAmount =
-        maxAmount === "" || maxAmount === null ? null : Number(maxAmount);
+    if (maxUnit !== undefined) {
+      data.maxUnit = parseOptionalUnit(maxUnit);
       if (
-        data.maxAmount !== null &&
-        (!Number.isFinite(data.maxAmount) || data.maxAmount < 0)
+        data.maxUnit !== null &&
+        (!Number.isFinite(data.maxUnit) || data.maxUnit < 0)
       ) {
-        throw new Error("Invalid maximum amount");
+        throw new Error("Invalid maximum unit");
       }
     }
 
@@ -183,8 +186,8 @@ export async function PUT(request: NextRequest) {
       data.sortOrder = Number.isFinite(parsedSort) ? parsedSort : 0;
     }
 
-    const nextMin = data.minAmount;
-    const nextMax = data.maxAmount;
+    const nextMin = data.minUnit;
+    const nextMax = data.maxUnit;
     if (
       nextMin !== undefined &&
       nextMax !== undefined &&
@@ -192,7 +195,7 @@ export async function PUT(request: NextRequest) {
       nextMax !== null &&
       Number(nextMin) > Number(nextMax)
     ) {
-      throw new Error("Minimum amount cannot be greater than maximum amount");
+      throw new Error("Minimum unit cannot be greater than maximum unit");
     }
 
     const updated = await (prisma as any).depositFeeRule.update({
@@ -200,16 +203,7 @@ export async function PUT(request: NextRequest) {
       data,
     });
 
-    return NextResponse.json({
-      ...updated,
-      minAmount: updated.minAmount?.toNumber
-        ? updated.minAmount.toNumber()
-        : updated.minAmount,
-      maxAmount: updated.maxAmount?.toNumber
-        ? updated.maxAmount.toNumber()
-        : updated.maxAmount,
-      fee: updated.fee?.toNumber ? updated.fee.toNumber() : updated.fee,
-    });
+    return NextResponse.json(serializeRule(updated));
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

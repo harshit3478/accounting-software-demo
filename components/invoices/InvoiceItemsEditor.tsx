@@ -75,10 +75,9 @@ export default function InvoiceItemsEditor({
         setDepositFeeRules(
           Array.isArray(data)
             ? data.map((rule: any) => ({
-                minAmount:
-                  rule.minAmount == null ? null : Number(rule.minAmount),
-                maxAmount:
-                  rule.maxAmount == null ? null : Number(rule.maxAmount),
+                unitName: String(rule.unitName || FALLBACK_UNIT),
+                minUnit: rule.minUnit == null ? null : Number(rule.minUnit),
+                maxUnit: rule.maxUnit == null ? null : Number(rule.maxUnit),
                 fee: Number(rule.fee || 0),
                 isActive: !!rule.isActive,
                 sortOrder: Number(rule.sortOrder || 0),

@@ -62,7 +62,10 @@ export default function LateFeeTab({
       const res = await fetch("/api/late-fee", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(setting),
+        body: JSON.stringify({
+          ...setting,
+          isActive: setting.amount > 0 ? true : setting.isActive,
+        }),
       });
 
       if (!res.ok) {
@@ -108,12 +111,14 @@ export default function LateFeeTab({
               min="0"
               step="0.01"
               value={setting.amount}
-              onChange={(e) =>
+              onChange={(e) => {
+                const amount = Number(e.target.value);
                 setSetting((prev) => ({
                   ...prev,
-                  amount: Number(e.target.value),
-                }))
-              }
+                  amount,
+                  isActive: amount > 0 ? true : prev.isActive,
+                }));
+              }}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
               placeholder="0.00"
             />

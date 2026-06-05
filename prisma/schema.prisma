@@ -189,8 +189,9 @@ model ShippingFeeRule {
 model DepositFeeRule {
   id        Int      @id @default(autoincrement())
   name      String
-  minAmount Decimal? @db.Decimal(10, 2)
-  maxAmount Decimal? @db.Decimal(10, 2)
+  unitName  String   @default("grams")
+  minUnit   Decimal? @db.Decimal(10, 2)
+  maxUnit   Decimal? @db.Decimal(10, 2)
   fee       Decimal  @db.Decimal(10, 2)
   isActive  Boolean  @default(true)
   sortOrder Int      @default(0)
@@ -201,6 +202,7 @@ model DepositFeeRule {
   creator User @relation(fields: [createdBy], references: [id], onDelete: Cascade)
 
   @@index([isActive, sortOrder])
+  @@index([unitName, isActive, sortOrder])
   @@map("deposit_fee_rules")
 }
 

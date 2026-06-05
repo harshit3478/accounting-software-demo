@@ -7,6 +7,10 @@ import {
   type LayawayFeeRate,
   normalizeLayawayFeeRates,
 } from "../../lib/layaway-fees";
+import {
+  buildLayawayInstallmentSchedule,
+  formatLayawayInstallmentDate,
+} from "../../lib/layaway-installments";
 import InvoiceItemsEditor from "./InvoiceItemsEditor";
 import InvoiceSummary from "./InvoiceSummary";
 import Modal from "./Modal";
@@ -477,50 +481,23 @@ export default function EditInvoiceModal({
 
   const buildLayawayInstallments = () => {
     const remainingBalance = calculateRemainingBalance();
-    const downPayment = Math.min(layawayDownPayment, remainingBalance);
-    const remaining = remainingBalance - downPayment;
-
-    let numInstallments = layawayMonths;
-    if (layawayFrequency === "bi-weekly") numInstallments = layawayMonths * 2;
-    if (layawayFrequency === "weekly") numInstallments = layawayMonths * 4;
-
-    const installmentAmount =
-      numInstallments > 0 ? remaining / numInstallments : 0;
     const baseDate = invoiceDate ? new Date(invoiceDate) : new Date();
     if (Number.isNaN(baseDate.getTime())) {
       return [];
     }
-    const installments: LayawayInstallment[] = [];
 
-    if (downPayment > 0) {
-      installments.push({
-        dueDate: baseDate.toISOString(),
-        amount: downPayment,
-        label: "Down Payment",
-        isPaid: false,
-      });
-    }
-
-    for (let i = 1; i <= numInstallments; i++) {
-      const dueDateValue = new Date(baseDate);
-      if (layawayFrequency === "monthly") {
-        dueDateValue.setMonth(dueDateValue.getMonth() + i);
-      } else if (layawayFrequency === "bi-weekly") {
-        dueDateValue.setDate(dueDateValue.getDate() + i * 14);
-      } else {
-        dueDateValue.setDate(dueDateValue.getDate() + i * 7);
-      }
-
-      const suffix = i === 1 ? "st" : i === 2 ? "nd" : i === 3 ? "rd" : "th";
-      installments.push({
-        dueDate: dueDateValue.toISOString(),
-        amount: installmentAmount,
-        label: `${i}${suffix} Payment`,
-        isPaid: false,
-      });
-    }
-
-    return installments;
+    return buildLayawayInstallmentSchedule({
+      invoiceDate: baseDate,
+      frequency: layawayFrequency,
+      months: layawayMonths,
+      downPayment: layawayDownPayment,
+      totalAmount: remainingBalance,
+    }).map((installment) => ({
+      dueDate: installment.dueDate.toISOString(),
+      amount: installment.amount,
+      label: installment.label,
+      isPaid: false,
+    }));
   };
 
   const validateDate = (selectedDate: string) => {
@@ -1204,7 +1181,13 @@ export default function EditInvoiceModal({
                             key={`${inst.label}-${idx}`}
                             className="flex justify-between gap-3"
                           >
-                            <span>{inst.label}</span>
+                            <span>
+                              {inst.label}
+                              <span className="text-gray-500">
+                                {" "}
+                                ({formatLayawayInstallmentDate(inst.dueDate)})
+                              </span>
+                            </span>
                             <span className="font-medium">
                               ${inst.amount.toFixed(2)}
                             </span>

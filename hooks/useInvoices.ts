@@ -204,7 +204,7 @@ interface UseInvoicesReturn {
     editReason?: string;
     targetStatus?: "abandoned" | "inactive" | "reactivate";
     paymentAction?: "credit" | "transfer" | "refund" | "none";
-    feeAction?: "restocking" | "deposit" | "none";
+    feeAction?: "restocking" | "deposit" | "both" | "none";
     feeMethodId?: number;
     targetInvoiceId?: number | null;
     refundProofDataUrl?: string;
@@ -583,7 +583,7 @@ export function useInvoices(
     editReason?: string;
     targetStatus?: "abandoned" | "inactive" | "reactivate";
     paymentAction?: "credit" | "transfer" | "refund" | "none";
-    feeAction?: "restocking" | "deposit" | "none";
+    feeAction?: "restocking" | "deposit" | "both" | "none";
     feeMethodId?: number;
     targetInvoiceId?: number | null;
     refundProofDataUrl?: string;

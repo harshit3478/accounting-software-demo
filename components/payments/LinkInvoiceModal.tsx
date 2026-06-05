@@ -2,7 +2,10 @@
 
 import { useState, useEffect, useMemo } from "react";
 import Modal from "../invoices/Modal"; // Reusing Modal from invoices
-import { findOverdueLayawayInstallmentClient } from "../../lib/late-fee-client";
+import {
+  findOverdueLayawayInstallmentClient,
+  isLateFeeConfigured,
+} from "../../lib/late-fee-client";
 
 interface Payment {
   id: number;
@@ -211,8 +214,7 @@ export default function LinkInvoiceModal({
   const shouldPromptLateFee =
     !!selectedInvoice &&
     !!overdueInstallment &&
-    lateFeeSetting.isActive &&
-    lateFeeSetting.amount > 0;
+    isLateFeeConfigured(lateFeeSetting);
 
   const footer = (
     <div className="flex justify-end space-x-4">

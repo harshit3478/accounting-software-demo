@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { ChequeVaultRecord } from "@/hooks/useChequeVault";
 import {
   CHEQUE_VAULT_ACCEPT_ATTRIBUTE,
@@ -85,7 +85,7 @@ export default function UploadChequeModal({ isOpen, onClose, onSuccess }: Upload
 
   const handleClose = () => { resetState(); onClose(); };
 
-  const handleFileSelect = (selectedFile: File) => {
+  const handleFileSelect = useCallback((selectedFile: File) => {
     if (!isAllowedChequeVaultMimeType(selectedFile.type)) {
       setUploadError("Only JPEG, PNG, WebP images, or PDF are accepted.");
       return;
@@ -95,25 +95,68 @@ export default function UploadChequeModal({ isOpen, onClose, onSuccess }: Upload
       return;
     }
     setUploadError(null);
-    if (preview) URL.revokeObjectURL(preview);
+    setPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return isChequeVaultPdfMimeType(selectedFile.type)
+        ? null
+        : URL.createObjectURL(selectedFile);
+    });
     setFile(selectedFile);
-    if (isChequeVaultPdfMimeType(selectedFile.type)) {
-      setPreview(null);
-    } else {
-      setPreview(URL.createObjectURL(selectedFile));
-    }
+  }, []);
+
+  const fileFromClipboardItem = (item: DataTransferItem): File | null => {
+    if (item.kind !== "file") return null;
+    const pasted = item.getAsFile();
+    if (!pasted) return null;
+    if (!isAllowedChequeVaultMimeType(pasted.type)) return null;
+    if (pasted.name) return pasted;
+    const ext = pasted.type.split("/")[1]?.replace("jpeg", "jpg") || "png";
+    return new File([pasted], `pasted-cheque.${ext}`, { type: pasted.type });
   };
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-    if (e.dataTransfer.files.length > 1) {
-      setUploadError("Only one cheque file can be uploaded.");
-      return;
-    }
-    const dropped = e.dataTransfer.files[0];
-    if (dropped) handleFileSelect(dropped);
-  }, []);
+  const handlePaste = useCallback(
+    (e: ClipboardEvent | React.ClipboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest("input, textarea, [contenteditable='true']")) return;
+
+      const items = e.clipboardData?.items;
+      if (!items?.length) return;
+
+      const pastedFiles = Array.from(items)
+        .map(fileFromClipboardItem)
+        .filter((file): file is File => file !== null);
+
+      if (pastedFiles.length === 0) return;
+
+      e.preventDefault();
+      if (pastedFiles.length > 1) {
+        setUploadError("Only one cheque file can be uploaded.");
+        return;
+      }
+      handleFileSelect(pastedFiles[0]);
+    },
+    [handleFileSelect],
+  );
+
+  useEffect(() => {
+    if (!isOpen || step !== 1) return;
+    document.addEventListener("paste", handlePaste);
+    return () => document.removeEventListener("paste", handlePaste);
+  }, [isOpen, step, handlePaste]);
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setIsDragging(false);
+      if (e.dataTransfer.files.length > 1) {
+        setUploadError("Only one cheque file can be uploaded.");
+        return;
+      }
+      const dropped = e.dataTransfer.files[0];
+      if (dropped) handleFileSelect(dropped);
+    },
+    [handleFileSelect],
+  );
 
   const handleUploadAndScan = async () => {
     if (!file) return;
@@ -316,13 +359,22 @@ export default function UploadChequeModal({ isOpen, onClose, onSuccess }: Upload
             {step === 1 && (
               <div>
                 <div
-                  className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors ${
+                  tabIndex={0}
+                  role="button"
+                  aria-label="Upload cheque image by drag and drop, paste, or browse"
+                  className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
                     isDragging ? "border-blue-500 bg-blue-50" : "border-gray-300 hover:border-gray-400"
                   }`}
                   onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
                   onDragLeave={() => setIsDragging(false)}
                   onDrop={handleDrop}
                   onClick={() => fileInputRef.current?.click()}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      fileInputRef.current?.click();
+                    }
+                  }}
                 >
                   <input
                     ref={fileInputRef}
@@ -356,9 +408,11 @@ export default function UploadChequeModal({ isOpen, onClose, onSuccess }: Upload
                     </div>
                   )}
                   <p className="text-sm font-medium text-gray-700">
-                    {file ? file.name : "Drag & drop or click to select"}
+                    {file ? file.name : "Drag & drop, paste, or click to browse"}
                   </p>
-                  <p className="text-xs text-gray-400 mt-1">{CHEQUE_VAULT_FILE_TYPE_HINT}</p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    {CHEQUE_VAULT_FILE_TYPE_HINT} — or paste from clipboard
+                  </p>
                 </div>
 
                 {/* Customer email (step 1) */}

@@ -6,6 +6,7 @@ import AddCustomerModal from "./AddCustomerModal";
 import {
   buildLateFeeReason,
   findOverdueLayawayInstallmentClient,
+  isLateFeeConfigured,
 } from "../../lib/late-fee-client";
 
 interface Invoice {
@@ -283,8 +284,7 @@ export default function LinkPaymentModal({
     !!currentInvoice &&
     !!selectedPayment &&
     !!overdueInstallment &&
-    lateFeeSetting.isActive &&
-    lateFeeSetting.amount > 0;
+    isLateFeeConfigured(lateFeeSetting);
 
   const footer = (
     <div className="flex justify-end space-x-4">

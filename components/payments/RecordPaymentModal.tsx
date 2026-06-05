@@ -3,7 +3,10 @@
 import { useState, useEffect } from "react";
 import Modal from "../invoices/Modal";
 import LucideIcon from "../LucideIcon";
-import { findOverdueLayawayInstallmentClient } from "../../lib/late-fee-client";
+import {
+  findOverdueLayawayInstallmentClient,
+  isLateFeeConfigured,
+} from "../../lib/late-fee-client";
 
 interface PaymentMethodType {
   id: number;
@@ -208,8 +211,7 @@ export default function RecordPaymentModal({
   const shouldPromptLateFee =
     !!selectedInvoice &&
     !!overdueInstallment &&
-    lateFeeSetting.isActive &&
-    lateFeeSetting.amount > 0;
+    isLateFeeConfigured(lateFeeSetting);
   const remainingAmount = selectedInvoice
     ? selectedInvoice.amount - selectedInvoice.paidAmount
     : 0;
