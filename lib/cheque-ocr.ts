@@ -1,6 +1,6 @@
 export interface ChequeOcrResult {
   chequeNumber: string | null;
-  payeeName: string | null;
+  payorName: string | null;
   amount: number | null;
   chequeDate: string | null; // YYYY-MM-DD
   bankName: string | null;
@@ -12,16 +12,16 @@ const EXTRACTION_PROMPT = `You are analyzing a cheque document (image or PDF sca
 
 Fields to extract:
 - chequeNumber: The cheque/check number (usually printed in the bottom-right of the MICR line, or top-right corner)
-- payeeName: The name on the "Pay to the order of" line
+- payorName: The name and address of the SENDER/PAYOR — the person or company who WROTE the cheque. This is typically printed in the TOP-LEFT corner of the cheque (e.g. "JOHN SMITH, 123 Main St, City, State"). Do NOT capture the "Pay to the order of" line (that is the payee/recipient, not the payor).
 - amount: The numeric dollar amount (return as a number, not a string — use the numeric figure, not the written words)
-- chequeDate: The date printed on the cheque in YYYY-MM-DD format
+- chequeDate: The date printed on the cheque. Return ONLY in YYYY-MM-DD format (e.g. 2026-06-11). Convert any other format to YYYY-MM-DD before returning.
 - bankName: The issuing bank name (usually in the header/top of the cheque)
 - rawText: A full text dump of everything you can read on the cheque
 
 Return exactly this JSON structure:
 {
   "chequeNumber": "string or null",
-  "payeeName": "string or null",
+  "payorName": "string or null",
   "amount": number or null,
   "chequeDate": "YYYY-MM-DD or null",
   "bankName": "string or null",
@@ -130,7 +130,7 @@ export async function extractChequeData(
 
     return {
       chequeNumber: parsed.chequeNumber ?? null,
-      payeeName: parsed.payeeName ?? null,
+      payorName: parsed.payorName ?? null,
       amount:
         typeof parsed.amount === "number"
           ? parsed.amount
@@ -151,7 +151,7 @@ export async function extractChequeData(
 function nullResult(confidence: "high" | "low"): ChequeOcrResult {
   return {
     chequeNumber: null,
-    payeeName: null,
+    payorName: null,
     amount: null,
     chequeDate: null,
     bankName: null,

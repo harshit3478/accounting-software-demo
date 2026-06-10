@@ -14,7 +14,7 @@ import ChequeDocumentPreview from "./ChequeDocumentPreview";
 
 interface OcrResult {
   chequeNumber: string | null;
-  payeeName: string | null;
+  payorName: string | null;
   amount: number | null;
   chequeDate: string | null;
   bankName: string | null;
@@ -43,7 +43,7 @@ export default function UploadChequeModal({ isOpen, onClose, onSuccess }: Upload
 
   // Form fields
   const [chequeNumber, setChequeNumber] = useState("");
-  const [payeeName, setPayeeName] = useState("");
+  const [payorName, setPayorName] = useState("");
   const [amount, setAmount] = useState("");
   const [chequeDate, setChequeDate] = useState("");
   const [bankName, setBankName] = useState("");
@@ -70,7 +70,7 @@ export default function UploadChequeModal({ isOpen, onClose, onSuccess }: Upload
     setOcrResult(null);
     setUploadError(null);
     setChequeNumber("");
-    setPayeeName("");
+    setPayorName("");
     setAmount("");
     setChequeDate("");
     setBankName("");
@@ -174,7 +174,7 @@ export default function UploadChequeModal({ isOpen, onClose, onSuccess }: Upload
       setUploadedCheque(cheque);
       setOcrResult(ocr);
       setChequeNumber(ocr.chequeNumber || "");
-      setPayeeName(ocr.payeeName || "");
+      setPayorName(ocr.payorName || "");
       setAmount(ocr.amount != null ? String(ocr.amount) : "");
       setChequeDate(ocr.chequeDate || "");
       setBankName(ocr.bankName || "");
@@ -241,7 +241,7 @@ export default function UploadChequeModal({ isOpen, onClose, onSuccess }: Upload
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         chequeNumber: chequeNumber.trim(),
-        payeeName: payeeName.trim(),
+        payorName: payorName.trim(),
         amount: parseFloat(amount) || 0,
         chequeDate: chequeDate || new Date().toISOString().split("T")[0],
         bankName: bankName.trim() || null,
@@ -506,8 +506,8 @@ export default function UploadChequeModal({ isOpen, onClose, onSuccess }: Upload
                   </div>
 
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Payee Name</label>
-                    <input type="text" value={payeeName} onChange={(e) => setPayeeName(e.target.value)}
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Customer / Payor Name</label>
+                    <input type="text" value={payorName} onChange={(e) => setPayorName(e.target.value)}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
 

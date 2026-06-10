@@ -111,7 +111,7 @@ export async function PATCH(
     }
 
     const body = await request.json();
-    const { invoices, chequeNumber, payeeName, amount, chequeDate, bankName, customerEmail } = body;
+    const { invoices, chequeNumber, payorName, payeeName, amount, chequeDate, bankName, customerEmail } = body;
 
     const cheque = await prisma.chequeVault.findUnique({ where: { id: chequeId } });
     if (!cheque) {
@@ -127,6 +127,7 @@ export async function PATCH(
 
     const wantsFieldUpdate =
       chequeNumber !== undefined ||
+      payorName !== undefined ||
       payeeName !== undefined ||
       amount !== undefined ||
       chequeDate !== undefined ||
@@ -216,7 +217,8 @@ export async function PATCH(
 
     // Field updates
     if (chequeNumber !== undefined) updateData.chequeNumber = chequeNumber;
-    if (payeeName !== undefined) updateData.payeeName = payeeName;
+    if (payorName !== undefined) updateData.payorName = payorName;
+    else if (payeeName !== undefined) updateData.payorName = payeeName; // backwards compat
     if (amount !== undefined) updateData.amount = parseFloat(amount);
     if (chequeDate !== undefined) updateData.chequeDate = new Date(chequeDate);
     if (bankName !== undefined) updateData.bankName = bankName;

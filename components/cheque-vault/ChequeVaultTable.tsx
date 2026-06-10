@@ -51,7 +51,7 @@ export default function ChequeVaultTable({
         <table className="w-full">
           <thead className="bg-gray-50">
             <tr>
-              {["Date", "Cheque #", "Payee", "Bank", "Amount", "Invoice", "Uploaded By", "Status", ""].map((h) => (
+              {["Date", "Cheque #", "Customer / Payor", "Bank", "Amount", "Invoice", "Uploaded By", "Status", ""].map((h) => (
                 <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   {h}
                 </th>
@@ -96,7 +96,7 @@ export default function ChequeVaultTable({
             <tr>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Upload Date</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cheque #</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Payee</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer / Payor</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Bank</th>
               <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cheque Date</th>
@@ -120,7 +120,7 @@ export default function ChequeVaultTable({
                   {cheque.chequeNumber || <span className="text-gray-400 italic">Not set</span>}
                 </td>
                 <td className="px-4 py-3 text-gray-700 max-w-[160px] truncate">
-                  {cheque.payeeName || <span className="text-gray-400 italic">Unknown</span>}
+                  {cheque.payorName || <span className="text-gray-400 italic">Unknown</span>}
                 </td>
                 <td className="px-4 py-3 text-gray-600">
                   {cheque.bankName || <span className="text-gray-400">—</span>}

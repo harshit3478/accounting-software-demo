@@ -25,7 +25,7 @@ interface ChequeDetailModalProps {
     chequeId: number,
     fields: {
       chequeNumber: string;
-      payeeName: string;
+      payorName: string;
       amount: number;
       chequeDate: string;
       bankName: string | null;
@@ -65,7 +65,7 @@ export default function ChequeDetailModal({
   const { isSuperAdmin, user } = useAuth();
   const canReviewCheque = isSuperAdmin;
   const [chequeNumber, setChequeNumber] = useState("");
-  const [payeeName, setPayeeName] = useState("");
+  const [payorName, setPayorName] = useState("");
   const [amount, setAmount] = useState("");
   const [chequeDate, setChequeDate] = useState("");
   const [bankName, setBankName] = useState("");
@@ -83,7 +83,7 @@ export default function ChequeDetailModal({
   useEffect(() => {
     if (!cheque) return;
     setChequeNumber(cheque.chequeNumber || "");
-    setPayeeName(cheque.payeeName || "");
+    setPayorName(cheque.payorName || "");
     setAmount(String(cheque.amount ?? ""));
     setChequeDate(
       cheque.chequeDate
@@ -161,7 +161,7 @@ export default function ChequeDetailModal({
     setIsSavingDetails(true);
     await onUpdateDetails(cheque.id, {
       chequeNumber: chequeNumber.trim(),
-      payeeName: payeeName.trim(),
+      payorName: payorName.trim(),
       amount: parseFloat(amount) || 0,
       chequeDate: chequeDate || new Date().toISOString().split("T")[0],
       bankName: bankName.trim() || null,
@@ -271,10 +271,10 @@ export default function ChequeDetailModal({
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                       </EditableField>
-                      <EditableField label="Payee Name">
+                      <EditableField label="Customer / Payor Name">
                         <input
-                          value={payeeName}
-                          onChange={(e) => setPayeeName(e.target.value)}
+                          value={payorName}
+                          onChange={(e) => setPayorName(e.target.value)}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                       </EditableField>
@@ -316,7 +316,7 @@ export default function ChequeDetailModal({
                   ) : (
                     <>
                       <Field label="Cheque Number" value={cheque.chequeNumber} />
-                      <Field label="Payee Name" value={cheque.payeeName} />
+                      <Field label="Customer / Payor Name" value={cheque.payorName} />
                       {cheque.customerEmail && (
                         <Field label="Customer Email" value={cheque.customerEmail} />
                       )}

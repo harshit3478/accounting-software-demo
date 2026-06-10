@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get("status");
     const startDate = searchParams.get("startDate");
     const endDate = searchParams.get("endDate");
-    const payeeName = searchParams.get("payeeName");
+    const payorName = searchParams.get("payorName") || searchParams.get("payeeName");
     const uploadedBy = searchParams.get("uploadedBy");
 
     const where: any = {};
@@ -56,8 +56,8 @@ export async function GET(request: NextRequest) {
       where.status = status;
     }
 
-    if (payeeName) {
-      where.payeeName = { contains: payeeName };
+    if (payorName) {
+      where.payorName = { contains: payorName };
     }
 
     if (startDate || endDate) {
@@ -174,13 +174,19 @@ export async function POST(request: NextRequest) {
 
     const customerEmail = (formData.get("customerEmail") as string | null)?.trim() || null;
 
+    const parsedChequeDate = ocrResult.chequeDate ? new Date(ocrResult.chequeDate) : null;
+    const chequeDate =
+      parsedChequeDate && !isNaN(parsedChequeDate.getTime())
+        ? parsedChequeDate
+        : new Date();
+
     const cheque = await prisma.chequeVault.create({
       data: {
         chequeNumber: ocrResult.chequeNumber || "",
-        payeeName: ocrResult.payeeName || "",
+        payorName: ocrResult.payorName || "",
         customerEmail,
         amount: ocrResult.amount ?? 0,
-        chequeDate: ocrResult.chequeDate ? new Date(ocrResult.chequeDate) : new Date(),
+        chequeDate,
         bankName: ocrResult.bankName || null,
         imageUrl,
         imageFileName,

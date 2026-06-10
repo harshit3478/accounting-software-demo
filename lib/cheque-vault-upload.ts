@@ -33,7 +33,7 @@ export function isChequeVaultPdfFile(fileNameOrUrl?: string | null): boolean {
 export function emptyChequeOcrResult(): ChequeOcrResult {
   return {
     chequeNumber: null,
-    payeeName: null,
+    payorName: null,
     amount: null,
     chequeDate: null,
     bankName: null,

@@ -24,7 +24,7 @@ export interface InvoiceAllocation {
 export interface ChequeVaultRecord {
   id: number;
   chequeNumber: string;
-  payeeName: string;
+  payorName: string;
   customerEmail: string | null;
   amount: number;
   chequeDate: string;
@@ -95,7 +95,7 @@ export function useChequeVault() {
       params.set("page", currentPage.toString());
       params.set("limit", itemsPerPage.toString());
       if (filterStatus !== "all") params.set("status", filterStatus);
-      if (debouncedPayee) params.set("payeeName", debouncedPayee);
+      if (debouncedPayee) params.set("payorName", debouncedPayee);
       if (dateRange) {
         params.set("startDate", dateRange.startDate);
         params.set("endDate", dateRange.endDate);
@@ -202,7 +202,7 @@ export function useChequeVault() {
     chequeId: number,
     fields: {
       chequeNumber: string;
-      payeeName: string;
+      payorName: string;
       amount: number;
       chequeDate: string;
       bankName: string | null;

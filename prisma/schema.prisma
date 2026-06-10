@@ -635,7 +635,7 @@ model CustomerCreditTransaction {
 model ChequeVault {
   id              Int          @id @default(autoincrement())
   chequeNumber    String
-  payeeName       String
+  payorName       String
   customerEmail   String?
   amount          Decimal      @db.Decimal(10, 2)
   chequeDate      DateTime
