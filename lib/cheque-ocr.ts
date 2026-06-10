@@ -12,7 +12,7 @@ const EXTRACTION_PROMPT = `You are analyzing a cheque document (image or PDF sca
 
 Fields to extract:
 - chequeNumber: The cheque/check number (usually printed in the bottom-right of the MICR line, or top-right corner)
-- payorName: The name and address of the SENDER/PAYOR — the person or company who WROTE the cheque. This is typically printed in the TOP-LEFT corner of the cheque (e.g. "JOHN SMITH, 123 Main St, City, State"). Do NOT capture the "Pay to the order of" line (that is the payee/recipient, not the payor).
+- payorName: The NAME ONLY of the SENDER/PAYOR — the person or company who WROTE the cheque. This is typically the first line in the TOP-LEFT corner of the cheque (e.g. "JOHN SMITH" or "ACME CORP"). Return ONLY the name — do NOT include the street address, city, state, or zip code. Do NOT capture the "Pay to the order of" line (that is the payee/recipient, not the payor).
 - amount: The numeric dollar amount (return as a number, not a string — use the numeric figure, not the written words)
 - chequeDate: The date printed on the cheque. Return ONLY in YYYY-MM-DD format (e.g. 2026-06-11). Convert any other format to YYYY-MM-DD before returning.
 - bankName: The issuing bank name (usually in the header/top of the cheque)
