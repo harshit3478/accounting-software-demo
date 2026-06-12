@@ -8,7 +8,7 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireChequeVaultApprove();
+    const admin = await requireChequeVaultApprove();
     const { id } = await params;
     const chequeId = parseInt(id);
 
@@ -49,6 +49,8 @@ export async function PUT(
       data: {
         status: "NEEDS_CORRECTION",
         correctionNote: correctionNote.trim(),
+        correctionRequestedById: admin.id,
+        correctionRequestedAt: new Date(),
       },
     });
 

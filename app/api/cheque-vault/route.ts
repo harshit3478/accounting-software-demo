@@ -9,6 +9,7 @@ import {
   getChequeVaultFileExtension,
   isAllowedChequeVaultMimeType,
 } from "@/lib/cheque-vault-upload";
+import { chequeVaultUserInclude } from "@/lib/cheque-vault-include";
 
 function serializeCheque(cheque: any) {
   return {
@@ -75,8 +76,7 @@ export async function GET(request: NextRequest) {
         take: limit,
         orderBy: { createdAt: "desc" },
         include: {
-          uploadedBy: { select: { id: true, name: true, email: true } },
-          approvedBy: { select: { id: true, name: true } },
+          ...chequeVaultUserInclude,
           invoiceAllocations: {
             include: {
               invoice: { select: { id: true, invoiceNumber: true, clientName: true } },

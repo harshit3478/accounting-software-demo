@@ -26,16 +26,15 @@ export function canEditChequeRequest(
 }
 
 export function canLinkInvoicesOnCheque(
-  cheque: { status: string; uploadedById: number },
-  userId: number | null | undefined,
+  cheque: { status: string },
+  _userId: number | null | undefined,
   options?: { isSuperAdmin?: boolean; canApprove?: boolean },
 ): boolean {
   if (isChequeRequestReadOnly(cheque)) return false;
   if (!UPLOADER_EDITABLE_STATUSES.includes(cheque.status as ChequeVaultStatus)) {
     return false;
   }
-  if (options?.isSuperAdmin || options?.canApprove) return true;
-  return userId != null && cheque.uploadedById === userId;
+  return !!(options?.isSuperAdmin || options?.canApprove);
 }
 
 export function canDeleteChequeRequest(
