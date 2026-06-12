@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { requireAdmin } from "@/lib/auth";
+import { requireSettingPermission } from "@/lib/auth";
 
 export async function PUT(req: Request, { params }: any) {
   try {
-    const admin = await requireAdmin();
+    const admin = await requireSettingPermission("regularizations");
     const resolvedParams = await params;
     const id = parseInt(resolvedParams.id, 10);
     if (isNaN(id))

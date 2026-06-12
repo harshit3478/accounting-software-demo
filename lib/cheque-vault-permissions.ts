@@ -16,9 +16,9 @@ export function isChequeRequestReadOnly(cheque: { status: string }): boolean {
 export function canEditChequeRequest(
   cheque: { status: string; uploadedById: number },
   userId: number | null | undefined,
-  options?: { isSuperAdmin?: boolean },
+  options?: { isSuperAdmin?: boolean; canApprove?: boolean },
 ): boolean {
-  if (options?.isSuperAdmin) return false;
+  if (options?.isSuperAdmin || options?.canApprove) return false;
   if (userId == null || cheque.uploadedById !== userId) return false;
   return UPLOADER_EDITABLE_STATUSES.includes(
     cheque.status as ChequeVaultStatus,
@@ -28,13 +28,13 @@ export function canEditChequeRequest(
 export function canLinkInvoicesOnCheque(
   cheque: { status: string; uploadedById: number },
   userId: number | null | undefined,
-  isSuperAdmin: boolean,
+  options?: { isSuperAdmin?: boolean; canApprove?: boolean },
 ): boolean {
   if (isChequeRequestReadOnly(cheque)) return false;
   if (!UPLOADER_EDITABLE_STATUSES.includes(cheque.status as ChequeVaultStatus)) {
     return false;
   }
-  if (isSuperAdmin) return true;
+  if (options?.isSuperAdmin || options?.canApprove) return true;
   return userId != null && cheque.uploadedById === userId;
 }
 
@@ -47,4 +47,11 @@ export function canDeleteChequeRequest(
     userId != null &&
     cheque.uploadedById === userId
   );
+}
+
+export function isChequeVaultReviewer(options?: {
+  isSuperAdmin?: boolean;
+  canApprove?: boolean;
+}): boolean {
+  return !!(options?.isSuperAdmin || options?.canApprove);
 }

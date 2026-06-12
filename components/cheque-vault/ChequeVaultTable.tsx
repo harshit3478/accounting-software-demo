@@ -44,7 +44,7 @@ export default function ChequeVaultTable({
   onViewCheque,
   onDeleteCheque,
 }: ChequeVaultTableProps) {
-  const { isSuperAdmin } = useAuth();
+  const { isSuperAdmin, canApproveCheques, canUploadCheques } = useAuth();
   if (isLoading) {
     return (
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -83,7 +83,11 @@ export default function ChequeVaultTable({
           </svg>
         </div>
         <p className="text-gray-500 font-medium">No cheques found</p>
-        <p className="text-gray-400 text-sm mt-1">Upload a cheque to get started</p>
+        <p className="text-gray-400 text-sm mt-1">
+          {canUploadCheques
+            ? "Upload a cheque to get started"
+            : "Cheque requests will appear here once uploaded"}
+        </p>
       </div>
     );
   }
@@ -174,6 +178,7 @@ export default function ChequeVaultTable({
                     >
                       {canEditChequeRequest(cheque, currentUserId, {
                         isSuperAdmin,
+                        canApprove: canApproveCheques,
                       })
                         ? "Edit"
                         : "View"}

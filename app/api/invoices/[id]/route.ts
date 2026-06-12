@@ -22,6 +22,10 @@ import {
   calculateRecalculationFeeAmount,
   getRecalculationFeeSettingSnapshot,
 } from "../../../../lib/recalculation-fee";
+import {
+  canUseMigratedInvoiceEdit,
+  getMigratedInvoiceEditSettingSnapshot,
+} from "../../../../lib/migrated-invoice-edit";
 import { calculateRestockingFeeAmount } from "../../../../lib/restocking-fee";
 import { buildLayawayInstallmentSchedule } from "../../../../lib/layaway-installments";
 import { uploadToR2 } from "../../../../lib/r2-client";
@@ -83,9 +87,11 @@ async function getConfiguredDepositFeeRules() {
     return normalizeDepositFeeRules(
       rows.map((row: any) => ({
         unitName: row.unitName,
+        ruleType: row.ruleType === "flat" ? "flat" : "range",
         minUnit: row.minUnit?.toNumber ? row.minUnit.toNumber() : row.minUnit,
         maxUnit: row.maxUnit?.toNumber ? row.maxUnit.toNumber() : row.maxUnit,
         fee: row.fee?.toNumber ? row.fee.toNumber() : Number(row.fee || 0),
+        isPercentage: !!row.isPercentage,
         isActive: row.isActive,
         sortOrder: row.sortOrder,
       })),
@@ -125,6 +131,7 @@ export async function PUT(
       recalculationFeeAction,
       removedItemDepositFeeAction,
       removedItemDepositFeeSkipReason,
+      migratedInvoiceEdit,
     } = await request.json();
 
     const reason = typeof editReason === "string" ? editReason.trim() : "";
@@ -158,6 +165,31 @@ export async function PUT(
 
     if (!existingInvoice) {
       return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
+    }
+
+    const invoiceIsLayaway =
+      typeof isLayaway === "boolean" ? isLayaway : !!existingInvoice.isLayaway;
+    const isMigratedInvoiceEdit =
+      migratedInvoiceEdit === true && invoiceIsLayaway;
+
+    if (migratedInvoiceEdit === true && !invoiceIsLayaway) {
+      return NextResponse.json(
+        {
+          error:
+            "Migrated invoice edit is only available for layaway invoices",
+        },
+        { status: 400 },
+      );
+    }
+
+    if (isMigratedInvoiceEdit) {
+      const migratedSetting = await getMigratedInvoiceEditSettingSnapshot();
+      if (!canUseMigratedInvoiceEdit(user, migratedSetting)) {
+        return NextResponse.json(
+          { error: "Migrated invoice edit is not allowed" },
+          { status: 403 },
+        );
+      }
     }
 
     const existingInvoiceAny = existingInvoice as any;
@@ -271,26 +303,54 @@ export async function PUT(
         : Number(existingInvoiceAny.insuranceAmount?.toNumber?.() ?? 0);
     const layawayFeeRates = await getConfiguredLayawayFeeRates();
     const layawayMonths = Number(layawayPlan?.months || 0);
-    const layawayFeeAmount = isLayaway
-      ? calculateLayawayFeeFromItems(
-          items as any,
-          layawayMonths || 3,
-          layawayFeeRates,
-        )
-      : 0;
+    const existingLayawayFee = Number(
+      existingInvoiceAny.layawayFee?.toNumber?.() ?? 0,
+    );
+    const layawayFeeAmount = isMigratedInvoiceEdit
+      ? isLayaway
+        ? existingLayawayFee
+        : 0
+      : isLayaway
+        ? calculateLayawayFeeFromItems(
+            items as any,
+            layawayMonths || 3,
+            layawayFeeRates,
+          )
+        : 0;
     const depositFeeRules = await getConfiguredDepositFeeRules();
-    const normalizedItems = Array.isArray(items)
-      ? items.map((item: any) => ({
-          ...item,
-          depositFee: calculateDepositFeeForItem(item, depositFeeRules),
-        }))
-      : items || null;
+    const existingItems = Array.isArray(existingInvoice.items)
+      ? existingInvoice.items
+      : [];
 
     const getItemKey = (item: any) =>
       [
         String(item?.name || "").trim().toLowerCase(),
         String(item?.unit || "").trim().toLowerCase(),
       ].join("|");
+
+    const normalizedItems = Array.isArray(items)
+      ? items.map((item: any, index: number) => {
+          if (isMigratedInvoiceEdit) {
+            const matchedExisting =
+              existingItems[index] ??
+              existingItems.find(
+                (existingItem: any) =>
+                  getItemKey(existingItem) === getItemKey(item),
+              );
+            return {
+              ...item,
+              depositFee: Number(
+                matchedExisting?.depositFee ?? item.depositFee ?? 0,
+              ),
+            };
+          }
+
+          return {
+            ...item,
+            depositFee: calculateDepositFeeForItem(item, depositFeeRules),
+          };
+        })
+      : items || null;
 
     const currentItemCounts = new Map<string, number>();
     if (Array.isArray(normalizedItems)) {
@@ -318,6 +378,7 @@ export async function PUT(
     );
 
     if (
+      !isMigratedInvoiceEdit &&
       removedItemDepositFeeAmount > 0 &&
       normalizedRemovedDepositFeeAction === "none"
     ) {
@@ -328,6 +389,7 @@ export async function PUT(
     }
 
     if (
+      !isMigratedInvoiceEdit &&
       removedItemDepositFeeAmount > 0 &&
       normalizedRemovedDepositFeeAction === "skip" &&
       !normalizedRemovedDepositFeeSkipReason
@@ -339,9 +401,11 @@ export async function PUT(
     }
 
     const appliedRemovedItemDepositFee =
-      normalizedRemovedDepositFeeAction === "apply"
-        ? removedItemDepositFeeAmount
-        : 0;
+      isMigratedInvoiceEdit
+        ? 0
+        : normalizedRemovedDepositFeeAction === "apply"
+          ? removedItemDepositFeeAmount
+          : 0;
 
     const totalAmount =
       parseFloat(subtotal) +
@@ -536,7 +600,7 @@ export async function PUT(
       nextData.layawayFee,
     );
     trackChange("amount", existingInvoice.amount.toNumber(), nextData.amount);
-    if (removedItemDepositFeeAmount > 0) {
+    if (!isMigratedInvoiceEdit && removedItemDepositFeeAmount > 0) {
       changes.removedItemDepositFee = {
         action: normalizedRemovedDepositFeeAction,
         amount:
@@ -654,6 +718,7 @@ export async function PUT(
                     String(normalizedLayawayPlan.notes || "").trim()),
             );
             const shouldApplyRecalculationFee =
+              !isMigratedInvoiceEdit &&
               hasLayawayPlanConfigChanged &&
               normalizedRecalculationFeeAction === "apply" &&
               recalcFeeSetting.isActive &&
@@ -755,12 +820,25 @@ export async function PUT(
       },
     );
 
+    const historyChanges: Record<string, any> = { ...changes };
+    if (isMigratedInvoiceEdit) {
+      historyChanges.migratedInvoiceEdit = true;
+      historyChanges.editedBySnapshot = {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+      };
+    }
+
     await prisma.invoiceEditHistory.create({
       data: {
         invoiceId,
         editedById: user.id,
-        reason,
-        changes: Object.keys(changes).length > 0 ? changes : undefined,
+        reason: isMigratedInvoiceEdit
+          ? `[Migrated invoice edit] ${reason}`
+          : reason,
+        changes:
+          Object.keys(historyChanges).length > 0 ? historyChanges : undefined,
       },
     });
 

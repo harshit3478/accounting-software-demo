@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "../../../../lib/prisma";
-import { requireAuth } from "../../../../lib/auth";
+import { requireAuth, requireSettingPermission } from "../../../../lib/auth";
 
 function isStoreCreditCompatibilityError(error: any): boolean {
   const message = String(error?.message || "");
@@ -252,7 +252,7 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    await requireAuth();
+    await requireSettingPermission("customers");
     const { id: idParam } = await params;
     const id = parseInt(idParam);
     if (isNaN(id)) {
@@ -305,7 +305,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    await requireAuth();
+    await requireSettingPermission("customers");
     const { id: idParam } = await params;
     const id = parseInt(idParam);
     if (isNaN(id)) {
@@ -366,7 +366,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    await requireAuth();
+    await requireSettingPermission("customers");
     const { id: idParam } = await params;
     const id = parseInt(idParam);
     if (isNaN(id)) {

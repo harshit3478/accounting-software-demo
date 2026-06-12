@@ -62,8 +62,9 @@ export default function ChequeDetailModal({
   onUpdateDetails,
   onDelete,
 }: ChequeDetailModalProps) {
-  const { isSuperAdmin, user } = useAuth();
-  const canReviewCheque = isSuperAdmin;
+  const { isSuperAdmin, canApproveCheques, user } = useAuth();
+  const canReviewCheque = isSuperAdmin || canApproveCheques;
+  const reviewOptions = { isSuperAdmin, canApprove: canApproveCheques };
   const [chequeNumber, setChequeNumber] = useState("");
   const [payorName, setPayorName] = useState("");
   const [amount, setAmount] = useState("");
@@ -98,8 +99,8 @@ export default function ChequeDetailModal({
 
   const readOnly = isChequeRequestReadOnly(cheque);
   const canEdit =
-    !!onUpdateDetails && canEditChequeRequest(cheque, user?.id, { isSuperAdmin });
-  const canLink = canLinkInvoicesOnCheque(cheque, user?.id, isSuperAdmin);
+    !!onUpdateDetails && canEditChequeRequest(cheque, user?.id, reviewOptions);
+  const canLink = canLinkInvoicesOnCheque(cheque, user?.id, reviewOptions);
 
   const handleApprove = async () => {
     setIsSubmitting(true);

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "../../../lib/prisma";
-import { requireAuth, isSuperAdmin } from "../../../lib/auth";
+import { requireAuth, requireSettingPermission } from "../../../lib/auth";
 
 export async function GET() {
   try {
@@ -34,11 +34,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const user = await requireAuth();
-
-    // Only admin / superadmin can create default terms or manage terms
-    if (user.role !== "admin" && !isSuperAdmin(user))
-      throw new Error("Forbidden");
+    await requireSettingPermission("terms");
 
     const { title, lines, isDefault } = await request.json();
 
@@ -77,9 +73,7 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const user = await requireAuth();
-    if (user.role !== "admin" && !isSuperAdmin(user))
-      throw new Error("Forbidden");
+    await requireSettingPermission("terms");
 
     const { id, title, lines, isDefault } = await request.json();
     if (!id) throw new Error("Missing id");
@@ -115,9 +109,7 @@ export async function PUT(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const user = await requireAuth();
-    if (user.role !== "admin" && !isSuperAdmin(user))
-      throw new Error("Forbidden");
+    await requireSettingPermission("terms");
 
     const { id } = await request.json();
     if (!id) throw new Error("Missing id");

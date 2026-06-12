@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcrypt";
+import { defaultPrivilegesForRole } from "../lib/permissions";
 
 const prisma = new PrismaClient();
 
@@ -18,13 +19,7 @@ async function main() {
       passwordHash: hashedPassword,
       name: "Super Admin",
       role: "admin",
-      privileges: {
-        documents: {
-          upload: true,
-          delete: true,
-          rename: true,
-        },
-      },
+      privileges: defaultPrivilegesForRole("admin"),
     },
   });
 
@@ -40,13 +35,7 @@ async function main() {
       passwordHash: accountantPassword,
       name: "Default Accountant",
       role: "accountant",
-      privileges: {
-        documents: {
-          upload: false,
-          delete: false,
-          rename: false,
-        },
-      },
+      privileges: defaultPrivilegesForRole("accountant"),
     },
   });
 
@@ -62,13 +51,7 @@ async function main() {
       passwordHash: staffPassword,
       name: "Default Staff",
       role: "staff",
-      privileges: {
-        documents: {
-          upload: false,
-          delete: false,
-          rename: false,
-        },
-      },
+      privileges: defaultPrivilegesForRole("staff"),
     },
   });
 

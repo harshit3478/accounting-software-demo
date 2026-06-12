@@ -1,12 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "../../../lib/prisma";
-import { isSuperAdmin, requireAuth } from "../../../lib/auth";
-
-function ensureAdmin(user: any) {
-  if (user.role !== "admin" && !isSuperAdmin(user)) {
-    throw new Error("Forbidden");
-  }
-}
+import { requireAuth, requireSettingPermission } from "../../../lib/auth";
 
 export async function GET() {
   try {
@@ -39,8 +33,7 @@ export async function GET() {
 
 export async function PUT(request: NextRequest) {
   try {
-    const user = await requireAuth();
-    ensureAdmin(user);
+    await requireSettingPermission("restocking-fee");
 
     const body = await request.json();
     const amount = Number(body?.amount ?? 0);

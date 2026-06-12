@@ -15,6 +15,7 @@ import InvoiceItemsEditor from "./InvoiceItemsEditor";
 import InvoiceSummary from "./InvoiceSummary";
 import Modal from "./Modal";
 import { InvoiceItem } from "./types";
+import { useAuth } from "../../lib/AuthContext";
 
 interface CustomerOption {
   id: number;
@@ -115,6 +116,7 @@ export default function EditInvoiceModal({
   onError,
   invoice,
 }: EditInvoiceModalProps) {
+  const { hasSettingPermission } = useAuth();
   const [clientName, setClientName] = useState("");
   const [customerId, setCustomerId] = useState<number | null>(null);
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
@@ -166,6 +168,9 @@ export default function EditInvoiceModal({
   const [invoiceDateError, setInvoiceDateError] = useState("");
   const [dateError, setDateError] = useState("");
   const [editReason, setEditReason] = useState("");
+  const [editMigratedInvoice, setEditMigratedInvoice] = useState(false);
+  const [migratedInvoiceEditEnabled, setMigratedInvoiceEditEnabled] =
+    useState(false);
   const [showRecalculationFeeModal, setShowRecalculationFeeModal] =
     useState(false);
   const [selectedRecalculationFeeAction, setSelectedRecalculationFeeAction] =
@@ -179,6 +184,10 @@ export default function EditInvoiceModal({
     useState("");
 
   const paidAmount = Number(invoice?.paidAmount || 0);
+  const canUseMigratedInvoiceEdit =
+    isLayaway &&
+    migratedInvoiceEditEnabled &&
+    hasSettingPermission("migrated-invoice-edit");
 
   const isBackDate = (selectedDate: string) => {
     if (!selectedDate) return false;
@@ -291,6 +300,15 @@ export default function EditInvoiceModal({
         })
         .catch(() => {});
 
+      fetch("/api/migrated-invoice-edit")
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          setMigratedInvoiceEditEnabled(!!data?.isActive);
+        })
+        .catch(() => {
+          setMigratedInvoiceEditEnabled(false);
+        });
+
       try {
         const stored = localStorage.getItem("layaway-defaults");
         if (stored) {
@@ -382,6 +400,7 @@ export default function EditInvoiceModal({
         setCustomTerms([""]);
       }
       setEditReason("");
+      setEditMigratedInvoice(false);
       setInvoiceDateError("");
       setDateError("");
       setShowRecalculationFeeModal(false);
@@ -391,6 +410,12 @@ export default function EditInvoiceModal({
       setRemovedDepositFeeSkipReason("");
     }
   }, [invoice, isOpen]);
+
+  useEffect(() => {
+    if (!canUseMigratedInvoiceEdit) {
+      setEditMigratedInvoice(false);
+    }
+  }, [canUseMigratedInvoiceEdit, isLayaway]);
 
   const calculateSubtotal = () => {
     return items.reduce((sum, item) => sum + item.quantity * item.price, 0);
@@ -410,6 +435,9 @@ export default function EditInvoiceModal({
 
   const calculateLayawayFeeAmount = () => {
     if (!isLayaway) return 0;
+    if (editMigratedInvoice) {
+      return Number(invoice?.layawayFee || 0);
+    }
     return calculateLayawayFeeFromItems(
       items as any,
       layawayMonths || 3,
@@ -458,7 +486,8 @@ export default function EditInvoiceModal({
     (sum, item) => sum + Number(item.depositFee || 0),
     0,
   );
-  const shouldOfferRemovedDepositFee = removedDepositFeeTotal > 0;
+  const shouldOfferRemovedDepositFee =
+    !editMigratedInvoice && removedDepositFeeTotal > 0;
 
   const calculateRemainingBalance = () => {
     return Math.max(calculateTotal() - paidAmount, 0);
@@ -475,6 +504,7 @@ export default function EditInvoiceModal({
   );
 
   const shouldOfferRecalculationFee =
+    !editMigratedInvoice &&
     hasLayawayReconfigurationChanged &&
     recalculationFeeSetting.isActive &&
     recalculationFeeSetting.amount > 0;
@@ -674,6 +704,7 @@ export default function EditInvoiceModal({
             effectiveRemovedDepositFeeAction === "skip"
               ? removedDepositFeeSkipReason.trim()
               : undefined,
+          migratedInvoiceEdit: editMigratedInvoice,
         }),
       });
 
@@ -1358,6 +1389,28 @@ export default function EditInvoiceModal({
             )}
           </div>
         </div>
+
+        {canUseMigratedInvoiceEdit && (
+          <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-4">
+            <label className="inline-flex items-start gap-3 text-sm text-indigo-950">
+              <input
+                type="checkbox"
+                checked={editMigratedInvoice}
+                onChange={(e) => setEditMigratedInvoice(e.target.checked)}
+                className="mt-0.5"
+              />
+              <span>
+                <span className="font-medium">Edit migrated invoice</span>
+                <span className="mt-1 block text-indigo-800">
+                  Temporary audit-only mode for layaway invoices. Saves your
+                  changes without recalculating deposit fees, layaway fees,
+                  removed-item deposit fees, or layaway recalculation fees. The
+                  edit is tagged in audit history with who made the change.
+                </span>
+              </span>
+            </label>
+          </div>
+        )}
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">

@@ -1,13 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "../../../lib/prisma";
-import { requireAuth, isSuperAdmin } from "../../../lib/auth";
+import { requireAuth, requireSettingPermission } from "../../../lib/auth";
 import { DEFAULT_INSURANCE_BANDS } from "../../../lib/insurance";
-
-function ensureAdminOrSuper(user: any) {
-  if (user.role !== "admin" && !isSuperAdmin(user)) {
-    throw new Error("Forbidden");
-  }
-}
 
 async function ensureDefaultRules() {
   const ruleModel = (prisma as any)?.insuranceRule;
@@ -62,8 +56,7 @@ export async function GET() {
 
 export async function PUT(request: NextRequest) {
   try {
-    const user = await requireAuth();
-    ensureAdminOrSuper(user);
+    await requireSettingPermission("insurance-rules");
 
     const { id, clientShare } = await request.json();
 

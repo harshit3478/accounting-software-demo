@@ -1,8 +1,12 @@
+export type DepositFeeRuleType = "range" | "flat";
+
 export interface DepositFeeRuleLike {
   unitName?: string | null;
+  ruleType?: DepositFeeRuleType | string | null;
   minUnit?: number | null;
   maxUnit?: number | null;
   fee: number;
+  isPercentage?: boolean;
   isActive?: boolean;
   sortOrder?: number;
 }
@@ -10,12 +14,17 @@ export interface DepositFeeRuleLike {
 export interface DepositFeeItemLike {
   quantity?: number | string | null;
   unit?: string | null;
+  price?: number | string | null;
 }
 
 function normalizeUnitName(unit: string | null | undefined) {
   return String(unit || "")
     .trim()
     .toLowerCase();
+}
+
+export function isFlatDepositFeeRule(rule: DepositFeeRuleLike): boolean {
+  return rule.ruleType === "flat";
 }
 
 export function normalizeDepositFeeRules<T extends DepositFeeRuleLike>(
@@ -42,10 +51,27 @@ export function normalizeDepositFeeRules<T extends DepositFeeRuleLike>(
   });
 }
 
+export function calculateFlatDepositFee(
+  quantity: number,
+  unitPrice: number,
+  rule: DepositFeeRuleLike,
+): number {
+  const fee = Number(rule.fee || 0);
+  if (!Number.isFinite(fee) || fee < 0) return 0;
+
+  if (rule.isPercentage) {
+    const lineTotal = unitPrice * quantity;
+    return Number(((lineTotal * fee) / 100).toFixed(2));
+  }
+
+  return Number((fee * quantity).toFixed(2));
+}
+
 export function calculateDepositFeeFromRules(
   quantity: number,
   unitName: string | null | undefined,
   rules: DepositFeeRuleLike[],
+  unitPrice = 0,
 ): number {
   if (!Number.isFinite(quantity) || quantity <= 0) return 0;
 
@@ -57,6 +83,10 @@ export function calculateDepositFeeFromRules(
   for (const rule of sortedRules) {
     const ruleUnit = normalizeUnitName(rule.unitName);
     if (ruleUnit && normalizedUnit && ruleUnit !== normalizedUnit) continue;
+
+    if (isFlatDepositFeeRule(rule)) {
+      return calculateFlatDepositFee(quantity, Number(unitPrice || 0), rule);
+    }
 
     const minOk = rule.minUnit == null || quantity >= Number(rule.minUnit);
     const maxOk = rule.maxUnit == null || quantity <= Number(rule.maxUnit);
@@ -76,5 +106,24 @@ export function calculateDepositFeeForItem(
     Number(item.quantity || 0),
     item.unit,
     rules,
+    Number(item.price || 0),
   );
+}
+
+export function formatDepositFeeRuleSummary(rule: DepositFeeRuleLike): string {
+  const unit = rule.unitName || "units";
+
+  if (isFlatDepositFeeRule(rule)) {
+    if (rule.isPercentage) {
+      return `${Number(rule.fee || 0)}% of line total per ${unit}`;
+    }
+    return `$${Number(rule.fee || 0).toFixed(2)} per ${unit}`;
+  }
+
+  const min = rule.minUnit;
+  const max = rule.maxUnit;
+  if (min == null && max == null) return `All ${unit} quantities`;
+  if (min != null && max == null) return `${unit} >= ${min}`;
+  if (min == null && max != null) return `${unit} <= ${max}`;
+  return `${unit} ${min} - ${max}`;
 }

@@ -1,12 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "../../../lib/prisma";
-import { requireAuth, isSuperAdmin } from "../../../lib/auth";
-
-function ensureAdminOrSuper(user: any) {
-  if (user.role !== "admin" && !isSuperAdmin(user)) {
-    throw new Error("Forbidden");
-  }
-}
+import { requireAuth, requireSettingPermission } from "../../../lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
@@ -48,8 +42,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const user = await requireAuth();
-    ensureAdminOrSuper(user);
+    const user = await requireSettingPermission("live-types");
 
     const { name, country, isActive, sortOrder } = await request.json();
 
@@ -86,8 +79,7 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const user = await requireAuth();
-    ensureAdminOrSuper(user);
+    const user = await requireSettingPermission("live-types");
 
     const { id, name, country, isActive, sortOrder } = await request.json();
     const liveTypeId = Number(id);
@@ -139,8 +131,7 @@ export async function PUT(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const user = await requireAuth();
-    ensureAdminOrSuper(user);
+    const user = await requireSettingPermission("live-types");
 
     const { id } = await request.json();
     const liveTypeId = Number(id);

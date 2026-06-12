@@ -187,17 +187,19 @@ model ShippingFeeRule {
 }
 
 model DepositFeeRule {
-  id        Int      @id @default(autoincrement())
-  name      String
-  unitName  String   @default("grams")
-  minUnit   Decimal? @db.Decimal(10, 2)
-  maxUnit   Decimal? @db.Decimal(10, 2)
-  fee       Decimal  @db.Decimal(10, 2)
-  isActive  Boolean  @default(true)
-  sortOrder Int      @default(0)
-  createdBy Int
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           Int      @id @default(autoincrement())
+  name         String
+  unitName     String   @default("grams")
+  ruleType     String   @default("range") // "range" | "flat"
+  minUnit      Decimal? @db.Decimal(10, 2)
+  maxUnit      Decimal? @db.Decimal(10, 2)
+  fee          Decimal  @db.Decimal(10, 2)
+  isPercentage Boolean  @default(false)
+  isActive     Boolean  @default(true)
+  sortOrder    Int      @default(0)
+  createdBy    Int
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   creator User @relation(fields: [createdBy], references: [id], onDelete: Cascade)
 
@@ -524,6 +526,15 @@ model RestockingFeeSetting {
   updatedAt    DateTime @updatedAt
 
   @@map("restocking_fee_settings")
+}
+
+model MigratedInvoiceEditSetting {
+  id        Int      @id @default(autoincrement())
+  isActive  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("migrated_invoice_edit_settings")
 }
 
 model LayawayPlan {

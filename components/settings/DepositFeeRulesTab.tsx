@@ -2,14 +2,21 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { FiPlus, FiEdit2, FiTrash2 } from "react-icons/fi";
+import ConfirmModal from "../ConfirmModal";
+import {
+  formatDepositFeeRuleSummary,
+  type DepositFeeRuleType,
+} from "../../lib/deposit-fees";
 
 interface DepositFeeRule {
   id: number;
   name: string;
   unitName: string;
+  ruleType: DepositFeeRuleType;
   minUnit: number | null;
   maxUnit: number | null;
   fee: number;
+  isPercentage: boolean;
   isActive: boolean;
   sortOrder: number;
   creator?: {
@@ -43,14 +50,21 @@ export default function DepositFeeRulesTab({
   const [units, setUnits] = useState<InvoiceUnit[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [switchConfirm, setSwitchConfirm] = useState<{
+    mode: "flat" | "range";
+    payload: Record<string, unknown>;
+    rangeRuleCount?: number;
+  } | null>(null);
   const [editingRule, setEditingRule] = useState<DepositFeeRule | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
     name: "",
     unitName: FALLBACK_UNIT,
+    ruleType: "range" as DepositFeeRuleType,
     minUnit: "",
     maxUnit: "",
     fee: "0",
+    isPercentage: false,
     sortOrder: "0",
     isActive: true,
   });
@@ -67,6 +81,80 @@ export default function DepositFeeRulesTab({
       FALLBACK_UNIT
     );
   }, [unitOptions]);
+
+  const isFlatRule = form.ruleType === "flat";
+  const selectedUnitKey = form.unitName.trim().toLowerCase();
+  const otherRulesForUnit = useMemo(() => {
+    return rules.filter(
+      (rule) =>
+        rule.unitName.trim().toLowerCase() === selectedUnitKey &&
+        rule.id !== editingRule?.id,
+    );
+  }, [rules, selectedUnitKey, editingRule?.id]);
+
+  const hasOtherFlatRule = otherRulesForUnit.some((rule) => rule.ruleType === "flat");
+  const rangeRulesForUnit = otherRulesForUnit.filter((rule) => rule.ruleType !== "flat");
+  const hasRangeRulesForUnit = rangeRulesForUnit.length > 0;
+  const activeRangeRulesForUnit = rangeRulesForUnit.filter((rule) => rule.isActive);
+  const hasActiveRangeRulesForUnit = activeRangeRulesForUnit.length > 0;
+  const activeFlatForUnit = otherRulesForUnit.some(
+    (rule) => rule.ruleType === "flat" && rule.isActive,
+  );
+
+  const buildPayload = () => ({
+    ...(editingRule ? { id: editingRule.id } : {}),
+    name: form.name.trim(),
+    unitName: form.unitName.trim(),
+    ruleType: form.ruleType,
+    minUnit:
+      form.ruleType === "flat"
+        ? null
+        : form.minUnit === ""
+          ? null
+          : Number(form.minUnit),
+    maxUnit:
+      form.ruleType === "flat"
+        ? null
+        : form.maxUnit === ""
+          ? null
+          : Number(form.maxUnit),
+    fee: Number(form.fee),
+    isPercentage: form.ruleType === "flat" ? form.isPercentage : false,
+    sortOrder: Number(form.sortOrder || 0),
+    isActive: form.isActive,
+  });
+
+  const persistRule = async (
+    payload: Record<string, unknown>,
+    replaceConflictingRules = false,
+  ) => {
+    setIsSaving(true);
+    try {
+      const res = await fetch("/api/deposit-fee-rules", {
+        method: editingRule ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...payload,
+          replaceConflictingRules,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Failed to save rule");
+      }
+
+      showSuccess(editingRule ? "Rule updated" : "Rule created");
+      setShowForm(false);
+      setSwitchConfirm(null);
+      resetForm();
+      fetchRules();
+    } catch (error: any) {
+      showError(error.message || "Failed to save rule");
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const fetchRules = async () => {
     setIsLoading(true);
@@ -117,9 +205,11 @@ export default function DepositFeeRulesTab({
     setForm({
       name: "",
       unitName: defaultUnitName,
+      ruleType: "range",
       minUnit: "",
       maxUnit: "",
       fee: "0",
+      isPercentage: false,
       sortOrder: "0",
       isActive: true,
     });
@@ -136,9 +226,11 @@ export default function DepositFeeRulesTab({
     setForm({
       name: rule.name,
       unitName: rule.unitName || defaultUnitName,
+      ruleType: rule.ruleType === "flat" ? "flat" : "range",
       minUnit: rule.minUnit != null ? String(rule.minUnit) : "",
       maxUnit: rule.maxUnit != null ? String(rule.maxUnit) : "",
       fee: String(rule.fee),
+      isPercentage: !!rule.isPercentage,
       sortOrder: String(rule.sortOrder ?? 0),
       isActive: !!rule.isActive,
     });
@@ -156,53 +248,48 @@ export default function DepositFeeRulesTab({
       return;
     }
 
-    const payload = {
-      ...(editingRule ? { id: editingRule.id } : {}),
-      name: form.name.trim(),
-      unitName: form.unitName.trim(),
-      minUnit: form.minUnit === "" ? null : Number(form.minUnit),
-      maxUnit: form.maxUnit === "" ? null : Number(form.maxUnit),
-      fee: Number(form.fee),
-      sortOrder: Number(form.sortOrder || 0),
-      isActive: form.isActive,
-    };
+    if (form.ruleType === "flat" && hasOtherFlatRule) {
+      showError("A flat rule already exists for this unit");
+      return;
+    }
 
-    if (!Number.isFinite(payload.fee) || payload.fee < 0) {
+    const payload = buildPayload();
+
+    if (!Number.isFinite(payload.fee as number) || (payload.fee as number) < 0) {
       showError("Fee must be a valid non-negative number");
       return;
     }
 
     if (
+      payload.ruleType === "range" &&
       payload.minUnit !== null &&
       payload.maxUnit !== null &&
-      payload.minUnit > payload.maxUnit
+      (payload.minUnit as number) > (payload.maxUnit as number)
     ) {
       showError("Minimum unit cannot be greater than maximum unit");
       return;
     }
 
-    setIsSaving(true);
-    try {
-      const res = await fetch("/api/deposit-fee-rules", {
-        method: editingRule ? "PUT" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+    if (form.ruleType === "flat" && form.isActive && hasActiveRangeRulesForUnit) {
+      setSwitchConfirm({
+        mode: "flat",
+        payload,
+        rangeRuleCount: activeRangeRulesForUnit.length,
       });
-
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || "Failed to save rule");
-      }
-
-      showSuccess(editingRule ? "Rule updated" : "Rule created");
-      setShowForm(false);
-      resetForm();
-      fetchRules();
-    } catch (error: any) {
-      showError(error.message || "Failed to save rule");
-    } finally {
-      setIsSaving(false);
+      return;
     }
+
+    if (form.ruleType === "range" && form.isActive && activeFlatForUnit) {
+      setSwitchConfirm({ mode: "range", payload });
+      return;
+    }
+
+    await persistRule(payload);
+  };
+
+  const confirmRuleSwitch = async () => {
+    if (!switchConfirm) return;
+    await persistRule(switchConfirm.payload, true);
   };
 
   const deleteRule = async (rule: DepositFeeRule) => {
@@ -227,18 +314,6 @@ export default function DepositFeeRulesTab({
     }
   };
 
-  const formatRange = (rule: DepositFeeRule) => {
-    const min = rule.minUnit;
-    const max = rule.maxUnit;
-    const unit = rule.unitName || FALLBACK_UNIT;
-
-    if (min == null && max == null) return `All ${unit} quantities`;
-    if (min != null && max == null) return `${unit} >= ${min}`;
-    if (min == null && max != null) return `${unit} <= ${max}`;
-
-    return `${unit} ${(min as number)} - ${max}`;
-  };
-
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -247,8 +322,8 @@ export default function DepositFeeRulesTab({
             Deposit Fee Rules
           </h2>
           <p className="text-gray-600 text-sm">
-            Create unit quantity bands that automatically assign a per-item
-            deposit fee during invoice entry.
+            Use a single flat rule per unit (fixed amount or percentage), or
+            create multiple quantity range bands with min/max units.
           </p>
         </div>
         <button
@@ -301,39 +376,71 @@ export default function DepositFeeRulesTab({
             </div>
             <div>
               <label className="block text-sm text-gray-600 mb-1">
-                Min units
+                Rule type *
               </label>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={form.minUnit}
+              <select
+                value={form.ruleType}
                 onChange={(e) =>
-                  setForm((prev) => ({ ...prev, minUnit: e.target.value }))
+                  setForm((prev) => ({
+                    ...prev,
+                    ruleType: e.target.value as DepositFeeRuleType,
+                    minUnit: e.target.value === "flat" ? "" : prev.minUnit,
+                    maxUnit: e.target.value === "flat" ? "" : prev.maxUnit,
+                    isPercentage:
+                      e.target.value === "flat" ? prev.isPercentage : false,
+                  }))
                 }
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
-                placeholder="No minimum"
-              />
+              >
+                <option value="range">Range bands (min/max units)</option>
+                <option value="flat">Single flat rule per unit</option>
+              </select>
             </div>
+
+            {!isFlatRule && (
+              <>
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">
+                    Min units
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={form.minUnit}
+                    onChange={(e) =>
+                      setForm((prev) => ({ ...prev, minUnit: e.target.value }))
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
+                    placeholder="No minimum"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">
+                    Max units
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={form.maxUnit}
+                    onChange={(e) =>
+                      setForm((prev) => ({ ...prev, maxUnit: e.target.value }))
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
+                    placeholder="No maximum"
+                  />
+                </div>
+              </>
+            )}
+
             <div>
               <label className="block text-sm text-gray-600 mb-1">
-                Max units
-              </label>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={form.maxUnit}
-                onChange={(e) =>
-                  setForm((prev) => ({ ...prev, maxUnit: e.target.value }))
-                }
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
-                placeholder="No maximum"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-gray-600 mb-1">
-                Fee ($)
+                {isFlatRule
+                  ? form.isPercentage
+                    ? "Deposit fee (%)"
+                    : "Deposit fee per unit ($)"
+                  : "Deposit fee ($)"}
               </label>
               <input
                 type="number"
@@ -346,6 +453,25 @@ export default function DepositFeeRulesTab({
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
               />
             </div>
+
+            {isFlatRule && (
+              <div className="flex items-end">
+                <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={form.isPercentage}
+                    onChange={(e) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        isPercentage: e.target.checked,
+                      }))
+                    }
+                  />
+                  Percentage of line total
+                </label>
+              </div>
+            )}
+
             <div>
               <label className="block text-sm text-gray-600 mb-1">
                 Sort order
@@ -374,10 +500,45 @@ export default function DepositFeeRulesTab({
               </label>
             </div>
           </div>
+
+          {isFlatRule && hasActiveRangeRulesForUnit && (
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-3">
+              Active range band rules exist for this unit. Saving an active flat
+              rule will ask to disable them and use this flat rule instead.
+            </p>
+          )}
+
+          {!isFlatRule && activeFlatForUnit && (
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-3">
+              An active flat rule exists for this unit. Saving a range rule will
+              ask to disable the flat rule and re-enable range band rules.
+            </p>
+          )}
+
+          {!isFlatRule && !activeFlatForUnit && (
+            <p className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 mt-3">
+              Range rules let you create multiple bands using min/max units for
+              the same unit type.
+            </p>
+          )}
+
+          {isFlatRule && !form.isActive && hasRangeRulesForUnit && (
+            <p className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 mt-3">
+              Disabling this flat rule will automatically re-enable all range
+              band rules for this unit.
+            </p>
+          )}
+
+          {form.ruleType === "flat" && hasOtherFlatRule && (
+            <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mt-3">
+              This unit already has a flat rule. Edit the existing flat rule instead.
+            </p>
+          )}
+
           <div className="flex gap-2 mt-4">
             <button
               onClick={saveRule}
-              disabled={isSaving}
+              disabled={isSaving || (form.ruleType === "flat" && hasOtherFlatRule)}
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm disabled:opacity-50"
             >
               {isSaving ? "Saving..." : "Save"}
@@ -394,6 +555,30 @@ export default function DepositFeeRulesTab({
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={!!switchConfirm}
+        title={
+          switchConfirm?.mode === "flat"
+            ? "Switch to single flat rule?"
+            : "Switch to range band rules?"
+        }
+        message={
+          switchConfirm?.mode === "flat"
+            ? `This unit has ${switchConfirm.rangeRuleCount ?? 0} range band rule(s) for ${form.unitName}. Saving this flat rule will disable all range rules for this unit and activate only this flat rule.`
+            : `This unit has an active flat rule for ${form.unitName}. Saving will disable the flat rule and re-enable all range band rules for this unit.`
+        }
+        confirmText={
+          switchConfirm?.mode === "flat"
+            ? "Disable range rules"
+            : "Disable flat rule"
+        }
+        cancelText="Cancel"
+        onConfirm={confirmRuleSwitch}
+        onCancel={() => setSwitchConfirm(null)}
+        isLoading={isSaving}
+        danger
+      />
 
       {isLoading ? (
         <div className="flex items-center justify-center py-6">
@@ -417,7 +602,8 @@ export default function DepositFeeRulesTab({
                     {rule.name}
                   </p>
                   <p className="text-xs text-gray-500 mt-1">
-                    {formatRange(rule)}
+                    {rule.ruleType === "flat" ? "Flat rule" : "Range rule"} ·{" "}
+                    {formatDepositFeeRuleSummary(rule)}
                   </p>
                 </div>
                 <div>
@@ -425,7 +611,9 @@ export default function DepositFeeRulesTab({
                     Fee
                   </p>
                   <p className="text-sm font-semibold text-gray-900 mt-1">
-                    ${rule.fee.toFixed(2)}
+                    {rule.ruleType === "flat" && rule.isPercentage
+                      ? `${rule.fee}%`
+                      : `$${rule.fee.toFixed(2)}`}
                   </p>
                 </div>
                 <div>

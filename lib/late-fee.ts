@@ -1,5 +1,5 @@
 import prisma from "./prisma";
-import { stampPaymentCode } from "./payment-code";
+import { stampPaymentCode, formatPaymentCode } from "./payment-code";
 import { isLayawayInstallmentOverdue } from "./late-fee-client";
 
 export interface LateFeeSettingSnapshot {
@@ -96,4 +96,70 @@ export async function createLateFeePayment(
   await stampPaymentCode(tx, payment.id);
 
   return payment;
+}
+
+export async function removeLateFeeFromInvoice(
+  tx: any,
+  input: {
+    invoiceId: number;
+    paymentId: number;
+  },
+) {
+  const payment = await tx.payment.findUnique({
+    where: { id: input.paymentId },
+  });
+
+  if (!payment || payment.invoiceId !== input.invoiceId) {
+    throw new Error("Late fee payment not found on this invoice");
+  }
+
+  if (payment.source !== "late_fee") {
+    throw new Error("Only late fee payments can be removed with this action");
+  }
+
+  const invoice = await tx.invoice.findUnique({
+    where: { id: input.invoiceId },
+    select: { id: true, isLayaway: true, status: true, amount: true },
+  });
+
+  if (!invoice) {
+    throw new Error("Invoice not found");
+  }
+
+  if (!invoice.isLayaway) {
+    throw new Error("Late fee removal is only available for layaway invoices");
+  }
+
+  if (invoice.status === "abandoned" || invoice.status === "inactive") {
+    throw new Error("Cannot remove late fees from this invoice status");
+  }
+
+  const feeAmount = Number(payment.amount?.toNumber?.() ?? payment.amount ?? 0);
+  if (!Number.isFinite(feeAmount) || feeAmount <= 0) {
+    throw new Error("Invalid late fee amount");
+  }
+
+  const paymentCode = payment.paymentCode || formatPaymentCode(payment.id);
+
+  await tx.payment.delete({
+    where: { id: input.paymentId },
+  });
+
+  const currentAmount = Number(invoice.amount?.toNumber?.() ?? invoice.amount ?? 0);
+  const nextAmount = Math.max(Number((currentAmount - feeAmount).toFixed(2)), 0);
+
+  await tx.invoice.update({
+    where: { id: input.invoiceId },
+    data: {
+      amount: nextAmount,
+    },
+  });
+
+  return {
+    feeAmount,
+    paymentCode,
+    notes: payment.notes,
+    previousInvoiceAmount: currentAmount,
+    nextInvoiceAmount: nextAmount,
+  };
 }

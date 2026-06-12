@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "../../../lib/prisma";
-import { requireAuth, requireAdmin } from "../../../lib/auth";
+import { requireAuth, requireSettingPermission } from "../../../lib/auth";
 
 async function ensureDefaultUnit() {
   const unitModel = (prisma as any).invoiceUnit;
@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    await requireAdmin();
+    await requireSettingPermission("units");
     const body = await request.json();
     const { name, sortOrder } = body;
 
@@ -89,7 +89,7 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    await requireAdmin();
+    await requireSettingPermission("units");
     const body = await request.json();
     const { id, name, isActive, sortOrder } = body;
 
@@ -161,7 +161,7 @@ export async function PUT(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    await requireAdmin();
+    await requireSettingPermission("units");
     const body = await request.json();
     const unitId = Number(body?.id);
     if (!Number.isFinite(unitId)) {

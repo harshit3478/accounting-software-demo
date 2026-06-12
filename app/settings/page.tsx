@@ -20,6 +20,7 @@ import LateFeeTab from "../../components/settings/LateFeeTab";
 import DepositFeeRulesTab from "../../components/settings/DepositFeeRulesTab";
 import RestockingFeeTab from "../../components/settings/RestockingFeeTab";
 import RecalculationFeeTab from "../../components/settings/RecalculationFeeTab";
+import MigratedInvoiceEditTab from "../../components/settings/MigratedInvoiceEditTab";
 import DueDateReasonsTab from "../../components/settings/DueDateReasonsTab";
 import ProfileTab from "../../components/settings/ProfileTab";
 import {
@@ -60,6 +61,11 @@ const ADMIN_TABS = [
   { id: "deposit-fees", label: "Deposit Fees", icon: Shield },
   { id: "restocking-fee", label: "Restocking Fee", icon: Shield },
   { id: "recalculation-fee", label: "Recalculation Fee", icon: CalendarClock },
+  {
+    id: "migrated-invoice-edit",
+    label: "Migrated Invoice Edit",
+    icon: FileText,
+  },
   { id: "quickbooks", label: "QuickBooks", icon: Link2 },
 ] as const;
 
@@ -71,11 +77,11 @@ function SettingsContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { showSuccess, showError } = useToastContext();
-  const { isAdmin, isSuperAdmin } = useAuth();
-  const canManageSettings = isAdmin || isSuperAdmin;
-  const visibleTabs = canManageSettings
-    ? [PROFILE_TAB, ...ADMIN_TABS]
-    : [PROFILE_TAB];
+  const { hasSettingPermission } = useAuth();
+  const visibleAdminTabs = ADMIN_TABS.filter((tab) =>
+    hasSettingPermission(tab.id),
+  );
+  const visibleTabs = [PROFILE_TAB, ...visibleAdminTabs];
 
   const tabParam = searchParams.get("tab") as TabId | null;
   const activeTab: TabId =
@@ -145,6 +151,13 @@ function SettingsContent() {
       case "recalculation-fee":
         return (
           <RecalculationFeeTab
+            showSuccess={showSuccess}
+            showError={showError}
+          />
+        );
+      case "migrated-invoice-edit":
+        return (
+          <MigratedInvoiceEditTab
             showSuccess={showSuccess}
             showError={showError}
           />

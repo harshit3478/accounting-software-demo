@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
-import { requireAuth } from '../../../../lib/auth';
+import { requireAuth, requireSettingPermission } from '../../../../lib/auth';
 import { getQuickBooksAuthUri, getQuickBooksConfig } from '../../../../lib/quickbooks';
 
 export async function GET() {
   try {
-    await requireAuth();
+    await requireSettingPermission('quickbooks');
     
     // Log configuration for debugging
     const config = getQuickBooksConfig();

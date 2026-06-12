@@ -1,18 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "../../../lib/prisma";
-import { isSuperAdmin, requireAuth } from "../../../lib/auth";
+import { requireAuth, requireSettingPermission } from "../../../lib/auth";
 import {
   DEFAULT_LAYAWAY_FEE_RATES,
   flattenLayawayFeeConfigs,
   groupLayawayFeeRatesByUnit,
   normalizeLayawayFeeRates,
 } from "../../../lib/layaway-fees";
-
-function ensureAdminOrSuper(user: any) {
-  if (user.role !== "admin" && !isSuperAdmin(user)) {
-    throw new Error("Forbidden");
-  }
-}
 
 async function ensureDefaultLayawayRates() {
   const rateModel = (prisma as any)?.layawayFeeSetting;
@@ -87,8 +81,7 @@ export async function GET() {
 
 export async function PUT(request: NextRequest) {
   try {
-    const user = await requireAuth();
-    ensureAdminOrSuper(user);
+    await requireSettingPermission("layaway");
 
     const body = await request.json();
     const ratesInput = Array.isArray(body?.rates) ? body.rates : [];

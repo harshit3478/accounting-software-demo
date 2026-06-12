@@ -9,7 +9,7 @@ import { formatUserDisplayName } from "../lib/user-display";
 
 export default function Navigation() {
   const pathname = usePathname();
-  const { logout, isAdmin, user } = useAuth();
+  const { logout, isAdmin, user, isSuperAdmin } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -37,10 +37,12 @@ export default function Navigation() {
     });
   }
 
-  const isSuperAdmin =
-    user?.email === process.env.NEXT_PUBLIC_SUPERADMIN_EMAIL || user?.id === 1;
+  const hasSettingsAccess =
+    isAdmin ||
+    isSuperAdmin ||
+    Object.values(user?.settingsPermissions ?? {}).some(Boolean);
 
-  if (isAdmin || isSuperAdmin) {
+  if (hasSettingsAccess) {
     navItems.push({
       href: "/settings",
       label: "Settings",
@@ -59,7 +61,7 @@ export default function Navigation() {
     let mounted = true;
     async function fetchCount() {
       try {
-        if (!(isAdmin || isSuperAdmin)) return;
+        if (!hasSettingsAccess) return;
         const res = await fetch("/api/attendance/admin/regularization/count");
         if (!res.ok) return;
         const data = await res.json();
@@ -72,7 +74,7 @@ export default function Navigation() {
     return () => {
       mounted = false;
     };
-  }, [isAdmin, isSuperAdmin]);
+  }, [hasSettingsAccess]);
 
   useEffect(() => {
     if (!menuOpen) return;

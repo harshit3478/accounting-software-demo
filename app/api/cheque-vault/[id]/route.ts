@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { isSuperAdmin, requireAuth } from "@/lib/auth";
+import { hasPermission, isSuperAdmin, requireAuth } from "@/lib/auth";
 import {
   canDeleteChequeRequest,
   canEditChequeRequest,
   canLinkInvoicesOnCheque,
   isChequeRequestReadOnly,
+  isChequeVaultReviewer,
 } from "@/lib/cheque-vault-permissions";
 import { isLinkableInvoiceStatus } from "@/lib/invoice-linkable-status";
 import { deleteFromR2 } from "@/lib/r2-client";
@@ -79,14 +80,6 @@ export async function GET(
       return NextResponse.json({ error: "Cheque not found" }, { status: 404 });
     }
 
-    if (
-      user.role !== "admin" &&
-      !isSuperAdmin(user) &&
-      cheque.uploadedById !== user.id
-    ) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-
     return NextResponse.json({ cheque: serializeCheque(cheque) });
   } catch (error: any) {
     if (error.message === "Unauthorized") {
@@ -135,16 +128,25 @@ export async function PATCH(
       customerEmail !== undefined;
     const wantsInvoiceUpdate = invoices !== undefined;
 
-    if (isSuperAdmin(user)) {
+    const canApprove = hasPermission(user, "chequeVault.approve");
+    const reviewer = isChequeVaultReviewer({
+      isSuperAdmin: isSuperAdmin(user),
+      canApprove,
+    });
+
+    if (reviewer) {
       if (wantsFieldUpdate) {
         return NextResponse.json(
-          { error: "Super admin can only link invoices, not edit cheque details" },
+          { error: "Reviewers can only link invoices, not edit cheque details" },
           { status: 403 },
         );
       }
       if (
         wantsInvoiceUpdate &&
-        !canLinkInvoicesOnCheque(cheque, user.id, true)
+        !canLinkInvoicesOnCheque(cheque, user.id, {
+          isSuperAdmin: isSuperAdmin(user),
+          canApprove,
+        })
       ) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
@@ -163,7 +165,7 @@ export async function PATCH(
       }
       if (
         wantsInvoiceUpdate &&
-        !canLinkInvoicesOnCheque(cheque, user.id, false)
+        !canLinkInvoicesOnCheque(cheque, user.id, { canApprove: false })
       ) {
         return NextResponse.json(
           { error: "You can only link invoices on your own pending requests" },

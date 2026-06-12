@@ -22,6 +22,7 @@ import type {
   InvoiceTypeFilter,
   InvoiceLiveTypeFilter,
   InvoiceShipmentFilter,
+  InvoiceAbandonFeeFilter,
 } from "../../hooks/useInvoices";
 
 interface LiveTypeOption {
@@ -41,6 +42,8 @@ interface InvoiceToolbarProps {
   onLiveTypeFilterChange: (filter: InvoiceLiveTypeFilter) => void;
   shipmentFilter: InvoiceShipmentFilter;
   onShipmentFilterChange: (filter: InvoiceShipmentFilter) => void;
+  abandonFeeFilter: InvoiceAbandonFeeFilter;
+  onAbandonFeeFilterChange: (filter: InvoiceAbandonFeeFilter) => void;
   layawayOverdue: boolean;
   onLayawayOverdueChange: (overdue: boolean) => void;
   searchTerm: string;
@@ -63,6 +66,8 @@ export default function InvoiceToolbar({
   onLiveTypeFilterChange,
   shipmentFilter,
   onShipmentFilterChange,
+  abandonFeeFilter,
+  onAbandonFeeFilterChange,
   layawayOverdue,
   onLayawayOverdueChange,
   searchTerm,
@@ -303,6 +308,58 @@ export default function InvoiceToolbar({
               </div>
             </PopoverContent>
           </Popover>
+
+          {statusFilter === "abandoned" && (
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9 border-dashed"
+                >
+                  <Filter className="mr-2 h-4 w-4" />
+                  Abandon Fee
+                  {abandonFeeFilter !== "all" && (
+                    <>
+                      <span className="mx-2 h-4 w-[1px] bg-gray-200" />
+                      <span className="text-blue-600 max-w-[120px] truncate">
+                        {abandonFeeFilter === "with_fee"
+                          ? "With fee"
+                          : "Without fee"}
+                      </span>
+                    </>
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[220px] p-0" align="start">
+                <div className="p-2">
+                  {(
+                    [
+                      ["all", "All abandoned"],
+                      ["with_fee", "With fee retained"],
+                      ["without_fee", "Without fee"],
+                    ] as const
+                  ).map(([value, label]) => (
+                    <div
+                      key={value}
+                      className={`px-3 py-2 text-sm rounded-md cursor-pointer hover:bg-gray-100 ${
+                        abandonFeeFilter === value
+                          ? "bg-blue-50 text-blue-700 font-medium"
+                          : "text-gray-700"
+                      }`}
+                      onClick={() =>
+                        onAbandonFeeFilterChange(
+                          value as InvoiceAbandonFeeFilter,
+                        )
+                      }
+                    >
+                      {label}
+                    </div>
+                  ))}
+                </div>
+              </PopoverContent>
+            </Popover>
+          )}
 
           {/* Layaway Overdue Button */}
           <Button
