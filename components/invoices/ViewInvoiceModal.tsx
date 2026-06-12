@@ -8,6 +8,8 @@ import { generateSingleInvoicePDF } from "../../lib/pdf-export";
 import { exportElementAsJPEG } from "../../lib/image-export";
 import InvoiceImageTemplate from "./InvoiceImageTemplate";
 import {
+  getAppliedRemovedItemDepositFeeTotal,
+  getCurrentItemDepositFeeTotal,
   getInvoicePaymentsForPdf,
   getRecalculationFeeDisplayEntries,
   getRemovedItemDepositFeeDisplayEntries,
@@ -216,6 +218,15 @@ export default function ViewInvoiceModal({
   const [invoiceActionError, setInvoiceActionError] = useState<string | null>(
     null,
   );
+  const [localEditHistory, setLocalEditHistory] = useState<
+    NonNullable<Invoice["editHistory"]>
+  >([]);
+  const [lateFeeToRemove, setLateFeeToRemove] = useState<Payment | null>(null);
+  const [removeLateFeeReason, setRemoveLateFeeReason] = useState("");
+  const [isRemovingLateFee, setIsRemovingLateFee] = useState(false);
+  const [removeLateFeeError, setRemoveLateFeeError] = useState<string | null>(
+    null,
+  );
   const [isSendingInvoice, setIsSendingInvoice] = useState(false);
   const [isMarkingSent, setIsMarkingSent] = useState(false);
   const [invoiceSentAt, setInvoiceSentAt] = useState<string | null>(null);
@@ -351,6 +362,7 @@ export default function ViewInvoiceModal({
       fetchPayments();
       setLocalPaidAmount(Number(invoice.paidAmount || 0));
       setLocalInvoiceAmount(Number(invoice.amount || 0));
+      setLocalEditHistory(invoice.editHistory || []);
       if (invoice.layawayPlan?.installments) {
         setLocalInstallments(invoice.layawayPlan.installments);
       }
@@ -729,6 +741,58 @@ export default function ViewInvoiceModal({
     }
   };
 
+  const canRemoveLateFees =
+    !!invoice?.isLayaway &&
+    invoice.status !== "abandoned" &&
+    invoice.status !== "inactive";
+
+  const handleRemoveLateFee = async () => {
+    if (!invoice || !lateFeeToRemove) return;
+
+    if (!removeLateFeeReason.trim()) {
+      setRemoveLateFeeError("Please provide a reason for removing this late fee");
+      return;
+    }
+
+    setIsRemovingLateFee(true);
+    setRemoveLateFeeError(null);
+
+    try {
+      const res = await fetch(`/api/invoices/${invoice.id}/remove-late-fee`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          paymentId: lateFeeToRemove.id,
+          reason: removeLateFeeReason.trim(),
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to remove late fee");
+      }
+
+      setLocalInvoiceAmount(Number(data.invoice?.amount ?? localInvoiceAmount));
+      setLocalPaidAmount(Number(data.invoice?.paidAmount ?? localPaidAmount));
+
+      if (data.invoice?.layawayPlan?.installments) {
+        setLocalInstallments(data.invoice.layawayPlan.installments);
+      }
+
+      if (data.editHistoryEntry) {
+        setLocalEditHistory((prev) => [data.editHistoryEntry, ...prev]);
+      }
+
+      setLateFeeToRemove(null);
+      setRemoveLateFeeReason("");
+      await fetchPayments();
+    } catch (error: any) {
+      setRemoveLateFeeError(error.message || "Failed to remove late fee");
+    } finally {
+      setIsRemovingLateFee(false);
+    }
+  };
+
   if (!invoice) return null;
 
   const formatDate = (dateString: string) => {
@@ -806,14 +870,13 @@ export default function ViewInvoiceModal({
   const shippingFee = Number(invoice.shippingFee || 0);
   const insuranceAmount = Number(invoice.insuranceAmount || 0);
   const layawayFee = getVisibleLayawayFee(invoice);
-  const currentItemDepositFeeTotal = (invoice.items || []).reduce(
-    (sum, item) => sum + Number(item.depositFee || 0),
-    0,
+  const depositFeeNotInTotal = getCurrentItemDepositFeeTotal(invoice.items);
+  const appliedRemovedItemDepositFeeTotal = getAppliedRemovedItemDepositFeeTotal(
+    invoice.editHistory || [],
   );
   const removedItemDepositFeeEntries = getRemovedItemDepositFeeDisplayEntries(
     invoice.editHistory || [],
   );
-  const invoiceDepositFeeTotal = currentItemDepositFeeTotal;
   const lateFeeTotal = payments.reduce(
     (sum, payment) =>
       payment.source === "late_fee" ? sum + Number(payment.amount || 0) : sum,
@@ -886,17 +949,20 @@ export default function ViewInvoiceModal({
     | "payment"
     | "refund"
     | "deposit_fee"
-    | "restocking_fee";
+    | "restocking_fee"
+    | "late_fee";
 
   const paymentHistoryDisplay = (() => {
     if (invoice.status !== "abandoned") {
       return payments.map((payment) => ({
         payment,
-        role: (payment.source === "deposit_fee"
-          ? "deposit_fee"
-          : payment.source === "restocking_fee"
-            ? "restocking_fee"
-            : "payment") as PaymentHistoryRole,
+        role: (payment.source === "late_fee"
+          ? "late_fee"
+          : payment.source === "deposit_fee"
+            ? "deposit_fee"
+            : payment.source === "restocking_fee"
+              ? "restocking_fee"
+              : "payment") as PaymentHistoryRole,
       }));
     }
 
@@ -909,7 +975,9 @@ export default function ViewInvoiceModal({
     }
 
     for (const payment of payments) {
-      if (payment.source === "deposit_fee") {
+      if (payment.source === "late_fee") {
+        rows.push({ payment, role: "late_fee" });
+      } else if (payment.source === "deposit_fee") {
         rows.push({ payment, role: "deposit_fee" });
       } else if (payment.source === "restocking_fee") {
         rows.push({ payment, role: "restocking_fee" });
@@ -917,7 +985,10 @@ export default function ViewInvoiceModal({
     }
 
     const hasFeeRow = rows.some(
-      (row) => row.role === "deposit_fee" || row.role === "restocking_fee",
+      (row) =>
+        row.role === "late_fee" ||
+        row.role === "deposit_fee" ||
+        row.role === "restocking_fee",
     );
     if (!hasFeeRow && historyFeeType === "both") {
       const historyRestockingFeeCode = abandonHistoryEntry?.changes
@@ -1005,6 +1076,8 @@ export default function ViewInvoiceModal({
     switch (role) {
       case "refund":
         return "Refund";
+      case "late_fee":
+        return "Late Fee";
       case "deposit_fee":
         return "Deposit Fee";
       case "restocking_fee":
@@ -1018,6 +1091,8 @@ export default function ViewInvoiceModal({
     switch (role) {
       case "refund":
         return "bg-orange-100 text-orange-800";
+      case "late_fee":
+        return "bg-amber-100 text-amber-800";
       case "deposit_fee":
         return "bg-purple-100 text-purple-800";
       case "restocking_fee":
@@ -1259,6 +1334,56 @@ export default function ViewInvoiceModal({
               <span className="inline-flex items-center rounded-full bg-sky-100 px-3 py-1 text-sm font-semibold text-sky-800">
                 Sent {new Date(invoiceSentAt).toLocaleDateString()}
               </span>
+            )}
+          </div>
+
+          <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div>
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                  Invoice Total
+                </p>
+                <p className="text-xl font-bold text-blue-700">
+                  {formatCurrency(localInvoiceAmount)}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                  Amount Paid
+                </p>
+                <p className="text-xl font-bold text-green-600">
+                  {formatCurrency(localPaidAmount)}
+                </p>
+              </div>
+              {amountDue > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                    Remaining Balance
+                  </p>
+                  <p className="text-xl font-bold text-red-600">
+                    {formatCurrency(amountDue)}
+                  </p>
+                </div>
+              )}
+              {depositFeeNotInTotal > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                    Deposit Fee (not in total)
+                  </p>
+                  <p className="text-xl font-bold text-amber-700">
+                    {formatCurrency(depositFeeNotInTotal)}
+                  </p>
+                  <p className="text-xs text-amber-800 mt-1">
+                    On current items, separate from invoice total
+                  </p>
+                </div>
+              )}
+            </div>
+            {appliedRemovedItemDepositFeeTotal > 0 && (
+              <p className="mt-3 border-t border-blue-200 pt-3 text-xs text-gray-600">
+                {formatCurrency(appliedRemovedItemDepositFeeTotal)} from removed
+                item deposit fees is included in the invoice total above.
+              </p>
             )}
           </div>
 
@@ -1538,11 +1663,13 @@ export default function ViewInvoiceModal({
                   </span>
                 </div>
               )}
-              {invoiceDepositFeeTotal > 0 && (
+              {appliedRemovedItemDepositFeeTotal > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Total Deposit Amount:</span>
+                  <span className="text-gray-600">
+                    Removed item deposit fee (in total):
+                  </span>
                   <span className="font-medium text-amber-700">
-                    {formatCurrency(invoiceDepositFeeTotal)}
+                    {formatCurrency(appliedRemovedItemDepositFeeTotal)}
                   </span>
                 </div>
               )}
@@ -1571,9 +1698,24 @@ export default function ViewInvoiceModal({
                     {payment.notes || "Late fee applied"} (
                     {new Date(payment.date).toLocaleDateString()})
                   </span>
-                  <span className="font-medium">
-                    {formatCurrency(payment.amount)}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">
+                      {formatCurrency(payment.amount)}
+                    </span>
+                    {canRemoveLateFees && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLateFeeToRemove(payment);
+                          setRemoveLateFeeReason("");
+                          setRemoveLateFeeError(null);
+                        }}
+                        className="rounded border border-amber-300 bg-white px-2 py-0.5 text-[11px] font-medium text-amber-800 hover:bg-amber-100"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
               {depositFeeTotal > 0 && (
@@ -1599,19 +1741,22 @@ export default function ViewInvoiceModal({
                   </span>
                 </div>
               ))}
-              {removedItemDepositFeeEntries.map((entry) => (
+              {removedItemDepositFeeEntries.map((entry, index) => (
                 <div
-                  key={`removed-deposit-fee-${entry?.id}`}
+                  key={`removed-deposit-fee-${entry?.date}-${index}`}
                   className="flex justify-between gap-4 text-xs text-amber-700"
                 >
                   <span>
-                    Removed item deposit fee{" "}
                     {entry.action === "skip"
-                      ? `skipped: ${entry.reason}`
-                      : `applied (${new Date(entry.date).toLocaleDateString()})`}
+                      ? `Removed item deposit fee skipped: ${entry.reason}`
+                      : `Removed item deposit fee applied (${new Date(entry.date).toLocaleDateString()}) — included in total`}
                   </span>
                   <span className="font-medium">
-                    {formatCurrency(entry.amount)}
+                    {formatCurrency(
+                      entry.action === "apply"
+                        ? entry.amount
+                        : entry.availableAmount,
+                    )}
                   </span>
                 </div>
               ))}
@@ -1942,10 +2087,25 @@ export default function ViewInvoiceModal({
                           )}
                         </div>
                       </div>
-                      <span className="text-xs text-gray-400">
-                        Recorded:{" "}
-                        {new Date(payment.createdAt).toLocaleDateString()}
-                      </span>
+                      <div className="flex flex-col items-end gap-2">
+                        {role === "late_fee" && canRemoveLateFees && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setLateFeeToRemove(payment);
+                              setRemoveLateFeeReason("");
+                              setRemoveLateFeeError(null);
+                            }}
+                            className="rounded border border-amber-300 bg-white px-2 py-1 text-xs font-medium text-amber-800 hover:bg-amber-100"
+                          >
+                            Remove late fee
+                          </button>
+                        )}
+                        <span className="text-xs text-gray-400">
+                          Recorded:{" "}
+                          {new Date(payment.createdAt).toLocaleDateString()}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -2019,18 +2179,43 @@ export default function ViewInvoiceModal({
                 </div>
               </div>
             )}
-            {invoice.editHistory && invoice.editHistory.length > 0 ? (
+            {(localEditHistory.length > 0 || (invoice.editHistory?.length ?? 0) > 0) ? (
               <div className="space-y-3">
-                {invoice.editHistory.map((entry) => {
+                {(localEditHistory.length > 0
+                  ? localEditHistory
+                  : invoice.editHistory || []
+                ).map((entry) => {
                   const abandonPaymentSummary =
                     getAbandonHistoryPaymentSummary(entry);
+                  const lateFeeRemoved = entry.changes?.lateFeeRemoved as
+                    | {
+                        paymentCode?: string;
+                        amount?: number;
+                      }
+                    | undefined;
 
                   return (
                     <div
                       key={entry.id}
                       className="rounded-lg border border-gray-200 bg-gray-50 p-4"
                     >
+                      {entry.changes?.migratedInvoiceEdit && (
+                        <span className="mb-2 inline-flex rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-medium text-indigo-800">
+                          Migrated invoice edit
+                        </span>
+                      )}
+                      {lateFeeRemoved && (
+                        <span className="mb-2 inline-flex rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800">
+                          Late fee removed
+                        </span>
+                      )}
                       <p className="text-sm text-gray-800">{entry.reason}</p>
+                      {lateFeeRemoved?.paymentCode && (
+                        <p className="mt-1 font-mono text-sm text-amber-800">
+                          {lateFeeRemoved.paymentCode} ·{" "}
+                          {formatCurrency(Number(lateFeeRemoved.amount || 0))}
+                        </p>
+                      )}
                       {abandonPaymentSummary && (
                         <p className="mt-2 font-mono text-sm font-medium text-orange-800">
                           {abandonPaymentSummary}
@@ -2355,6 +2540,76 @@ export default function ViewInvoiceModal({
           {markPaidError && (
             <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
               {markPaidError}
+            </div>
+          )}
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={!!lateFeeToRemove}
+        onClose={() => {
+          if (!isRemovingLateFee) {
+            setLateFeeToRemove(null);
+            setRemoveLateFeeReason("");
+            setRemoveLateFeeError(null);
+          }
+        }}
+        title="Remove late fee"
+        maxWidth="lg"
+        footer={
+          <div className="flex justify-end gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                setLateFeeToRemove(null);
+                setRemoveLateFeeReason("");
+                setRemoveLateFeeError(null);
+              }}
+              disabled={isRemovingLateFee}
+              className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleRemoveLateFee}
+              disabled={isRemovingLateFee}
+              className="px-4 py-2 rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50"
+            >
+              {isRemovingLateFee ? "Removing..." : "Remove late fee"}
+            </button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">
+            This will delete the late fee payment and reduce the invoice total
+            by{" "}
+            <span className="font-semibold text-gray-900">
+              {formatCurrency(Number(lateFeeToRemove?.amount || 0))}
+            </span>
+            . The change is recorded in edit history.
+          </p>
+          {lateFeeToRemove?.notes && (
+            <p className="text-sm italic text-gray-500">
+              "{lateFeeToRemove.notes}"
+            </p>
+          )}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Reason for removal <span className="text-red-500">*</span>
+            </label>
+            <textarea
+              value={removeLateFeeReason}
+              onChange={(e) => setRemoveLateFeeReason(e.target.value)}
+              rows={3}
+              className="w-full px-4 py-2 border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+              placeholder="Why is this late fee being removed?"
+            />
+          </div>
+          {removeLateFeeError && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {removeLateFeeError}
             </div>
           )}
         </div>

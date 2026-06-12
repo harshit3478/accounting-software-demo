@@ -81,8 +81,11 @@ model User {
   depositFeeRulesCreated     DepositFeeRule[]
   dueDateReasonsCreated      DueDateReason[]
   liveTypesCreated           LiveType[]
-  chequesUploaded            ChequeVault[]               @relation("ChequeUploadedBy")
-  chequesApproved            ChequeVault[]               @relation("ChequeApprovedBy")
+  chequesUploaded                 ChequeVault[]               @relation("ChequeUploadedBy")
+  chequesApproved                 ChequeVault[]               @relation("ChequeApprovedBy")
+  chequesRejected                 ChequeVault[]               @relation("ChequeRejectedBy")
+  chequesCorrectionRequested      ChequeVault[]               @relation("ChequeCorrectionRequestedBy")
+  chequesInvoicesLinked           ChequeVault[]               @relation("ChequeInvoicesLinkedBy")
 
   @@map("users")
 }
@@ -187,17 +190,19 @@ model ShippingFeeRule {
 }
 
 model DepositFeeRule {
-  id        Int      @id @default(autoincrement())
-  name      String
-  unitName  String   @default("grams")
-  minUnit   Decimal? @db.Decimal(10, 2)
-  maxUnit   Decimal? @db.Decimal(10, 2)
-  fee       Decimal  @db.Decimal(10, 2)
-  isActive  Boolean  @default(true)
-  sortOrder Int      @default(0)
-  createdBy Int
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           Int      @id @default(autoincrement())
+  name         String
+  unitName     String   @default("grams")
+  ruleType     String   @default("range") // "range" | "flat"
+  minUnit      Decimal? @db.Decimal(10, 2)
+  maxUnit      Decimal? @db.Decimal(10, 2)
+  fee          Decimal  @db.Decimal(10, 2)
+  isPercentage Boolean  @default(false)
+  isActive     Boolean  @default(true)
+  sortOrder    Int      @default(0)
+  createdBy    Int
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   creator User @relation(fields: [createdBy], references: [id], onDelete: Cascade)
 
@@ -526,6 +531,15 @@ model RestockingFeeSetting {
   @@map("restocking_fee_settings")
 }
 
+model MigratedInvoiceEditSetting {
+  id        Int      @id @default(autoincrement())
+  isActive  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("migrated_invoice_edit_settings")
+}
+
 model LayawayPlan {
   id               Int      @id @default(autoincrement())
   invoiceId        Int      @unique
@@ -645,16 +659,26 @@ model ChequeVault {
   rawOcrText      String?      @db.Text
   status          ChequeStatus @default(PENDING)
   uploadedById    Int
-  approvedById    Int?
-  approvedAt      DateTime?
-  rejectionReason String?      @db.Text
-  correctionNote  String?      @db.Text
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  approvedById            Int?
+  approvedAt              DateTime?
+  rejectionReason         String?      @db.Text
+  rejectedById            Int?
+  rejectedAt              DateTime?
+  correctionNote          String?      @db.Text
+  correctionRequestedById Int?
+  correctionRequestedAt   DateTime?
+  invoicesLinkedById      Int?
+  invoicesLinkedAt        DateTime?
+  submittedAt             DateTime?
+  createdAt               DateTime     @default(now())
+  updatedAt               DateTime     @updatedAt
 
-  uploadedBy         User                 @relation("ChequeUploadedBy", fields: [uploadedById], references: [id], onDelete: Cascade)
-  approvedBy         User?                @relation("ChequeApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
-  invoiceAllocations ChequeVaultInvoice[]
+  uploadedBy            User                 @relation("ChequeUploadedBy", fields: [uploadedById], references: [id], onDelete: Cascade)
+  approvedBy            User?                @relation("ChequeApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  rejectedBy            User?                @relation("ChequeRejectedBy", fields: [rejectedById], references: [id], onDelete: SetNull)
+  correctionRequestedBy User?                @relation("ChequeCorrectionRequestedBy", fields: [correctionRequestedById], references: [id], onDelete: SetNull)
+  invoicesLinkedBy      User?                @relation("ChequeInvoicesLinkedBy", fields: [invoicesLinkedById], references: [id], onDelete: SetNull)
+  invoiceAllocations    ChequeVaultInvoice[]
 
   @@index([chequeNumber])
   @@index([status])

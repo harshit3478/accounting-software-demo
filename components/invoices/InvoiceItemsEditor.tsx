@@ -76,9 +76,11 @@ export default function InvoiceItemsEditor({
           Array.isArray(data)
             ? data.map((rule: any) => ({
                 unitName: String(rule.unitName || FALLBACK_UNIT),
+                ruleType: rule.ruleType === "flat" ? "flat" : "range",
                 minUnit: rule.minUnit == null ? null : Number(rule.minUnit),
                 maxUnit: rule.maxUnit == null ? null : Number(rule.maxUnit),
                 fee: Number(rule.fee || 0),
+                isPercentage: !!rule.isPercentage,
                 isActive: !!rule.isActive,
                 sortOrder: Number(rule.sortOrder || 0),
               }))

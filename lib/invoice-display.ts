@@ -127,6 +127,34 @@ export interface RemovedItemDepositFeeDisplayEntry {
   label: string;
 }
 
+export function getCurrentItemDepositFeeTotal(
+  items?: Array<{ depositFee?: number | null }> | null,
+): number {
+  return Number(
+    (items || [])
+      .reduce((sum, item) => sum + Number(item.depositFee || 0), 0)
+      .toFixed(2),
+  );
+}
+
+export function getAppliedRemovedItemDepositFeeTotal(
+  editHistory?: InvoiceEditHistoryLike[] | null,
+): number {
+  if (!Array.isArray(editHistory)) return 0;
+
+  return Number(
+    editHistory
+      .reduce((sum, entry) => {
+        const removedFee = entry.changes?.removedItemDepositFee;
+        if (removedFee?.action === "apply") {
+          return sum + Number(removedFee.amount || 0);
+        }
+        return sum;
+      }, 0)
+      .toFixed(2),
+  );
+}
+
 export function isAbandonedInvoice(invoice: { status?: string }): boolean {
   return invoice.status === "abandoned";
 }
@@ -290,10 +318,7 @@ export function buildInvoicePdfSummaryRows(
   }
 
   const layawayFee = getVisibleLayawayFee(invoice);
-  const totalDepositAmount = (invoice.items || []).reduce(
-    (sum, item) => sum + Number(item.depositFee || 0),
-    0,
-  );
+  const totalDepositAmount = getCurrentItemDepositFeeTotal(invoice.items);
 
   const rows = [
     ...(options?.includeSubtotal

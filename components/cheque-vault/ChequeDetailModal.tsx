@@ -51,6 +51,17 @@ function formatDate(dateStr: string | null) {
   });
 }
 
+function formatDateTime(dateStr: string | null) {
+  if (!dateStr) return "—";
+  return new Date(dateStr).toLocaleString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 export default function ChequeDetailModal({
   isOpen,
   cheque,
@@ -62,8 +73,9 @@ export default function ChequeDetailModal({
   onUpdateDetails,
   onDelete,
 }: ChequeDetailModalProps) {
-  const { isSuperAdmin, user } = useAuth();
-  const canReviewCheque = isSuperAdmin;
+  const { isSuperAdmin, canApproveCheques, user } = useAuth();
+  const canReviewCheque = isSuperAdmin || canApproveCheques;
+  const reviewOptions = { isSuperAdmin, canApprove: canApproveCheques };
   const [chequeNumber, setChequeNumber] = useState("");
   const [payorName, setPayorName] = useState("");
   const [amount, setAmount] = useState("");
@@ -98,8 +110,8 @@ export default function ChequeDetailModal({
 
   const readOnly = isChequeRequestReadOnly(cheque);
   const canEdit =
-    !!onUpdateDetails && canEditChequeRequest(cheque, user?.id, { isSuperAdmin });
-  const canLink = canLinkInvoicesOnCheque(cheque, user?.id, isSuperAdmin);
+    !!onUpdateDetails && canEditChequeRequest(cheque, user?.id, reviewOptions);
+  const canLink = canLinkInvoicesOnCheque(cheque, user?.id, reviewOptions);
 
   const handleApprove = async () => {
     setIsSubmitting(true);
@@ -225,21 +237,41 @@ export default function ChequeDetailModal({
 
                 {cheque.correctionNote && (
                   <div className="mt-4 p-3 bg-orange-50 border border-orange-200 rounded-lg">
-                    <p className="text-xs font-semibold text-orange-700 mb-1">Correction Required</p>
+                    <p className="text-xs font-semibold text-orange-700 mb-1">
+                      Correction Required
+                    </p>
                     <p className="text-sm text-orange-800">{cheque.correctionNote}</p>
+                    {cheque.correctionRequestedBy && (
+                      <p className="text-xs text-orange-700 mt-2">
+                        Requested by {cheque.correctionRequestedBy.name}
+                        {cheque.correctionRequestedAt
+                          ? ` on ${formatDateTime(cheque.correctionRequestedAt)}`
+                          : ""}
+                      </p>
+                    )}
                   </div>
                 )}
                 {cheque.rejectionReason && (
                   <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-                    <p className="text-xs font-semibold text-red-700 mb-1">Rejection Reason</p>
+                    <p className="text-xs font-semibold text-red-700 mb-1">
+                      Rejection Reason
+                    </p>
                     <p className="text-sm text-red-800">{cheque.rejectionReason}</p>
+                    {cheque.rejectedBy && (
+                      <p className="text-xs text-red-700 mt-2">
+                        Rejected by {cheque.rejectedBy.name}
+                        {cheque.rejectedAt
+                          ? ` on ${formatDateTime(cheque.rejectedAt)}`
+                          : ""}
+                      </p>
+                    )}
                   </div>
                 )}
                 {cheque.status === "APPROVED" && cheque.approvedBy && (
                   <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
                     <p className="text-xs font-semibold text-green-700 mb-1">Approved</p>
                     <p className="text-sm text-green-800">
-                      By {cheque.approvedBy.name} on {formatDate(cheque.approvedAt)}
+                      By {cheque.approvedBy.name} on {formatDateTime(cheque.approvedAt)}
                     </p>
                   </div>
                 )}
@@ -326,20 +358,31 @@ export default function ChequeDetailModal({
                     </>
                   )}
 
-                  {/* Linked Invoices */}
+                  {/* Linked Invoices — approver links before approval */}
                   <div>
                     <dt className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">
                       Linked Invoices
                       {canLink && (
                         <button
                           onClick={() => setShowInvoiceSearch(true)}
-                          className="ml-2 text-xs px-2 py-0.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded transition-colors font-normal normal-case tracking-normal"
+                          className="ml-2 text-xs px-2 py-0.5 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded transition-colors font-normal normal-case tracking-normal"
                         >
                           {hasAllocations ? "Edit Links" : "Link Invoices"}
                         </button>
                       )}
                     </dt>
                     <dd>
+                      {canReviewCheque && canAction && !hasAllocations && (
+                        <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-1">
+                          Link at least one invoice before approving this cheque.
+                        </p>
+                      )}
+                      {!canReviewCheque && !hasAllocations && (
+                        <p className="text-sm text-gray-500 italic mt-1">
+                          An approver will link invoices before this cheque is
+                          approved.
+                        </p>
+                      )}
                       {hasAllocations ? (
                         <div className="space-y-1.5 mt-1">
                           {cheque.invoiceAllocations.map((a: InvoiceAllocation) => (
@@ -354,17 +397,60 @@ export default function ChequeDetailModal({
                             <span>Total allocated</span>
                             <span>${cheque.invoiceAllocations.reduce((s: number, a: InvoiceAllocation) => s + a.allocatedAmount, 0).toFixed(2)}</span>
                           </div>
+                          {cheque.invoicesLinkedBy && (
+                            <p className="text-xs text-gray-500 pt-1">
+                              Linked by {cheque.invoicesLinkedBy.name}
+                              {cheque.invoicesLinkedAt
+                                ? ` on ${formatDateTime(cheque.invoicesLinkedAt)}`
+                                : ""}
+                            </p>
+                          )}
                         </div>
-                      ) : (
-                        <span className="text-gray-400 italic text-sm">Not linked</span>
-                      )}
+                      ) : null}
                     </dd>
                   </div>
                 </dl>
 
-                <div className="mt-6 pt-4 border-t border-gray-200 space-y-2">
-                  <Field label="Uploaded By" value={`${cheque.uploadedBy?.name} (${cheque.uploadedBy?.email})`} />
-                  <Field label="Upload Date" value={formatDate(cheque.createdAt)} />
+                <div className="mt-6 pt-4 border-t border-gray-200">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                    Activity
+                  </p>
+                  <div className="space-y-2 text-sm">
+                    <ActivityRow
+                      label="Submitted by"
+                      name={cheque.uploadedBy?.name}
+                      detail={cheque.uploadedBy?.email}
+                      at={cheque.submittedAt || cheque.createdAt}
+                    />
+                    {cheque.invoicesLinkedBy && (
+                      <ActivityRow
+                        label="Invoices linked by"
+                        name={cheque.invoicesLinkedBy.name}
+                        at={cheque.invoicesLinkedAt}
+                      />
+                    )}
+                    {cheque.approvedBy && (
+                      <ActivityRow
+                        label="Approved by"
+                        name={cheque.approvedBy.name}
+                        at={cheque.approvedAt}
+                      />
+                    )}
+                    {cheque.rejectedBy && (
+                      <ActivityRow
+                        label="Rejected by"
+                        name={cheque.rejectedBy.name}
+                        at={cheque.rejectedAt}
+                      />
+                    )}
+                    {cheque.correctionRequestedBy && (
+                      <ActivityRow
+                        label="Correction requested by"
+                        name={cheque.correctionRequestedBy.name}
+                        at={cheque.correctionRequestedAt}
+                      />
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -505,6 +591,32 @@ export default function ChequeDetailModal({
         initialAllocations={currentAllocations}
       />
     </>
+  );
+}
+
+function ActivityRow({
+  label,
+  name,
+  detail,
+  at,
+}: {
+  label: string;
+  name?: string;
+  detail?: string;
+  at?: string | null;
+}) {
+  if (!name) return null;
+  return (
+    <div className="flex flex-col">
+      <span className="text-xs text-gray-500">{label}</span>
+      <span className="font-medium text-gray-900">
+        {name}
+        {detail ? ` (${detail})` : ""}
+      </span>
+      {at && (
+        <span className="text-xs text-gray-500">{formatDateTime(at)}</span>
+      )}
+    </div>
   );
 }
 

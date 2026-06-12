@@ -112,6 +112,7 @@ export type InvoiceShipmentFilter =
   | "none"
   | "awaiting_tracking"
   | "tracked";
+export type InvoiceAbandonFeeFilter = "all" | "with_fee" | "without_fee";
 export type InvoiceFilter = InvoiceStatusFilter | "layaway";
 
 interface UseInvoicesReturn {
@@ -131,6 +132,8 @@ interface UseInvoicesReturn {
   setLiveTypeFilter: (filter: InvoiceLiveTypeFilter) => void;
   shipmentFilter: InvoiceShipmentFilter;
   setShipmentFilter: (filter: InvoiceShipmentFilter) => void;
+  abandonFeeFilter: InvoiceAbandonFeeFilter;
+  setAbandonFeeFilter: (filter: InvoiceAbandonFeeFilter) => void;
   layawayOverdue: boolean;
   setLayawayOverdue: (overdue: boolean) => void;
 
@@ -242,7 +245,17 @@ export function useInvoices(
 
   // Initialize state from URL params
   const [statusFilter, setStatusFilterState] = useState<InvoiceStatusFilter>(
-    (searchParams.get("status") as InvoiceStatusFilter) || "all",
+    () => {
+      const status = searchParams.get("status") as InvoiceStatusFilter;
+      const abandonFee = searchParams.get("abandonFee");
+      if (
+        (!status || status === "all") &&
+        (abandonFee === "with_fee" || abandonFee === "without_fee")
+      ) {
+        return "abandoned";
+      }
+      return status || "all";
+    },
   );
   const [typeFilter, setTypeFilterState] = useState<InvoiceTypeFilter>(
     (searchParams.get("type") as InvoiceTypeFilter) || "all",
@@ -252,6 +265,10 @@ export function useInvoices(
   const [shipmentFilter, setShipmentFilterState] =
     useState<InvoiceShipmentFilter>(
       (searchParams.get("shipment") as InvoiceShipmentFilter) || "all",
+    );
+  const [abandonFeeFilter, setAbandonFeeFilterState] =
+    useState<InvoiceAbandonFeeFilter>(
+      (searchParams.get("abandonFee") as InvoiceAbandonFeeFilter) || "all",
     );
   const [layawayOverdue, setLayawayOverdueState] = useState(
     searchParams.get("overdueDates") === "2",
@@ -329,7 +346,12 @@ export function useInvoices(
   const setStatusFilter = (status: InvoiceStatusFilter) => {
     setStatusFilterState(status);
     setCurrentPage(1);
-    updateUrl({ status, page: "1" });
+    const urlUpdates: Record<string, string | null> = { status, page: "1" };
+    if (status !== "abandoned" && abandonFeeFilter !== "all") {
+      setAbandonFeeFilterState("all");
+      urlUpdates.abandonFee = null;
+    }
+    updateUrl(urlUpdates);
   };
 
   const setTypeFilter = (type: InvoiceTypeFilter) => {
@@ -348,6 +370,20 @@ export function useInvoices(
     setShipmentFilterState(shipment);
     setCurrentPage(1);
     updateUrl({ shipment, page: "1" });
+  };
+
+  const setAbandonFeeFilter = (filter: InvoiceAbandonFeeFilter) => {
+    setAbandonFeeFilterState(filter);
+    setCurrentPage(1);
+    const urlUpdates: Record<string, string | null> = {
+      abandonFee: filter,
+      page: "1",
+    };
+    if (filter !== "all" && statusFilter !== "abandoned") {
+      setStatusFilterState("abandoned");
+      urlUpdates.status = "abandoned";
+    }
+    updateUrl(urlUpdates);
   };
 
   const setLayawayOverdue = (overdue: boolean) => {
@@ -498,6 +534,7 @@ export function useInvoices(
     typeFilter,
     liveTypeFilter,
     shipmentFilter,
+    abandonFeeFilter,
     layawayOverdue,
     debouncedSearchTerm,
     sortBy,
@@ -518,6 +555,7 @@ export function useInvoices(
       if (typeFilter !== "all") params.set("type", typeFilter);
       if (liveTypeFilter !== "all") params.set("liveType", liveTypeFilter);
       if (shipmentFilter !== "all") params.set("shipment", shipmentFilter);
+      if (abandonFeeFilter !== "all") params.set("abandonFee", abandonFeeFilter);
       if (layawayOverdue) params.set("overdueDates", "2");
       if (debouncedSearchTerm) params.set("search", debouncedSearchTerm);
       if (dateRange) {
@@ -879,6 +917,10 @@ export function useInvoices(
     handlePageChange,
     handleItemsPerPageChange,
     stats,
+    shipmentFilter,
+    setShipmentFilter,
+    abandonFeeFilter,
+    setAbandonFeeFilter,
     layawayOverdue,
     setLayawayOverdue,
   };

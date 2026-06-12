@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { requireSuperAdmin } from "@/lib/auth";
+import { requireChequeVaultApprove } from "@/lib/auth";
 import { sendChequeStatusNotification } from "@/lib/email";
 
 export async function PUT(
@@ -8,7 +8,7 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireSuperAdmin();
+    const admin = await requireChequeVaultApprove();
     const { id } = await params;
     const chequeId = parseInt(id);
 
@@ -49,6 +49,8 @@ export async function PUT(
       data: {
         status: "NEEDS_CORRECTION",
         correctionNote: correctionNote.trim(),
+        correctionRequestedById: admin.id,
+        correctionRequestedAt: new Date(),
       },
     });
 
@@ -68,8 +70,8 @@ export async function PUT(
     if (error.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    if (error.message === "Super admin access required") {
-      return NextResponse.json({ error: "Super admin access required" }, { status: 403 });
+    if (error.message === "Forbidden") {
+      return NextResponse.json({ error: "Cheque approval permission required" }, { status: 403 });
     }
     console.error("[cheque-vault/[id]/request-correction PUT]", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

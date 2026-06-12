@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "../../../../lib/prisma";
-import { requireAuth } from "../../../../lib/auth";
+import { requireSettingPermission } from "../../../../lib/auth";
 import {
   createQuickBooksClient,
   mapQuickBooksPaymentMethod,
@@ -10,7 +10,7 @@ import { stampPaymentCode } from "../../../../lib/payment-code";
 
 export async function POST(request: NextRequest) {
   try {
-    const user = await requireAuth();
+    const user = await requireSettingPermission("quickbooks");
 
     // Find user's QuickBooks connection
     const connection = await prisma.quickBooksConnection.findUnique({
@@ -247,7 +247,7 @@ async function fetchPaymentsFromQuickBooks(
 // GET endpoint to check sync status
 export async function GET() {
   try {
-    const user = await requireAuth();
+    const user = await requireSettingPermission("quickbooks");
 
     const connection = await prisma.quickBooksConnection.findUnique({
       where: { userId: user.id },

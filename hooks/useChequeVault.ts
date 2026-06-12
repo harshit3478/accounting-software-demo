@@ -37,11 +37,21 @@ export interface ChequeVaultRecord {
   approvedById: number | null;
   approvedAt: string | null;
   rejectionReason: string | null;
+  rejectedById: number | null;
+  rejectedAt: string | null;
   correctionNote: string | null;
+  correctionRequestedById: number | null;
+  correctionRequestedAt: string | null;
+  invoicesLinkedById: number | null;
+  invoicesLinkedAt: string | null;
+  submittedAt: string | null;
   createdAt: string;
   updatedAt: string;
   uploadedBy: { id: number; name: string; email: string };
   approvedBy: { id: number; name: string } | null;
+  rejectedBy: { id: number; name: string } | null;
+  correctionRequestedBy: { id: number; name: string } | null;
+  invoicesLinkedBy: { id: number; name: string } | null;
   invoiceAllocations: InvoiceAllocation[];
 }
 

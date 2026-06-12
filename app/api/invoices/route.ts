@@ -108,9 +108,11 @@ async function getConfiguredDepositFeeRules() {
     return normalizeDepositFeeRules(
       rows.map((row: any) => ({
         unitName: row.unitName,
+        ruleType: row.ruleType === "flat" ? "flat" : "range",
         minUnit: row.minUnit?.toNumber ? row.minUnit.toNumber() : row.minUnit,
         maxUnit: row.maxUnit?.toNumber ? row.maxUnit.toNumber() : row.maxUnit,
         fee: row.fee?.toNumber ? row.fee.toNumber() : Number(row.fee || 0),
+        isPercentage: !!row.isPercentage,
         isActive: row.isActive,
         sortOrder: row.sortOrder,
       })),
@@ -141,6 +143,7 @@ export async function GET(request: NextRequest) {
     const customerId = searchParams.get("customerId");
     const shipment = searchParams.get("shipment") || "all";
     const liveType = searchParams.get("liveType") || "all";
+    const abandonFee = searchParams.get("abandonFee") || "all";
 
     // Sort params
     const sortBy = searchParams.get("sortBy") || "invoiceNumber";
@@ -226,6 +229,13 @@ export async function GET(request: NextRequest) {
       where.isLayaway = true;
     } else if (type === "cash") {
       where.isLayaway = false;
+    }
+
+    // Abandoned invoice fee filter (retained deposit/restocking fee vs none)
+    if (abandonFee === "with_fee" || abandonFee === "without_fee") {
+      where.status = "abandoned";
+      where.paidAmount =
+        abandonFee === "with_fee" ? { gt: 0 } : { lte: 0 };
     }
 
     // Overdue Dates Logic (Layaway specific) — uses LayawayInstallment table

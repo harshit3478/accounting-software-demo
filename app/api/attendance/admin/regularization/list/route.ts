@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { requireAdmin } from "@/lib/auth";
+import { requireSettingPermission } from "@/lib/auth";
 
 export async function GET() {
   try {
-    const admin = await requireAdmin();
+    const admin = await requireSettingPermission("regularizations");
     // return latest first
     const items = await prisma.regularizationRequest.findMany({
       orderBy: { createdAt: "desc" },

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "../../../lib/prisma";
-import { requireAuth } from "../../../lib/auth";
+import { requireAuth, requireSettingPermission } from "../../../lib/auth";
 
 function isStoreCreditCompatibilityError(error: any): boolean {
   const message = String(error?.message || "");
@@ -243,7 +243,7 @@ export async function GET(request: NextRequest) {
 // POST /api/customers — create
 export async function POST(request: NextRequest) {
   try {
-    await requireAuth();
+    await requireSettingPermission("customers");
     const body = await request.json();
     const { name, email, phone, address, notes } = body;
 

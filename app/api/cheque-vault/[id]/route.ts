@@ -1,14 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { isSuperAdmin, requireAuth } from "@/lib/auth";
+import { hasPermission, isSuperAdmin, requireAuth } from "@/lib/auth";
 import {
   canDeleteChequeRequest,
   canEditChequeRequest,
   canLinkInvoicesOnCheque,
   isChequeRequestReadOnly,
+  isChequeVaultReviewer,
 } from "@/lib/cheque-vault-permissions";
 import { isLinkableInvoiceStatus } from "@/lib/invoice-linkable-status";
 import { deleteFromR2 } from "@/lib/r2-client";
+import {
+  chequeVaultInvoiceAllocationInclude,
+  chequeVaultUserInclude,
+} from "@/lib/cheque-vault-include";
 
 function serializeCheque(cheque: any) {
   return {
@@ -44,8 +49,7 @@ export async function GET(
     const cheque = await prisma.chequeVault.findUnique({
       where: { id: chequeId },
       include: {
-        uploadedBy: { select: { id: true, name: true, email: true } },
-        approvedBy: { select: { id: true, name: true } },
+        ...chequeVaultUserInclude,
         invoiceAllocations: {
           include: {
             invoice: {
@@ -77,14 +81,6 @@ export async function GET(
 
     if (!cheque) {
       return NextResponse.json({ error: "Cheque not found" }, { status: 404 });
-    }
-
-    if (
-      user.role !== "admin" &&
-      !isSuperAdmin(user) &&
-      cheque.uploadedById !== user.id
-    ) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     return NextResponse.json({ cheque: serializeCheque(cheque) });
@@ -135,16 +131,25 @@ export async function PATCH(
       customerEmail !== undefined;
     const wantsInvoiceUpdate = invoices !== undefined;
 
-    if (isSuperAdmin(user)) {
+    const canApprove = hasPermission(user, "chequeVault.approve");
+    const reviewer = isChequeVaultReviewer({
+      isSuperAdmin: isSuperAdmin(user),
+      canApprove,
+    });
+
+    if (reviewer) {
       if (wantsFieldUpdate) {
         return NextResponse.json(
-          { error: "Super admin can only link invoices, not edit cheque details" },
+          { error: "Reviewers can only link invoices, not edit cheque details" },
           { status: 403 },
         );
       }
       if (
         wantsInvoiceUpdate &&
-        !canLinkInvoicesOnCheque(cheque, user.id, true)
+        !canLinkInvoicesOnCheque(cheque, user.id, {
+          isSuperAdmin: isSuperAdmin(user),
+          canApprove,
+        })
       ) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
@@ -155,18 +160,15 @@ export async function PATCH(
       if (cheque.uploadedById !== user.id) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
-      if (wantsFieldUpdate && !canEditChequeRequest(cheque, user.id)) {
+      if (wantsInvoiceUpdate) {
         return NextResponse.json(
-          { error: "You can only edit your own pending requests" },
+          { error: "Only approvers can link invoices to a cheque request" },
           { status: 403 },
         );
       }
-      if (
-        wantsInvoiceUpdate &&
-        !canLinkInvoicesOnCheque(cheque, user.id, false)
-      ) {
+      if (wantsFieldUpdate && !canEditChequeRequest(cheque, user.id)) {
         return NextResponse.json(
-          { error: "You can only link invoices on your own pending requests" },
+          { error: "You can only edit your own pending requests" },
           { status: 403 },
         );
       }
@@ -174,19 +176,22 @@ export async function PATCH(
 
     const updateData: any = {};
 
-    // Invoice allocations update
+    // Invoice allocations update (approver only)
     if (invoices !== undefined) {
-      const allocationList: { invoiceId: number; allocatedAmount: number }[] = invoices;
+      const allocationList: { invoiceId: number; allocatedAmount: number }[] =
+        invoices;
 
       if (allocationList.length > 0) {
-        // Validate all invoices exist and are in a linkable status
         for (const alloc of allocationList) {
           const inv = await prisma.invoice.findUnique({
             where: { id: alloc.invoiceId },
             select: { id: true, status: true },
           });
           if (!inv) {
-            return NextResponse.json({ error: `Invoice ${alloc.invoiceId} not found` }, { status: 404 });
+            return NextResponse.json(
+              { error: `Invoice ${alloc.invoiceId} not found` },
+              { status: 404 },
+            );
           }
           if (!isLinkableInvoiceStatus(inv.status)) {
             return NextResponse.json(
@@ -198,9 +203,10 @@ export async function PATCH(
           }
         }
 
-        // Replace all allocations atomically
         await prisma.$transaction([
-          prisma.chequeVaultInvoice.deleteMany({ where: { chequeVaultId: chequeId } }),
+          prisma.chequeVaultInvoice.deleteMany({
+            where: { chequeVaultId: chequeId },
+          }),
           prisma.chequeVaultInvoice.createMany({
             data: allocationList.map((a) => ({
               chequeVaultId: chequeId,
@@ -210,45 +216,48 @@ export async function PATCH(
           }),
         ]);
       } else {
-        // Clear all allocations
-        await prisma.chequeVaultInvoice.deleteMany({ where: { chequeVaultId: chequeId } });
+        await prisma.chequeVaultInvoice.deleteMany({
+          where: { chequeVaultId: chequeId },
+        });
       }
+
+      updateData.invoicesLinkedById = user.id;
+      updateData.invoicesLinkedAt = new Date();
     }
 
-    // Field updates
+    // Field updates (uploader only)
     if (chequeNumber !== undefined) updateData.chequeNumber = chequeNumber;
     if (payorName !== undefined) updateData.payorName = payorName;
-    else if (payeeName !== undefined) updateData.payorName = payeeName; // backwards compat
+    else if (payeeName !== undefined) updateData.payorName = payeeName;
     if (amount !== undefined) updateData.amount = parseFloat(amount);
     if (chequeDate !== undefined) updateData.chequeDate = new Date(chequeDate);
     if (bankName !== undefined) updateData.bankName = bankName;
-    if (customerEmail !== undefined) updateData.customerEmail = customerEmail || null;
+    if (customerEmail !== undefined)
+      updateData.customerEmail = customerEmail || null;
+
+    if (wantsFieldUpdate && !reviewer) {
+      updateData.submittedAt = new Date();
+    }
 
     // Re-submit after correction: reset status to PENDING
-    if (cheque.status === "NEEDS_CORRECTION" && Object.keys(updateData).length > 0) {
+    if (
+      cheque.status === "NEEDS_CORRECTION" &&
+      wantsFieldUpdate &&
+      !reviewer
+    ) {
       updateData.status = "PENDING";
       updateData.correctionNote = null;
+      updateData.correctionRequestedById = null;
+      updateData.correctionRequestedAt = null;
     }
 
     const updated = await prisma.chequeVault.update({
       where: { id: chequeId },
       data: updateData,
       include: {
-        uploadedBy: { select: { id: true, name: true, email: true } },
-        approvedBy: { select: { id: true, name: true } },
+        ...chequeVaultUserInclude,
         invoiceAllocations: {
-          include: {
-            invoice: {
-              select: {
-                id: true,
-                invoiceNumber: true,
-                clientName: true,
-                amount: true,
-                paidAmount: true,
-                status: true,
-              },
-            },
-          },
+          include: chequeVaultInvoiceAllocationInclude,
         },
       },
     });

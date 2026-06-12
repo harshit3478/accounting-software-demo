@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserFromToken, isSuperAdmin } from '@/lib/auth';
+import { buildPermissionsPayload } from '@/lib/permissions';
 import { formatUserDisplayName } from '@/lib/user-display';
 
 export async function GET(request: NextRequest) {
@@ -18,12 +19,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const privileges = dbUser.privileges as any;
-
-    // Calculate document permissions
-    const canUploadDocuments = dbUser.role === 'admin' || privileges?.documents?.upload === true;
-    const canRenameDocuments = dbUser.role === 'admin' || privileges?.documents?.rename === true;
-    const canDeleteDocuments = dbUser.role === 'admin' || privileges?.documents?.delete === true;
+    const { permissions } = buildPermissionsPayload(dbUser);
 
     const user = {
       id: dbUser.id,
@@ -32,9 +28,12 @@ export async function GET(request: NextRequest) {
       name: dbUser.name,
       avatarUrl: dbUser.avatarUrl,
       displayName: formatUserDisplayName(dbUser),
-      canUploadDocuments,
-      canRenameDocuments,
-      canDeleteDocuments,
+      canUploadDocuments: permissions.documents.upload,
+      canRenameDocuments: permissions.documents.rename,
+      canDeleteDocuments: permissions.documents.delete,
+      canUploadCheques: permissions.chequeVault.upload,
+      canApproveCheques: permissions.chequeVault.approve,
+      settingsPermissions: permissions.settings,
       isSuperAdmin: isSuperAdmin(dbUser),
     };
 

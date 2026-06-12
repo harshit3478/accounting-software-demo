@@ -40,6 +40,8 @@ function InvoicesPageContent() {
     setLiveTypeFilter,
     shipmentFilter,
     setShipmentFilter,
+    abandonFeeFilter,
+    setAbandonFeeFilter,
     searchTerm,
     setSearchTerm,
     sortBy,
@@ -166,6 +168,8 @@ function InvoicesPageContent() {
           onLiveTypeFilterChange={setLiveTypeFilter}
           shipmentFilter={shipmentFilter}
           onShipmentFilterChange={setShipmentFilter}
+          abandonFeeFilter={abandonFeeFilter}
+          onAbandonFeeFilterChange={setAbandonFeeFilter}
           layawayOverdue={layawayOverdue}
           onLayawayOverdueChange={setLayawayOverdue}
           searchTerm={searchTerm}
@@ -185,6 +189,7 @@ function InvoicesPageContent() {
             typeFilter !== "all" ||
             liveTypeFilter !== "all" ||
             shipmentFilter !== "all" ||
+            abandonFeeFilter !== "all" ||
             !!searchTerm ||
             !!dateRange
           }

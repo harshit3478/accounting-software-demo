@@ -25,9 +25,9 @@ const STATUS_OPTIONS = [
 ] as const;
 
 function ChequeVaultContent() {
-  const { isSuperAdmin, user } = useAuth();
+  const { isSuperAdmin, canUploadCheques, canApproveCheques, user } = useAuth();
   const vault = useChequeVault();
-  const canUploadCheque = !isSuperAdmin;
+  const canUploadCheque = canUploadCheques;
   const [deleteTarget, setDeleteTarget] = useState<ChequeVaultRecord | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -49,9 +49,11 @@ function ChequeVaultContent() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Cheque Vault</h1>
             <p className="text-sm text-gray-500 mt-1">
-              {isSuperAdmin
+              {canApproveCheques
                 ? "Review, approve, or reject cheque payment requests"
-                : "Upload and manage cheque-based payments"}
+                : canUploadCheque
+                  ? "Upload and manage cheque-based payments"
+                  : "View uploaded cheque payment requests"}
             </p>
           </div>
           {canUploadCheque && (

@@ -5,19 +5,23 @@ import Link from 'next/link';
 import ConfirmModal from '../ConfirmModal';
 import { Plus } from 'lucide-react';
 import { formatUserDisplayName } from '../../lib/user-display';
+import { useAuth } from '../../lib/AuthContext';
+import {
+  CHEQUE_VAULT_PERMISSION_LABELS,
+  CHEQUE_VAULT_PERMISSIONS,
+  defaultPrivilegesForRole,
+  mergePrivileges,
+  SETTINGS_PERMISSION_LABELS,
+  SETTINGS_PERMISSIONS,
+  type UserPrivileges,
+} from '../../lib/permissions';
 
 interface User {
   id: number;
   email: string;
   name: string;
   role: string;
-  privileges?: {
-    documents: {
-      upload: boolean;
-      delete: boolean;
-      rename: boolean;
-    };
-  };
+  privileges?: UserPrivileges;
   createdAt: string;
 }
 
@@ -27,13 +31,14 @@ interface UserManagementTabProps {
 }
 
 export default function UserManagementTab({ showSuccess, showError }: UserManagementTabProps) {
+  const { isSuperAdmin, user: currentUser } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newUser, setNewUser] = useState({
     email: '',
     name: '',
     role: 'accountant',
-    privileges: { documents: { upload: false, delete: false, rename: false } },
+    privileges: defaultPrivilegesForRole('accountant'),
   });
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(false);
@@ -88,7 +93,7 @@ export default function UserManagementTab({ showSuccess, showError }: UserManage
           email: '',
           name: '',
           role: 'accountant',
-          privileges: { documents: { upload: false, delete: false, rename: false } },
+          privileges: defaultPrivilegesForRole('accountant'),
         });
         fetchUsers();
       } else {
@@ -164,12 +169,125 @@ export default function UserManagementTab({ showSuccess, showError }: UserManage
     </label>
   );
 
+  const updateRolePrivileges = (
+    role: string,
+    current?: UserPrivileges,
+  ): UserPrivileges => {
+    const merged = mergePrivileges(role, current);
+    return merged;
+  };
+
+  const renderDocumentPermissions = (
+    privileges: UserPrivileges,
+    onChange: (next: UserPrivileges) => void,
+  ) => (
+    <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+      <h3 className="text-sm font-semibold text-gray-700 mb-3">Document Permissions</h3>
+      <div className="flex flex-wrap gap-4">
+        {(['upload', 'delete', 'rename'] as const).map((perm) =>
+          renderPermissions(perm, privileges.documents?.[perm] || false, (val) =>
+            onChange({
+              ...privileges,
+              documents: { ...privileges.documents, [perm]: val },
+            }),
+          ),
+        )}
+      </div>
+    </div>
+  );
+
+  const renderStaffAccountantPermissions = (
+    privileges: UserPrivileges,
+    onChange: (next: UserPrivileges) => void,
+  ) => (
+    <>
+      {renderDocumentPermissions(privileges, onChange)}
+      {renderSettingsPermissions(privileges, onChange)}
+    </>
+  );
+
+  const countEnabledSettings = (privileges?: UserPrivileges) =>
+    SETTINGS_PERMISSIONS.filter((key) => privileges?.settings?.[key]).length;
+
+  const visibleUsers = users.filter((user) => user.id !== currentUser?.id);
+
+  const renderSettingsPermissions = (
+    privileges: UserPrivileges,
+    onChange: (next: UserPrivileges) => void,
+  ) => (
+    <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+      <h3 className="text-sm font-semibold text-gray-700 mb-3">Settings Permissions</h3>
+      <p className="text-xs text-gray-500 mb-3">
+        Migrated Invoice Edit is enabled for admins by default and off for
+        staff/accountants unless explicitly granted.
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto">
+        {SETTINGS_PERMISSIONS.map((key) => (
+          <label key={key} className="flex items-center space-x-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={
+                privileges.settings?.[key] ??
+                (key === "migrated-invoice-edit" ? false : true)
+              }
+              onChange={(e) =>
+                onChange({
+                  ...privileges,
+                  settings: {
+                    ...privileges.settings,
+                    [key]: e.target.checked,
+                  },
+                })
+              }
+              className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+            />
+            <span className="text-sm text-gray-700">{SETTINGS_PERMISSION_LABELS[key]}</span>
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+
+  const renderChequeVaultPermissions = (
+    privileges: UserPrivileges,
+    onChange: (next: UserPrivileges) => void,
+  ) => (
+    <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+      <h3 className="text-sm font-semibold text-gray-700 mb-1">Cheque Vault Permissions</h3>
+      <p className="text-xs text-gray-500 mb-3">Admin only. Staff and accountants can view the vault list but cannot upload or approve.</p>
+      <div className="flex flex-wrap gap-4">
+        {CHEQUE_VAULT_PERMISSIONS.map((perm) => (
+          <label key={perm} className="flex items-center space-x-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={privileges.chequeVault?.[perm] ?? false}
+              onChange={(e) =>
+                onChange({
+                  ...privileges,
+                  chequeVault: {
+                    ...privileges.chequeVault,
+                    [perm]: e.target.checked,
+                  },
+                })
+              }
+              className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+            />
+            <span className="text-sm text-gray-700">{CHEQUE_VAULT_PERMISSION_LABELS[perm]}</span>
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
           <h2 className="text-xl font-semibold text-gray-900 mb-1">User Management</h2>
-          <p className="text-gray-600 text-sm">Manage user accounts and permissions</p>
+          <p className="text-gray-600 text-sm">
+            Manage staff, accountants, and admin accounts. Edit your own account
+            under Settings → My Profile.
+          </p>
         </div>
         <button
           onClick={() => setShowCreateModal(true)}
@@ -200,7 +318,14 @@ export default function UserManagementTab({ showSuccess, showError }: UserManage
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {users.map((user, index) => (
+                {visibleUsers.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-500">
+                      No users to manage.
+                    </td>
+                  </tr>
+                ) : (
+                visibleUsers.map((user, index) => (
                   <tr key={user.id} className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-blue-50 transition duration-150`}>
                     <td className="px-4 py-3">
                       <div className="text-sm font-medium text-gray-900 break-words">
@@ -220,11 +345,28 @@ export default function UserManagementTab({ showSuccess, showError }: UserManage
                         <div className="flex flex-wrap gap-1">
                           {(['upload', 'delete', 'rename'] as const).map((perm) => (
                             <span key={perm} className={`px-1.5 py-0.5 text-xs rounded ${
-                              user.privileges!.documents[perm] ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                              user.privileges!.documents?.[perm] ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
                             }`}>
-                              {perm.charAt(0).toUpperCase()}
+                              D:{perm.charAt(0).toUpperCase()}
                             </span>
                           ))}
+                          {countEnabledSettings(user.privileges) > 0 && (
+                            <span className="px-1.5 py-0.5 text-xs rounded bg-green-100 text-green-700">
+                              Settings ({countEnabledSettings(user.privileges)})
+                            </span>
+                          )}
+                        </div>
+                      ) : user.role === 'admin' ? (
+                        <div className="flex flex-wrap gap-1">
+                          {user.privileges?.chequeVault?.upload && (
+                            <span className="px-1.5 py-0.5 text-xs rounded bg-green-100 text-green-700">Cheque Upload</span>
+                          )}
+                          {user.privileges?.chequeVault?.approve && (
+                            <span className="px-1.5 py-0.5 text-xs rounded bg-green-100 text-green-700">Cheque Approve</span>
+                          )}
+                          {!user.privileges?.chequeVault?.upload && !user.privileges?.chequeVault?.approve && (
+                            <span className="text-gray-500 text-xs">Settings Access</span>
+                          )}
                         </div>
                       ) : (
                         <span className="text-gray-500 text-xs">All Access</span>
@@ -236,7 +378,12 @@ export default function UserManagementTab({ showSuccess, showError }: UserManage
                     <td className="px-3 py-3 text-sm font-medium">
                       <div className="flex flex-wrap items-center gap-1.5">
                         <button
-                          onClick={() => setEditingUser(user)}
+                          onClick={() =>
+                            setEditingUser({
+                              ...user,
+                              privileges: mergePrivileges(user.role, user.privileges),
+                            })
+                          }
                           className="px-2.5 py-1 bg-blue-600 text-white text-xs font-medium rounded hover:bg-blue-700 transition duration-200"
                         >
                           Edit
@@ -257,7 +404,8 @@ export default function UserManagementTab({ showSuccess, showError }: UserManage
                       </div>
                     </td>
                   </tr>
-                ))}
+                ))
+                )}
               </tbody>
             </table>
           </div>
@@ -302,31 +450,36 @@ export default function UserManagementTab({ showSuccess, showError }: UserManage
                     <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
                     <select
                       value={newUser.role}
-                      onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}
+                      onChange={(e) => {
+                        const role = e.target.value;
+                        setNewUser({
+                          ...newUser,
+                          role,
+                          privileges: updateRolePrivileges(role, newUser.privileges),
+                        });
+                      }}
                       className="w-full border text-gray-900 border-gray-300 p-2.5 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     >
                       <option value="accountant">Accountant</option>
                       <option value="staff">Staff</option>
-                      <option value="admin">Admin</option>
+                      {isSuperAdmin && <option value="admin">Admin</option>}
                     </select>
                   </div>
 
-                  {(newUser.role === 'accountant' || newUser.role === 'staff') && (
-                    <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-                      <h3 className="text-sm font-semibold text-gray-700 mb-3">Document Permissions</h3>
-                      <div className="flex flex-wrap gap-4">
-                        {(['upload', 'delete', 'rename'] as const).map((perm) =>
-                          renderPermissions(perm, newUser.privileges.documents[perm], (val) =>
-                            setNewUser({
-                              ...newUser,
-                              privileges: {
-                                documents: { ...newUser.privileges.documents, [perm]: val },
-                              },
-                            })
-                          )
-                        )}
-                      </div>
-                    </div>
+                  {(newUser.role === 'accountant' || newUser.role === 'staff') &&
+                    renderStaffAccountantPermissions(newUser.privileges, (privileges) =>
+                      setNewUser({ ...newUser, privileges }),
+                    )}
+
+                  {isSuperAdmin && newUser.role === 'admin' && (
+                    <>
+                      {renderSettingsPermissions(newUser.privileges, (privileges) =>
+                        setNewUser({ ...newUser, privileges })
+                      )}
+                      {renderChequeVaultPermissions(newUser.privileges, (privileges) =>
+                        setNewUser({ ...newUser, privileges })
+                      )}
+                    </>
                   )}
                 </div>
 
@@ -391,39 +544,39 @@ export default function UserManagementTab({ showSuccess, showError }: UserManage
                     <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
                     <select
                       value={editingUser.role}
-                      onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value })}
+                      onChange={(e) => {
+                        const role = e.target.value;
+                        setEditingUser({
+                          ...editingUser,
+                          role,
+                          privileges: updateRolePrivileges(role, editingUser.privileges),
+                        });
+                      }}
                       className="w-full border text-gray-900 border-gray-300 p-2.5 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     >
                       <option value="accountant">Accountant</option>
                       <option value="staff">Staff</option>
-                      <option value="admin">Admin</option>
+                      {isSuperAdmin && <option value="admin">Admin</option>}
                     </select>
                   </div>
 
-                  {(editingUser.role === 'accountant' || editingUser.role === 'staff') && (
-                    <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-                      <h3 className="text-sm font-semibold text-gray-700 mb-3">Document Permissions</h3>
-                      <div className="flex flex-wrap gap-4">
-                        {(['upload', 'delete', 'rename'] as const).map((perm) =>
-                          renderPermissions(
-                            perm,
-                            editingUser.privileges?.documents?.[perm] || false,
-                            (val) =>
-                              setEditingUser({
-                                ...editingUser,
-                                privileges: {
-                                  documents: {
-                                    upload: editingUser.privileges?.documents?.upload || false,
-                                    delete: editingUser.privileges?.documents?.delete || false,
-                                    rename: editingUser.privileges?.documents?.rename || false,
-                                    [perm]: val,
-                                  },
-                                },
-                              })
-                          )
-                        )}
-                      </div>
-                    </div>
+                  {(editingUser.role === 'accountant' || editingUser.role === 'staff') &&
+                    renderStaffAccountantPermissions(
+                      mergePrivileges(editingUser.role, editingUser.privileges),
+                      (privileges) => setEditingUser({ ...editingUser, privileges }),
+                    )}
+
+                  {isSuperAdmin && editingUser.role === 'admin' && (
+                    <>
+                      {renderSettingsPermissions(
+                        mergePrivileges(editingUser.role, editingUser.privileges),
+                        (privileges) => setEditingUser({ ...editingUser, privileges }),
+                      )}
+                      {renderChequeVaultPermissions(
+                        mergePrivileges(editingUser.role, editingUser.privileges),
+                        (privileges) => setEditingUser({ ...editingUser, privileges }),
+                      )}
+                    </>
                   )}
                 </div>
 

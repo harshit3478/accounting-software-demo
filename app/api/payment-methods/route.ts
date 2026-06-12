@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "../../../lib/prisma";
-import { requireAuth, requireAdmin } from "../../../lib/auth";
+import { requireAuth, requireSettingPermission } from "../../../lib/auth";
 
 // GET /api/payment-methods — list all (active by default, or all for admin)
 export async function GET(request: NextRequest) {
@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
 // POST /api/payment-methods — create (admin only)
 export async function POST(request: NextRequest) {
   try {
-    await requireAdmin();
+    await requireSettingPermission("payment-methods");
     const body = await request.json();
     const { name, icon, color } = body;
 
@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
 // PUT /api/payment-methods — update (admin only, expects id in body)
 export async function PUT(request: NextRequest) {
   try {
-    await requireAdmin();
+    await requireSettingPermission("payment-methods");
     const body = await request.json();
     const { id, name, icon, color, isActive, sortOrder } = body;
 
@@ -119,7 +119,7 @@ export async function PUT(request: NextRequest) {
 // DELETE /api/payment-methods — delete (admin only, expects id in body)
 export async function DELETE(request: NextRequest) {
   try {
-    await requireAdmin();
+    await requireSettingPermission("payment-methods");
     const body = await request.json();
     const { id } = body;
 

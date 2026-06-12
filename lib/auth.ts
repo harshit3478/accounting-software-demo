@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
 import { cookies } from 'next/headers';
 import prisma from './prisma';
+import { hasPermission, type PermissionString, type SettingsPermission } from './permissions';
 
 export async function getUserFromToken() {
   const cookieStore = await cookies();
@@ -29,21 +30,32 @@ export async function requireAdmin() {
   return user;
 }
 
-export async function requirePermission(permission: string) {
+export async function requirePermission(permission: PermissionString) {
   const user = await requireAuth();
-  if (user.role === 'admin') return user; // Admins have all permissions
+  if (!hasPermission(user, permission)) throw new Error('Forbidden');
+  return user;
+}
 
-  const privileges = user.privileges as any;
-  
-  // Parse permission string (e.g., 'documents.delete' -> ['documents', 'delete'])
-  const parts = permission.split('.');
-  if (parts.length !== 2) throw new Error('Invalid permission format');
-  
-  const [category, action] = parts;
-  
-  // Check if user has this specific permission
-  if (!privileges?.[category]?.[action]) throw new Error('Forbidden');
-  
+export async function requireSettingPermission(setting: SettingsPermission) {
+  return requirePermission(`settings.${setting}` as PermissionString);
+}
+
+export async function requireChequeVaultUpload() {
+  const user = await requireAuth();
+  if (isSuperAdmin(user)) {
+    throw new Error('Super admin cannot upload cheques');
+  }
+  if (!hasPermission(user, 'chequeVault.upload')) {
+    throw new Error('Forbidden');
+  }
+  return user;
+}
+
+export async function requireChequeVaultApprove() {
+  const user = await requireAuth();
+  if (!hasPermission(user, 'chequeVault.approve')) {
+    throw new Error('Forbidden');
+  }
   return user;
 }
 
@@ -68,3 +80,5 @@ export function isSuperAdmin(user: any): boolean {
     user.id === parseInt(process.env.SUPERADMIN_ID || '1')
   );
 }
+
+export { hasPermission } from './permissions';

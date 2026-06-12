@@ -1,12 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcrypt";
 import prisma from "../../../lib/prisma";
-import { isSuperAdmin, requireAdmin } from "../../../lib/auth";
+import { isSuperAdmin, requireSettingPermission } from "../../../lib/auth";
+import { defaultPrivilegesForRole, sanitizePrivilegesForRole } from "../../../lib/permissions";
 import cache, { CACHE_KEYS, CACHE_TTL } from "../../../lib/cache";
 import { invalidateUsers } from "../../../lib/cache-helpers";
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
+}
+
+function filterVisibleUsers(
+  users: Array<{ id: number; email: string; role: string }>,
+  currentUser: { id: number; email: string; role: string },
+) {
+  return users.filter((user) => {
+    if (isSuperAdmin(user)) return false;
+    if (user.id === currentUser.id) return false;
+    if (user.role === "admin" && !isSuperAdmin(currentUser)) return false;
+    return true;
+  });
 }
 
 function formatUserWriteError(error: unknown): { message: string; status: number } {
@@ -31,13 +44,12 @@ function formatUserWriteError(error: unknown): { message: string; status: number
 
 export async function GET() {
   try {
-    await requireAdmin();
+    const currentUser = await requireSettingPermission("users");
 
-    // Check cache first
     const cacheKey = CACHE_KEYS.ALL_USERS;
     const cached = cache.get(cacheKey);
-    if (cached) {
-      return NextResponse.json(cached);
+    if (cached && Array.isArray(cached)) {
+      return NextResponse.json(filterVisibleUsers(cached, currentUser));
     }
 
     const users = await prisma.user.findMany({
@@ -51,10 +63,10 @@ export async function GET() {
       },
     });
 
-    // Cache for 5 minutes
-    cache.set(cacheKey, users, CACHE_TTL.LONG);
+    const manageableUsers = users.filter((user) => !isSuperAdmin(user));
+    cache.set(cacheKey, manageableUsers, CACHE_TTL.LONG);
 
-    return NextResponse.json(users);
+    return NextResponse.json(filterVisibleUsers(manageableUsers, currentUser));
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 403 });
   }
@@ -62,7 +74,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const currentUser = await requireAdmin();
+    const currentUser = await requireSettingPermission("users");
     const { email, password, name, role, privileges } = await request.json();
 
     if (!email?.trim() || !name?.trim()) {
@@ -97,14 +109,11 @@ export async function POST(request: NextRequest) {
     const passwordToHash =
       password || require("crypto").randomBytes(32).toString("hex");
     const hashedPassword = await bcrypt.hash(passwordToHash, 10);
-    const defaultPrivileges =
-      role === "admin"
-        ? {
-            documents: { upload: true, delete: true, rename: true },
-          }
-        : {
-            documents: { upload: false, delete: false, rename: false },
-          };
+    const defaultPrivileges = defaultPrivilegesForRole(role);
+    const resolvedPrivileges = sanitizePrivilegesForRole(
+      role,
+      privileges || defaultPrivileges,
+    );
 
     const user = await prisma.user.create({
       data: {
@@ -112,7 +121,7 @@ export async function POST(request: NextRequest) {
         passwordHash: hashedPassword,
         name: name.trim(),
         role,
-        privileges: privileges || defaultPrivileges,
+        privileges: resolvedPrivileges,
       },
       select: {
         id: true,
@@ -136,7 +145,7 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const currentUser = await requireAdmin();
+    const currentUser = await requireSettingPermission("users");
     const { id, email, name, role, privileges, password } =
       await request.json();
 
@@ -146,10 +155,30 @@ export async function PUT(request: NextRequest) {
 
     const targetUser = await prisma.user.findUnique({
       where: { id },
-      select: { id: true, role: true },
+      select: { id: true, role: true, email: true },
     });
     if (!targetUser) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+
+    if (isSuperAdmin(targetUser)) {
+      return NextResponse.json(
+        {
+          error:
+            "Super admin profile cannot be edited here. Use Settings → My Profile.",
+        },
+        { status: 403 },
+      );
+    }
+
+    if (targetUser.id === currentUser.id) {
+      return NextResponse.json(
+        {
+          error:
+            "You cannot edit your own account here. Use Settings → My Profile.",
+        },
+        { status: 403 },
+      );
     }
 
     // Only superadmin can edit admins or assign admin role
@@ -196,7 +225,9 @@ export async function PUT(request: NextRequest) {
       name: name.trim(),
       role,
     };
-    if (privileges) updateData.privileges = privileges;
+    if (privileges) {
+      updateData.privileges = sanitizePrivilegesForRole(role, privileges);
+    }
 
     // Hash and update password if provided
     if (password && password.trim()) {
@@ -228,13 +259,28 @@ export async function PUT(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const currentUser = await requireAdmin();
+    const currentUser = await requireSettingPermission("users");
     const { id } = await request.json();
 
-    // Prevent deleting superadmin
-    if (id === parseInt(process.env.SUPERADMIN_ID || "1")) {
+    const targetUser = await prisma.user.findUnique({
+      where: { id },
+      select: { id: true, email: true },
+    });
+
+    if (!targetUser) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+
+    if (isSuperAdmin(targetUser)) {
       return NextResponse.json(
-        { error: "Cannot delete superadmin" },
+        { error: "Cannot delete super admin" },
+        { status: 403 },
+      );
+    }
+
+    if (targetUser.id === currentUser.id) {
+      return NextResponse.json(
+        { error: "You cannot delete your own account" },
         { status: 403 },
       );
     }

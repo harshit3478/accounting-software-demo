@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { isSuperAdmin, requireAuth } from "@/lib/auth";
+import { requireChequeVaultUpload, requireAuth, isSuperAdmin } from "@/lib/auth";
 import { uploadToR2, deleteFromR2 } from "@/lib/r2-client";
 import { extractChequeDataFromFile } from "@/lib/cheque-ocr";
 import {
@@ -9,6 +9,7 @@ import {
   getChequeVaultFileExtension,
   isAllowedChequeVaultMimeType,
 } from "@/lib/cheque-vault-upload";
+import { chequeVaultUserInclude } from "@/lib/cheque-vault-include";
 
 function serializeCheque(cheque: any) {
   return {
@@ -45,10 +46,8 @@ export async function GET(request: NextRequest) {
 
     const where: any = {};
 
-    // Non-admin / non-super-admin users can only see their own uploads
-    if (user.role !== "admin" && !isSuperAdmin(user)) {
-      where.uploadedById = user.id;
-    } else if (uploadedBy) {
+    // Admins can filter by uploader; all users can browse the full list (read-only for non-admins).
+    if ((user.role === "admin" || isSuperAdmin(user)) && uploadedBy) {
       where.uploadedById = parseInt(uploadedBy);
     }
 
@@ -77,8 +76,7 @@ export async function GET(request: NextRequest) {
         take: limit,
         orderBy: { createdAt: "desc" },
         include: {
-          uploadedBy: { select: { id: true, name: true, email: true } },
-          approvedBy: { select: { id: true, name: true } },
+          ...chequeVaultUserInclude,
           invoiceAllocations: {
             include: {
               invoice: { select: { id: true, invoiceNumber: true, clientName: true } },
@@ -112,13 +110,7 @@ export async function POST(request: NextRequest) {
   let uploadedToR2 = false;
 
   try {
-    const user = await requireAuth();
-    if (isSuperAdmin(user)) {
-      return NextResponse.json(
-        { error: "Super admin cannot upload cheques. Submit requests as another user." },
-        { status: 403 },
-      );
-    }
+    const user = await requireChequeVaultUpload();
 
     const formData = await request.formData();
     const fileEntries = formData
