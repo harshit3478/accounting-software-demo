@@ -34,7 +34,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    await requireSettingPermission("terms");
+    const user = await requireSettingPermission("terms");
 
     const { title, lines, isDefault } = await request.json();
 

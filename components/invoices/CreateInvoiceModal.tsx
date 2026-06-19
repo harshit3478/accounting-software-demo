@@ -162,12 +162,20 @@ export default function CreateInvoiceModal({
     }
   }, []);
 
+  const loadCustomers = async () => {
+    try {
+      const res = await fetch("/api/customers?all=true");
+      if (res.ok) {
+        setCustomers(await res.json());
+      }
+    } catch {
+      // ignore
+    }
+  };
+
   // Fetch customers for autocomplete
   useEffect(() => {
-    fetch("/api/customers?all=true")
-      .then((res) => (res.ok ? res.json() : []))
-      .then((data) => setCustomers(data))
-      .catch(() => {});
+    loadCustomers();
   }, []);
 
   const selectedCustomer = customerId
@@ -559,20 +567,12 @@ export default function CreateInvoiceModal({
       });
       if (res.ok) {
         const created = await res.json();
-        setCustomers((prev: any) => [
-          ...prev,
-          {
-            id: created.id,
-            name: created.name,
-            email: created.email,
-            phone: created.phone,
-          },
-        ]);
         setClientName(created.name);
         setCustomerId(created.id);
         setCustomerAddress(created.address || "");
         setShowNewCustomerForm(false);
         setNewCustomerData({ name: "", email: "", phone: "", address: "" });
+        await loadCustomers();
       } else {
         const err = await res.json();
         onError?.(err.error || "Failed to create customer");
@@ -584,27 +584,25 @@ export default function CreateInvoiceModal({
     }
   };
 
-  const handleAddCustomerSuccess = (customer: CustomerOption) => {
-    // Add the new customer to the list
-    setCustomers((prev) => [...prev, customer]);
+  const handleAddCustomerSuccess = async (customer: CustomerOption) => {
     setClientName(customer.name);
     setCustomerId(customer.id);
     setCustomerAddress(customer.address || "");
     setShowAddCustomerModal(false);
     setPendingNewCustomerName("");
+    await loadCustomers();
     // Continue with invoice creation
     setTimeout(() => {
       setShowPreview(true);
     }, 100);
   };
 
-  const handleUpdateCustomerFieldsSuccess = (customer: CustomerOption) => {
-    // Update the customer in the list
-    setCustomers((prev) =>
-      prev.map((c) => (c.id === customer.id ? customer : c)),
-    );
+  const handleUpdateCustomerFieldsSuccess = async (
+    customer: CustomerOption,
+  ) => {
     setCustomerAddress(customer.address || "");
     setShowUpdateCustomerFieldsModal(false);
+    await loadCustomers();
     // Continue with invoice creation
     setTimeout(() => {
       setShowPreview(true);

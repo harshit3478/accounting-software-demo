@@ -96,6 +96,8 @@ interface Invoice {
   discount: number;
   shippingFee?: number;
   insuranceAmount?: number;
+  processingFee?: number;
+  earlyPaymentDiscount?: number;
   amount: number;
   paidAmount: number;
   dueDate: string;
@@ -869,6 +871,8 @@ export default function ViewInvoiceModal({
       : null);
   const shippingFee = Number(invoice.shippingFee || 0);
   const insuranceAmount = Number(invoice.insuranceAmount || 0);
+  const processingFee = Number(invoice.processingFee || 0);
+  const earlyPaymentDiscount = Number(invoice.earlyPaymentDiscount || 0);
   const layawayFee = getVisibleLayawayFee(invoice);
   const depositFeeNotInTotal = getCurrentItemDepositFeeTotal(invoice.items);
   const appliedRemovedItemDepositFeeTotal = getAppliedRemovedItemDepositFeeTotal(
@@ -1639,6 +1643,14 @@ export default function ViewInvoiceModal({
                   -{formatCurrency(invoice.discount)}
                 </span>
               </div>
+              {earlyPaymentDiscount > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Early Payment Discount:</span>
+                  <span className="font-medium text-green-700">
+                    -{formatCurrency(earlyPaymentDiscount)}
+                  </span>
+                </div>
+              )}
               {shippingFee > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Shipping Fee:</span>
@@ -1652,6 +1664,14 @@ export default function ViewInvoiceModal({
                   <span className="text-gray-600">Insurance:</span>
                   <span className="font-medium text-gray-900">
                     {formatCurrency(insuranceAmount)}
+                  </span>
+                </div>
+              )}
+              {processingFee > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Processing Fee:</span>
+                  <span className="font-medium text-gray-900">
+                    {formatCurrency(processingFee)}
                   </span>
                 </div>
               )}

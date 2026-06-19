@@ -1,4 +1,9 @@
 import prisma from "./prisma";
+import {
+  getEarlyPaymentDiscountSettingSnapshot,
+  maybeApplyEarlyPaymentDiscount,
+} from "./early-payment-discount";
+import { resetDueReminderTracking } from "./due-reminders";
 
 /**
  * Generates a unique invoice number in format: INV-YYYY-NNNN
@@ -88,7 +93,15 @@ export async function updateInvoiceAfterPayment(invoiceId: number) {
     where: { id: invoiceId },
     include: {
       payments: true,
-      paymentMatches: true,
+      paymentMatches: {
+        include: {
+          payment: {
+            select: {
+              paymentDate: true,
+            },
+          },
+        },
+      },
     },
   });
 
@@ -159,6 +172,51 @@ export async function updateInvoiceAfterPayment(invoiceId: number) {
       status: newStatus,
     },
   });
+
+  const earlyPaymentSetting = await getEarlyPaymentDiscountSettingSnapshot();
+  const discountApplied = await prisma.$transaction(async (tx) =>
+    maybeApplyEarlyPaymentDiscount(tx, {
+      invoice: {
+        ...invoice,
+        paidAmount: totalPaid,
+      },
+      totalPaid,
+      setting: earlyPaymentSetting,
+    }),
+  );
+
+  let finalInvoiceAmount = invoiceAmount;
+  if (discountApplied) {
+    finalInvoiceAmount = Math.max(invoiceAmount - discountApplied, 0);
+    const adjustedStatus = calculateInvoiceStatus(
+      finalInvoiceAmount,
+      totalPaid,
+      invoice.dueDate,
+    );
+
+    await prisma.invoice.update({
+      where: { id: invoiceId },
+      data: {
+        status: adjustedStatus,
+      },
+    });
+
+    console.log(
+      `Applied early payment discount of $${discountApplied.toFixed(2)} on invoice ${invoice.invoiceNumber}`,
+    );
+  }
+
+  const finalStatus = discountApplied
+    ? calculateInvoiceStatus(
+        finalInvoiceAmount,
+        totalPaid,
+        invoice.dueDate,
+      )
+    : newStatus;
+
+  if (finalStatus === "paid") {
+    await resetDueReminderTracking(invoiceId);
+  }
 
   // Auto-mark layaway installments as paid based on total paid amount
   if (invoice.isLayaway) {

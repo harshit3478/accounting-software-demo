@@ -4,6 +4,7 @@ export interface InvoiceDisplayLike {
   subtotal?: number | null;
   tax?: number | null;
   discount?: number | null;
+  earlyPaymentDiscount?: number | null;
   shippingFee?: number | null;
   insuranceAmount?: number | null;
   amount?: number | null;
@@ -278,6 +279,15 @@ export function getAbandonedRetainedFeeDisplay(invoice: {
     : null;
 }
 
+export function formatInvoiceSummaryRowValue(value: number): string {
+  const amount = Math.abs(Number(value || 0));
+  const formatted = amount.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  return value < 0 ? `-$${formatted}` : `$${formatted}`;
+}
+
 export function buildInvoicePdfSummaryRows(
   invoice: InvoiceDisplayLike & {
     status?: string;
@@ -324,6 +334,25 @@ export function buildInvoicePdfSummaryRows(
     ...(options?.includeSubtotal
       ? [{ label: "Subtotal:", value: Number(invoice.subtotal || 0) }]
       : []),
+    ...(Number(invoice.tax || 0) > 0
+      ? [{ label: "Tax:", value: Number(invoice.tax || 0) }]
+      : []),
+    ...(Number(invoice.discount || 0) > 0
+      ? [
+          {
+            label: "Discount:",
+            value: -Number(invoice.discount || 0),
+          },
+        ]
+      : []),
+    ...(Number(invoice.earlyPaymentDiscount || 0) > 0
+      ? [
+          {
+            label: "Early Payment Discount:",
+            value: -Number(invoice.earlyPaymentDiscount || 0),
+          },
+        ]
+      : []),
     { label: "Shipping Fee:", value: Number(invoice.shippingFee || 0) },
     { label: "Insurance:", value: Number(invoice.insuranceAmount || 0) },
     { label: "Layaway Fee:", value: layawayFee },
@@ -356,23 +385,24 @@ export function isRefundPayment(payment: {
   );
 }
 
+export type InvoicePdfPayment = {
+  id?: number;
+  amount?: number;
+  source?: string;
+  paymentDate?: string;
+  date?: string;
+  createdAt?: string;
+  isRefund?: boolean;
+  isAbandoned?: boolean;
+  refundProofUrl?: string | null;
+  method?: { name?: string } | string | null;
+};
+
 export function getInvoicePaymentsForPdf(invoice: {
   status?: string;
-  payments?: Array<{
-    id?: number;
-    source?: string;
-    isRefund?: boolean;
-    isAbandoned?: boolean;
-    refundProofUrl?: string | null;
-  }> | null;
-  abandonmentRefunds?: Array<{
-    id?: number;
-    source?: string;
-    isRefund?: boolean;
-    isAbandoned?: boolean;
-    refundProofUrl?: string | null;
-  }> | null;
-}): NonNullable<typeof invoice.payments> {
+  payments?: InvoicePdfPayment[] | null;
+  abandonmentRefunds?: InvoicePdfPayment[] | null;
+}): InvoicePdfPayment[] {
   const payments = invoice.payments || [];
   if (!isAbandonedInvoice(invoice)) {
     return payments;

@@ -426,3 +426,149 @@ export async function sendInvoiceEmail(invoice: {
     return { success: false, error };
   }
 }
+
+export async function sendDuePaymentReminderEmail(params: {
+  reminderNumber: 1 | 2 | 3;
+  customer: { name: string; email: string };
+  invoice: {
+    invoiceNumber: string;
+    amount: number;
+    paidAmount: number;
+    remaining: number;
+    dueDate: Date | string;
+    isLayaway: boolean;
+  };
+  restockingNotice?: string | null;
+}) {
+  const {
+    name: businessName,
+    tagline,
+    website,
+    email: bizEmail,
+    phone,
+    colors,
+  } = BUSINESS_CONFIG;
+  const { gold, cream, charcoal } = colors;
+
+  const dueDate = new Date(params.invoice.dueDate).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
+  const reminderTitles: Record<1 | 2 | 3, string> = {
+    1: "Payment Reminder",
+    2: "Second Payment Reminder",
+    3: "Final Payment Reminder",
+  };
+
+  const reminderSubjects: Record<1 | 2 | 3, string> = {
+    1: `Payment Reminder – ${params.invoice.invoiceNumber}`,
+    2: `Second Payment Reminder – ${params.invoice.invoiceNumber}`,
+    3: `Final Payment Reminder & Restocking Notice – ${params.invoice.invoiceNumber}`,
+  };
+
+  const introLines: Record<1 | 2 | 3, string> = {
+    1: "This is a friendly reminder that your invoice payment is now due.",
+    2: "This is your second reminder that your invoice payment remains outstanding.",
+    3: "This is your final payment reminder. Immediate action is required to avoid restocking fees and order cancellation.",
+  };
+
+  const restockingBlock = params.restockingNotice
+    ? `
+      <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:14px 16px;margin-top:18px;">
+        <p style="margin:0 0 6px;font-size:13px;font-weight:bold;color:#b91c1c;">Restocking Notice</p>
+        <p style="margin:0;font-size:13px;color:#7f1d1d;line-height:1.5;">${params.restockingNotice}</p>
+      </div>
+    `
+    : "";
+
+  const restockingText = params.restockingNotice
+    ? `\n\nRestocking Notice:\n${params.restockingNotice}`
+    : "";
+
+  try {
+    const { data, error } = await resend.emails.send({
+      from: process.env.EMAIL_FROM || "onboarding@resend.dev",
+      to: params.customer.email,
+      subject: reminderSubjects[params.reminderNumber],
+      text: [
+        `${businessName} — ${reminderTitles[params.reminderNumber]}`,
+        `Dear ${params.customer.name},`,
+        introLines[params.reminderNumber],
+        `Invoice Number: ${params.invoice.invoiceNumber}`,
+        `Invoice Total: $${params.invoice.amount.toFixed(2)}`,
+        `Amount Paid: $${params.invoice.paidAmount.toFixed(2)}`,
+        `Amount Due: $${params.invoice.remaining.toFixed(2)}`,
+        `Due Date: ${dueDate}`,
+        params.invoice.isLayaway
+          ? "This is a layaway invoice."
+          : "This is a cash invoice.",
+        restockingText,
+        website ? `Visit us: ${website}` : "",
+        bizEmail ? `Contact: ${bizEmail}` : "",
+        phone ? `Phone: ${phone}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      html: `
+        <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;color:${charcoal};">
+          <div style="background:${gold};height:4px;border-radius:2px 2px 0 0;"></div>
+          <div style="background:#fff;padding:28px 32px 16px;">
+            <h1 style="margin:0;font-size:22px;color:${gold};letter-spacing:1px;">${businessName}</h1>
+            <p style="margin:4px 0 0;font-size:12px;color:#6b7280;">${tagline}</p>
+          </div>
+          <div style="background:#fff;padding:0 32px 28px;">
+            <h2 style="font-size:16px;border-bottom:1px solid #e5e7eb;padding-bottom:10px;">${reminderTitles[params.reminderNumber]}</h2>
+            <p style="font-size:14px;color:#374151;line-height:1.6;">Dear <strong>${params.customer.name}</strong>,<br>${introLines[params.reminderNumber]}</p>
+            <div style="background:${cream};border:1.5px solid ${gold};border-radius:8px;text-align:center;padding:16px 12px;margin:20px 0;">
+              <p style="margin:0 0 4px;font-size:11px;color:${gold};text-transform:uppercase;letter-spacing:1px;font-weight:bold;">Amount Due</p>
+              <p style="margin:0;font-size:28px;font-weight:bold;">$${params.invoice.remaining.toFixed(2)}</p>
+            </div>
+            <table style="width:100%;border-collapse:collapse;font-size:13px;color:#374151;">
+              <tr>
+                <td style="padding:7px 0;border-bottom:1px solid #f3f4f6;color:#6b7280;">Invoice Number</td>
+                <td style="padding:7px 0;border-bottom:1px solid #f3f4f6;text-align:right;font-weight:bold;">${params.invoice.invoiceNumber}</td>
+              </tr>
+              <tr>
+                <td style="padding:7px 0;border-bottom:1px solid #f3f4f6;color:#6b7280;">Due Date</td>
+                <td style="padding:7px 0;border-bottom:1px solid #f3f4f6;text-align:right;">${dueDate}</td>
+              </tr>
+              <tr>
+                <td style="padding:7px 0;border-bottom:1px solid #f3f4f6;color:#6b7280;">Invoice Total</td>
+                <td style="padding:7px 0;border-bottom:1px solid #f3f4f6;text-align:right;">$${params.invoice.amount.toFixed(2)}</td>
+              </tr>
+              <tr>
+                <td style="padding:7px 0;border-bottom:1px solid #f3f4f6;color:#6b7280;">Amount Paid</td>
+                <td style="padding:7px 0;border-bottom:1px solid #f3f4f6;text-align:right;">$${params.invoice.paidAmount.toFixed(2)}</td>
+              </tr>
+              <tr>
+                <td style="padding:7px 0;color:#6b7280;font-weight:bold;">Balance Remaining</td>
+                <td style="padding:7px 0;text-align:right;font-weight:bold;color:#b45309;">$${params.invoice.remaining.toFixed(2)}</td>
+              </tr>
+            </table>
+            ${restockingBlock}
+            <p style="font-size:13px;color:#374151;margin-top:18px;">Please contact us if you have already submitted payment or need assistance with your account.</p>
+          </div>
+          <div style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:16px 32px;text-align:center;">
+            <p style="margin:0 0 4px;font-size:12px;color:${gold};font-weight:bold;">${businessName}</p>
+            ${website ? `<p style="margin:0 0 2px;font-size:11px;color:#9ca3af;">${website}</p>` : ""}
+            ${bizEmail ? `<p style="margin:0 0 2px;font-size:11px;color:#9ca3af;">${bizEmail}</p>` : ""}
+            ${phone ? `<p style="margin:0;font-size:11px;color:#9ca3af;">${phone}</p>` : ""}
+          </div>
+          <div style="background:${gold};height:2px;border-radius:0 0 2px 2px;"></div>
+        </div>
+      `,
+    });
+
+    if (error) {
+      console.error("[Email] sendDuePaymentReminderEmail error:", error);
+      return { success: false, error };
+    }
+
+    return { success: true, data };
+  } catch (error) {
+    console.error("[Email] sendDuePaymentReminderEmail exception:", error);
+    return { success: false, error };
+  }
+}

@@ -398,6 +398,12 @@ export async function GET(request: NextRequest) {
       layawayFee: invoice.layawayFee?.toNumber
         ? invoice.layawayFee.toNumber()
         : invoice.layawayFee,
+      processingFee: invoice.processingFee?.toNumber
+        ? invoice.processingFee.toNumber()
+        : (invoice.processingFee ?? 0),
+      earlyPaymentDiscount: invoice.earlyPaymentDiscount?.toNumber
+        ? invoice.earlyPaymentDiscount.toNumber()
+        : (invoice.earlyPaymentDiscount ?? 0),
       amount: invoice.amount?.toNumber
         ? invoice.amount.toNumber()
         : invoice.amount,
