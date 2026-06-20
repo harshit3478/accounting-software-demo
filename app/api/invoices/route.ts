@@ -5,6 +5,7 @@ import { LINKABLE_INVOICE_STATUSES } from "../../../lib/invoice-linkable-status"
 import {
   generateInvoiceNumber,
   calculateInvoiceStatus,
+  updateInvoiceAfterPayment,
 } from "../../../lib/invoice-utils";
 import {
   calculateInsuranceAmount,
@@ -23,6 +24,7 @@ import {
 } from "../../../lib/deposit-fees";
 import { invalidateDashboard } from "../../../lib/cache-helpers";
 import { serializeInvoiceEditHistoryEntry } from "../../../lib/user-display";
+import { applyAvailableStoreCreditToInvoice } from "../../../lib/store-credit-apply";
 
 async function getConfiguredInsuranceBands(): Promise<InsuranceBand[]> {
   const ruleModel = (prisma as any)?.insuranceRule;
@@ -499,6 +501,7 @@ export async function POST(request: NextRequest) {
       shippingFeeRuleId,
       insuranceAmount,
       insuranceBaseAmount,
+      applyStoreCredit,
     } = await request.json();
 
     const normalizedClientName =
@@ -830,7 +833,44 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    let storeCreditApplied = 0;
+    if (applyStoreCredit === true && resolvedCustomerId) {
+      const creditResult = await prisma.$transaction(async (tx) =>
+        applyAvailableStoreCreditToInvoice(tx, {
+          invoiceId: invoice.id,
+          invoiceNumber: invoice.invoiceNumber,
+          customerId: resolvedCustomerId,
+          maxAmount: totalAmount,
+          userId: user.id,
+        }),
+      );
+
+      storeCreditApplied = creditResult.appliedAmount;
+
+      if (storeCreditApplied > 0) {
+        await updateInvoiceAfterPayment(invoice.id);
+
+        await prisma.invoiceEditHistory.create({
+          data: {
+            invoiceId: invoice.id,
+            editedById: user.id,
+            reason: "Store credit applied at invoice creation",
+            changes: {
+              storeCreditApplied: { from: 0, to: storeCreditApplied },
+            },
+          },
+        });
+      }
+    }
+
     // Convert Decimal to number for response
+    const refreshedInvoice =
+      storeCreditApplied > 0
+        ? await prisma.invoice.findUnique({
+            where: { id: invoice.id },
+            select: { paidAmount: true, status: true },
+          })
+        : null;
     const invAny: any = invoice;
     const serializedInvoice = {
       ...invAny,
@@ -858,9 +898,13 @@ export async function POST(request: NextRequest) {
       amount: invAny.amount?.toNumber
         ? invAny.amount.toNumber()
         : invAny.amount,
-      paidAmount: invAny.paidAmount?.toNumber
-        ? invAny.paidAmount.toNumber()
-        : invAny.paidAmount,
+      paidAmount: refreshedInvoice?.paidAmount?.toNumber
+        ? refreshedInvoice.paidAmount.toNumber()
+        : invAny.paidAmount?.toNumber
+          ? invAny.paidAmount.toNumber()
+          : invAny.paidAmount,
+      status: refreshedInvoice?.status ?? invAny.status,
+      storeCreditApplied,
     };
 
     // Invalidate dashboard cache

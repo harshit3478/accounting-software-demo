@@ -30,6 +30,7 @@ interface CustomerOption {
   email: string | null;
   phone: string | null;
   address: string | null;
+  storeCredit?: number;
 }
 
 interface TermOption {
@@ -87,6 +88,7 @@ export default function CreateInvoiceModal({
 
   const [clientName, setClientName] = useState("");
   const [customerId, setCustomerId] = useState<number | null>(null);
+  const [applyStoreCredit, setApplyStoreCredit] = useState(false);
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
   const [showNewCustomerForm, setShowNewCustomerForm] = useState(false);
@@ -185,6 +187,12 @@ export default function CreateInvoiceModal({
           customer.name.trim().toLowerCase() ===
           clientName.trim().toLowerCase(),
       ) || null;
+
+  const availableStoreCredit = Number(selectedCustomer?.storeCredit || 0);
+
+  useEffect(() => {
+    setApplyStoreCredit(false);
+  }, [customerId, clientName]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -593,6 +601,7 @@ export default function CreateInvoiceModal({
     await loadCustomers();
     // Continue with invoice creation
     setTimeout(() => {
+      setApplyStoreCredit(false);
       setShowPreview(true);
     }, 100);
   };
@@ -605,6 +614,7 @@ export default function CreateInvoiceModal({
     await loadCustomers();
     // Continue with invoice creation
     setTimeout(() => {
+      setApplyStoreCredit(false);
       setShowPreview(true);
     }, 100);
   };
@@ -644,6 +654,7 @@ export default function CreateInvoiceModal({
     setDateError("");
     setShowNewCustomerForm(false);
     setNewCustomerData({ name: "", email: "", phone: "", address: "" });
+    setApplyStoreCredit(false);
   };
 
   const handleCreateInvoice = async () => {
@@ -745,6 +756,7 @@ export default function CreateInvoiceModal({
     }
 
     // Show preview instead of creating directly
+    setApplyStoreCredit(false);
     setShowPreview(true);
   };
 
@@ -783,6 +795,8 @@ export default function CreateInvoiceModal({
             notes: layawayNotes || undefined,
           },
         }),
+        applyStoreCredit:
+          applyStoreCredit && availableStoreCredit > 0 && !!selectedCustomer,
       };
 
       if (selectedTermsId !== "custom" && selectedTermsId !== "none") {
@@ -1752,7 +1766,10 @@ export default function CreateInvoiceModal({
 
       <PreviewInvoiceModal
         isOpen={showPreview}
-        onClose={() => setShowPreview(false)}
+        onClose={() => {
+          setApplyStoreCredit(false);
+          setShowPreview(false);
+        }}
         onConfirm={handleConfirmCreate}
         clientName={clientName}
         invoiceDate={invoiceDate}
@@ -1774,6 +1791,11 @@ export default function CreateInvoiceModal({
         isLayaway={isLayaway}
         isSubmitting={isCreating}
         useDefaultTerms={false}
+        availableStoreCredit={
+          selectedCustomer ? availableStoreCredit : 0
+        }
+        applyStoreCredit={applyStoreCredit}
+        onApplyStoreCreditChange={setApplyStoreCredit}
         customTerms={
           selectedTermsId === "custom"
             ? customTerms.filter((t) => t.trim())

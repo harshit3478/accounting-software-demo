@@ -2093,6 +2093,11 @@ export default function ViewInvoiceModal({
                                 Matched Payment
                               </span>
                             )}
+                            {payment.source === "store_credit_applied" && (
+                              <span className="text-xs px-2 py-1 bg-amber-100 text-amber-800 rounded font-medium">
+                                Store Credit Applied
+                              </span>
+                            )}
                           </div>
                           <p className="text-sm text-gray-600 mt-1">
                             {formatDate(payment.date)}

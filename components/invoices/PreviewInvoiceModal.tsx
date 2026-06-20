@@ -27,6 +27,9 @@ interface PreviewInvoiceModalProps {
   isSubmitting?: boolean;
   useDefaultTerms?: boolean;
   customTerms?: string[];
+  availableStoreCredit?: number;
+  applyStoreCredit?: boolean;
+  onApplyStoreCreditChange?: (value: boolean) => void;
 }
 
 export default function PreviewInvoiceModal({
@@ -52,6 +55,9 @@ export default function PreviewInvoiceModal({
   isSubmitting = false,
   useDefaultTerms = true,
   customTerms = [],
+  availableStoreCredit = 0,
+  applyStoreCredit = false,
+  onApplyStoreCreditChange,
 }: PreviewInvoiceModalProps) {
   const [defaultTerms, setDefaultTerms] = useState<string[] | null>(null);
 
@@ -71,6 +77,9 @@ export default function PreviewInvoiceModal({
   }, [useDefaultTerms]);
 
   const termsToShow = useDefaultTerms ? defaultTerms || [] : customTerms;
+  const creditToApply = Math.min(availableStoreCredit, total);
+  const amountDueAfterCredit = Math.max(total - creditToApply, 0);
+  const showStoreCreditOption = availableStoreCredit > 0;
   const getTaxAmount = () => {
     return taxType === "percentage" ? (subtotal * tax) / 100 : tax;
   };
@@ -302,7 +311,134 @@ export default function PreviewInvoiceModal({
               ${total.toFixed(2)}
             </span>
           </div>
+          {showStoreCreditOption && applyStoreCredit && (
+            <>
+              <div className="flex justify-between text-sm pt-1">
+                <span className="text-emerald-700">Store Credit Applied:</span>
+                <span className="font-medium text-emerald-700">
+                  -${creditToApply.toFixed(2)}
+                </span>
+              </div>
+              <div className="border-t border-gray-300 pt-2 mt-1 flex justify-between">
+                <span className="font-semibold text-gray-900">Amount Due:</span>
+                <span className="text-lg font-bold text-gray-900">
+                  ${amountDueAfterCredit.toFixed(2)}
+                </span>
+              </div>
+            </>
+          )}
         </div>
+
+        {showStoreCreditOption && (
+          <div className="rounded-xl border border-emerald-200/80 bg-gradient-to-br from-emerald-50 via-white to-amber-50 p-5 shadow-sm">
+            <div className="flex items-start gap-4">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-100 ring-4 ring-emerald-50">
+                <svg
+                  className="h-5 w-5 text-emerald-700"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
+                  />
+                </svg>
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800">
+                  Store Credit
+                </p>
+                <p className="mt-1 text-2xl font-bold text-emerald-700">
+                  ${availableStoreCredit.toFixed(2)}
+                </p>
+                <p className="mt-1 text-sm text-gray-600">
+                  Available for {clientName} from previous overpayments.
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() =>
+                onApplyStoreCreditChange?.(!applyStoreCredit)
+              }
+              className={`mt-4 w-full rounded-lg border p-4 text-left transition-all ${
+                applyStoreCredit
+                  ? "border-emerald-400 bg-white shadow-sm ring-2 ring-emerald-100"
+                  : "border-gray-200 bg-white/80 hover:border-emerald-200 hover:bg-white"
+              }`}
+            >
+              <div className="flex items-start gap-3">
+                <div
+                  className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border ${
+                    applyStoreCredit
+                      ? "border-emerald-600 bg-emerald-600 text-white"
+                      : "border-gray-300 bg-white"
+                  }`}
+                >
+                  {applyStoreCredit && (
+                    <svg
+                      className="h-3.5 w-3.5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="3"
+                        d="M5 13l4 4L19 7"
+                      />
+                    </svg>
+                  )}
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">
+                    Apply store credit to this invoice
+                  </p>
+                  <p className="mt-1 text-xs text-gray-500">
+                    {applyStoreCredit
+                      ? `${creditToApply.toFixed(2)} will be applied when you confirm.`
+                      : "Invoice will be created fully unpaid if you leave this off."}
+                  </p>
+                </div>
+              </div>
+            </button>
+
+            {applyStoreCredit && (
+              <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div className="rounded-lg border border-gray-200 bg-white px-4 py-3 text-center">
+                  <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                    Invoice Total
+                  </p>
+                  <p className="mt-1 text-lg font-bold text-gray-900">
+                    ${total.toFixed(2)}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-center">
+                  <p className="text-xs font-medium uppercase tracking-wide text-emerald-700">
+                    Credit Applied
+                  </p>
+                  <p className="mt-1 text-lg font-bold text-emerald-800">
+                    -${creditToApply.toFixed(2)}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-center">
+                  <p className="text-xs font-medium uppercase tracking-wide text-blue-700">
+                    Amount Due
+                  </p>
+                  <p className="mt-1 text-lg font-bold text-blue-900">
+                    ${amountDueAfterCredit.toFixed(2)}
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Status */}
         {isLayaway && (

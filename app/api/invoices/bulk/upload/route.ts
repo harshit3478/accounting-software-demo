@@ -3,6 +3,7 @@ import { requireAuth } from "../../../../../lib/auth";
 import prisma from "../../../../../lib/prisma";
 import {
   groupInvoiceSpreadsheetRows,
+  getBulkRowItemPricing,
   parseInvoiceSpreadsheet,
   validateInvoiceSheetRows,
 } from "../../../../../lib/invoice-bulk-sheet";
@@ -10,6 +11,10 @@ import {
   generateInvoiceNumber,
   calculateInvoiceStatus,
 } from "../../../../../lib/invoice-utils";
+import {
+  customerEmailErrorResponse,
+  normalizeCustomerEmail,
+} from "../../../../../lib/customer-email";
 
 export async function POST(request: NextRequest) {
   try {
@@ -30,7 +35,9 @@ export async function POST(request: NextRequest) {
         customerEmailOverrides = Object.fromEntries(
           Object.entries(parsedOverrides).map(([key, value]) => [
             key,
-            String(value || "").trim(),
+            String(value || "")
+              .trim()
+              .toLowerCase(),
           ]),
         );
       }
@@ -93,12 +100,14 @@ export async function POST(request: NextRequest) {
 
       for (const group of groupedRows) {
         const representativeRow = group.rows[0];
-        const email = group.email || representativeRow?.email?.trim() || null;
+        const email = normalizeCustomerEmail(
+          group.email || representativeRow?.email,
+        );
         let customerId: number | null = null;
         let customerName = representativeRow?.name || "Bulk Imported Customer";
 
         if (email) {
-          const existingCustomer = await tx.customer.findFirst({
+          const existingCustomer = await tx.customer.findUnique({
             where: { email },
             select: { id: true, name: true },
           });
@@ -214,17 +223,21 @@ export async function POST(request: NextRequest) {
         const invoiceNumber = `INV-${year}-${nextNumber.toString().padStart(4, "0")}`;
         nextNumber++;
 
-        const items = group.rows.map((row) => ({
-          name: row.description?.trim() || "Bulk imported item",
-          quantity: 1,
-          price: Number(row.amount || 0),
-          unit: row.unit?.trim() || undefined,
-          liveType: row.liveType?.trim() || undefined,
-          country: row.country?.trim() || undefined,
-          vca116g: Number(row.vca116g || 0),
-          k18_121g: Number(row.k18_121g || 0),
-          vca118g: Number(row.vca118g || 0),
-        }));
+        const items = group.rows.map((row) => {
+          const { quantity, price } = getBulkRowItemPricing(row);
+
+          return {
+            name: row.description?.trim() || "Bulk imported item",
+            quantity,
+            price,
+            unit: row.unit?.trim() || undefined,
+            liveType: row.liveType?.trim() || undefined,
+            country: row.country?.trim() || undefined,
+            vca116g: Number(row.vca116g || 0),
+            k18_121g: Number(row.k18_121g || 0),
+            vca118g: Number(row.vca118g || 0),
+          };
+        });
 
         // Calculate initial status
         const status = calculateInvoiceStatus(amount, 0, dueDate);
@@ -280,6 +293,13 @@ export async function POST(request: NextRequest) {
     });
   } catch (error: any) {
     console.error("Bulk upload spreadsheet invoices error:", error);
+    const emailError = customerEmailErrorResponse(error);
+    if (emailError) {
+      return NextResponse.json(
+        { error: emailError.message },
+        { status: emailError.status },
+      );
+    }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

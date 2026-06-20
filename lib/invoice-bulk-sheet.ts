@@ -511,3 +511,41 @@ export function groupInvoiceSpreadsheetRows(
 
   return Array.from(groups.values());
 }
+
+/** Total unit weight from gram columns (18K 121/G, VCA 116/G, VCA 118/G). */
+export function getBulkRowQuantity(row: {
+  vca116g?: number;
+  k18_121g?: number;
+  vca118g?: number;
+}): number {
+  const totalGrams =
+    Number(row.vca116g || 0) +
+    Number(row.k18_121g || 0) +
+    Number(row.vca118g || 0);
+
+  if (totalGrams > 0) {
+    return Math.round(totalGrams * 1000) / 1000;
+  }
+
+  return 1;
+}
+
+export function getBulkRowItemPricing(row: SpreadsheetInvoiceRow): {
+  quantity: number;
+  price: number;
+} {
+  const quantity = getBulkRowQuantity(row);
+  const lineAmount = Number(row.amount || 0);
+
+  if (quantity > 0 && lineAmount > 0) {
+    return {
+      quantity,
+      price: Math.round((lineAmount / quantity) * 100) / 100,
+    };
+  }
+
+  return {
+    quantity,
+    price: lineAmount,
+  };
+}

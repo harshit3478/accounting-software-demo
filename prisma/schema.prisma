@@ -448,7 +448,7 @@ model AttendanceEntry {
 model Customer {
   id          Int      @id @default(autoincrement())
   name        String
-  email       String?
+  email       String?  @unique
   phone       String?
   address     String?  @db.Text
   notes       String?  @db.Text

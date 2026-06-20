@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "../../../lib/prisma";
 import { requireAuth, requireSettingPermission } from "../../../lib/auth";
+import {
+  assertCustomerEmailAvailable,
+  customerEmailErrorResponse,
+} from "../../../lib/customer-email";
 
 function isStoreCreditCompatibilityError(error: any): boolean {
   const message = String(error?.message || "");
@@ -251,10 +255,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
     }
 
+    const normalizedEmail = await assertCustomerEmailAvailable(prisma, email);
+
     const customer = await prisma.customer.create({
       data: {
         name: name.trim(),
-        email: email || null,
+        email: normalizedEmail,
         phone: phone || null,
         address: address || null,
         notes: notes || null,
@@ -273,6 +279,13 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(customer, { status: 201 });
   } catch (error: any) {
+    const emailError = customerEmailErrorResponse(error);
+    if (emailError) {
+      return NextResponse.json(
+        { error: emailError.message },
+        { status: emailError.status },
+      );
+    }
     if (error.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
