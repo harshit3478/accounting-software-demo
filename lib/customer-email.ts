@@ -67,3 +67,17 @@ export async function assertCustomerEmailAvailable(
 
   return normalized;
 }
+
+export async function findCustomerByEmail(
+  prismaClient: CustomerEmailClient,
+  email: string | null | undefined,
+  select?: { id?: true; name?: true; email?: true },
+) {
+  const normalized = normalizeCustomerEmail(email);
+  if (!normalized) return null;
+
+  return prismaClient.customer.findFirst({
+    where: { email: normalized },
+    select: select ?? { id: true, name: true, email: true },
+  });
+}

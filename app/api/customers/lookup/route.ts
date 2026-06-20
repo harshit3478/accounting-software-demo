@@ -1,22 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
-import { normalizeCustomerEmail } from "@/lib/customer-email";
+import { findCustomerByEmail } from "@/lib/customer-email";
 
 export async function GET(request: NextRequest) {
   try {
     await requireAuth();
     const { searchParams } = new URL(request.url);
-    const email = normalizeCustomerEmail(searchParams.get("email"));
+    const email = searchParams.get("email");
 
-    if (!email) {
+    if (!email?.trim()) {
       return NextResponse.json({ customer: null });
     }
 
-    const customer = await prisma.customer.findUnique({
-      where: { email },
-      select: { id: true, name: true, email: true },
-    });
+    const customer = await findCustomerByEmail(prisma, email);
 
     return NextResponse.json({ customer });
   } catch (error: any) {

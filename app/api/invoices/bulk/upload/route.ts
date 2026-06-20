@@ -12,7 +12,9 @@ import {
   calculateInvoiceStatus,
 } from "../../../../../lib/invoice-utils";
 import {
+  CUSTOMER_EMAIL_EXISTS_ERROR,
   customerEmailErrorResponse,
+  findCustomerByEmail,
   normalizeCustomerEmail,
 } from "../../../../../lib/customer-email";
 
@@ -107,9 +109,9 @@ export async function POST(request: NextRequest) {
         let customerName = representativeRow?.name || "Bulk Imported Customer";
 
         if (email) {
-          const existingCustomer = await tx.customer.findUnique({
-            where: { email },
-            select: { id: true, name: true },
+          const existingCustomer = await findCustomerByEmail(tx, email, {
+            id: true,
+            name: true,
           });
 
           if (existingCustomer) {
@@ -118,15 +120,23 @@ export async function POST(request: NextRequest) {
           } else if (skipMissingCustomers) {
             continue;
           } else {
-            const createdCustomer = await tx.customer.create({
-              data: {
-                name: customerName,
-                email,
-              },
-              select: { id: true, name: true },
-            });
-            customerId = createdCustomer.id;
-            customerName = createdCustomer.name;
+            try {
+              const createdCustomer = await tx.customer.create({
+                data: {
+                  name: customerName,
+                  email,
+                },
+                select: { id: true, name: true },
+              });
+              customerId = createdCustomer.id;
+              customerName = createdCustomer.name;
+            } catch (createError) {
+              const emailError = customerEmailErrorResponse(createError);
+              if (emailError) {
+                throw new Error(CUSTOMER_EMAIL_EXISTS_ERROR);
+              }
+              throw createError;
+            }
           }
         } else {
           continue;
