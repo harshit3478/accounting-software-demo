@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { requireChequeVaultUpload, requireAuth, isSuperAdmin } from "@/lib/auth";
+import {
+  requireChequeVaultUpload,
+  requireAuth,
+  isSuperAdmin,
+} from "@/lib/auth";
 import { uploadToR2, deleteFromR2 } from "@/lib/r2-client";
 import { extractChequeDataFromFile } from "@/lib/cheque-ocr";
 import {
@@ -41,7 +45,8 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get("status");
     const startDate = searchParams.get("startDate");
     const endDate = searchParams.get("endDate");
-    const payorName = searchParams.get("payorName") || searchParams.get("payeeName");
+    const payorName =
+      searchParams.get("payorName") || searchParams.get("payeeName");
     const uploadedBy = searchParams.get("uploadedBy");
 
     const where: any = {};
@@ -79,7 +84,9 @@ export async function GET(request: NextRequest) {
           ...chequeVaultUserInclude,
           invoiceAllocations: {
             include: {
-              invoice: { select: { id: true, invoiceNumber: true, clientName: true } },
+              invoice: {
+                select: { id: true, invoiceNumber: true, clientName: true },
+              },
             },
           },
         },
@@ -101,7 +108,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     console.error("[cheque-vault GET]", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
   }
 }
 
@@ -115,7 +125,9 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData();
     const fileEntries = formData
       .getAll("file")
-      .filter((entry): entry is File => entry instanceof File && entry.size > 0);
+      .filter(
+        (entry): entry is File => entry instanceof File && entry.size > 0,
+      );
 
     if (fileEntries.length === 0) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
@@ -164,9 +176,12 @@ export async function POST(request: NextRequest) {
       },
     );
 
-    const customerEmail = (formData.get("customerEmail") as string | null)?.trim() || null;
+    const customerEmail =
+      (formData.get("customerEmail") as string | null)?.trim() || null;
 
-    const parsedChequeDate = ocrResult.chequeDate ? new Date(ocrResult.chequeDate) : null;
+    const parsedChequeDate = ocrResult.chequeDate
+      ? new Date(ocrResult.chequeDate)
+      : null;
     const chequeDate =
       parsedChequeDate && !isNaN(parsedChequeDate.getTime())
         ? parsedChequeDate
@@ -200,7 +215,7 @@ export async function POST(request: NextRequest) {
     // Clean up orphaned R2 file on DB failure
     if (uploadedToR2 && imageFileName) {
       deleteFromR2(imageFileName).catch((e) =>
-        console.error("[cheque-vault POST] R2 cleanup failed:", e)
+        console.error("[cheque-vault POST] R2 cleanup failed:", e),
       );
     }
 
@@ -208,6 +223,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     console.error("[cheque-vault POST]", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
   }
 }

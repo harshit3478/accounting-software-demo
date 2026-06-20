@@ -111,6 +111,8 @@ model Invoice {
   shippingFee         Decimal  @default(0) @db.Decimal(10, 2)
   insuranceAmount     Decimal  @default(0) @db.Decimal(10, 2)
   layawayFee          Decimal  @default(0) @db.Decimal(10, 2)
+  processingFee       Decimal  @default(0) @db.Decimal(10, 2)
+  earlyPaymentDiscount Decimal @default(0) @db.Decimal(10, 2)
   insuranceBaseAmount Decimal? @db.Decimal(10, 2)
   amount              Decimal  @db.Decimal(10, 2) // Total amount
   paidAmount          Decimal  @default(0) @db.Decimal(10, 2) // Track partial payments
@@ -121,6 +123,10 @@ model Invoice {
   status        InvoiceStatus @default(pending)
   isLayaway     Boolean       @default(false)
   isHold        Boolean       @default(false)
+
+  // Automated due reminder tracking
+  dueReminderCount  Int       @default(0)
+  lastDueReminderAt DateTime?
 
   description String?
   createdAt   DateTime @default(now())
@@ -143,6 +149,7 @@ model Invoice {
   paymentMatches     PaymentInvoiceMatch[]
   editHistory        InvoiceEditHistory[]
   creditTransactions CustomerCreditTransaction[]
+  dueReminderLogs    InvoiceDueReminderLog[]
   terms              Term?                       @relation(fields: [termsId], references: [id], onDelete: SetNull)
   liveType           LiveType?                   @relation(fields: [liveTypeId], references: [id], onDelete: SetNull)
   layawayPlan        LayawayPlan?
@@ -441,7 +448,7 @@ model AttendanceEntry {
 model Customer {
   id          Int      @id @default(autoincrement())
   name        String
-  email       String?
+  email       String?  @unique
   phone       String?
   address     String?  @db.Text
   notes       String?  @db.Text
@@ -508,6 +515,44 @@ model LateFeeSetting {
   updatedAt DateTime @updatedAt
 
   @@map("late_fee_settings")
+}
+
+model EarlyPaymentDiscountSetting {
+  id               Int      @id @default(autoincrement())
+  daysWindow       Int      @default(0)
+  discountPercent  Decimal  @db.Decimal(10, 2)
+  paymentThreshold String   @default("full") // "full" or "half"
+  isActive         Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@map("early_payment_discount_settings")
+}
+
+model DueReminderSetting {
+  id                    Int      @id @default(autoincrement())
+  daysAfterDueDate      Int      @default(1)
+  daysBetweenReminders  Int      @default(7)
+  isActive              Boolean  @default(false)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@map("due_reminder_settings")
+}
+
+model InvoiceDueReminderLog {
+  id             Int      @id @default(autoincrement())
+  invoiceId      Int
+  reminderNumber Int
+  recipientEmail String
+  success        Boolean  @default(true)
+  errorMessage   String?  @db.Text
+  sentAt         DateTime @default(now())
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId, sentAt])
+  @@map("invoice_due_reminder_logs")
 }
 
 model RecalculationFeeSetting {

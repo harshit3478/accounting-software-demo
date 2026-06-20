@@ -8,6 +8,13 @@ import {
   findOverdueLayawayInstallmentClient,
   isLateFeeConfigured,
 } from "../../lib/late-fee-client";
+import {
+  getEarlyDiscountDisplayAmounts,
+  getEarlyPaymentDiscountEligibility,
+  isEarlyPaymentDiscountConfigured,
+  type EarlyPaymentDiscountSettingSnapshot,
+} from "../../lib/early-payment-discount-client";
+import EarlyPaymentDiscountNotice from "./EarlyPaymentDiscountNotice";
 
 interface PaymentMethodType {
   id: number;
@@ -25,6 +32,9 @@ interface Invoice {
   clientName: string;
   amount: number;
   paidAmount: number;
+  invoiceDate?: string;
+  earlyPaymentDiscount?: number;
+  status?: string;
   isLayaway?: boolean;
   layawayPlan?: {
     installments?: Array<{
@@ -64,6 +74,8 @@ export default function PaymentModal({
     amount: 0,
     isActive: false,
   });
+  const [earlyDiscountSetting, setEarlyDiscountSetting] =
+    useState<EarlyPaymentDiscountSettingSnapshot | null>(null);
   const [applyLateFee, setApplyLateFee] = useState<boolean | null>(null);
   const [lateFeeWaivedReason, setLateFeeWaivedReason] = useState("");
   const [isRecording, setIsRecording] = useState(false);
@@ -92,14 +104,45 @@ export default function PaymentModal({
           }
         })
         .catch(() => {});
+
+      fetch("/api/early-payment-discount")
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data) {
+            setEarlyDiscountSetting({
+              daysWindow: Number(data.daysWindow ?? 0),
+              discountPercent: Number(data.discountPercent ?? 0),
+              paymentThreshold:
+                data.paymentThreshold === "half" ? "half" : "full",
+              isActive: !!data.isActive,
+            });
+          }
+        })
+        .catch(() => {});
     }
   }, [isOpen]);
 
   useEffect(() => {
     if (invoice && isOpen) {
-      const remainingBalance = invoice.amount - invoice.paidAmount;
-      setPaymentAmount(remainingBalance);
-      setPaymentDate(new Date().toISOString().split("T")[0]);
+      const grossRemaining = invoice.amount - invoice.paidAmount;
+      const paymentDateStr = new Date().toISOString().split("T")[0];
+      let amountToPay = grossRemaining;
+
+      if (isEarlyPaymentDiscountConfigured(earlyDiscountSetting)) {
+        const eligibility = getEarlyPaymentDiscountEligibility({
+          invoice,
+          paymentDate: paymentDateStr,
+          additionalPaymentAmount: grossRemaining,
+          setting: earlyDiscountSetting,
+        });
+        amountToPay = getEarlyDiscountDisplayAmounts(
+          invoice,
+          eligibility,
+        ).displayRemaining;
+      }
+
+      setPaymentAmount(amountToPay);
+      setPaymentDate(paymentDateStr);
       setSelectedMethodId(
         (prev) =>
           prev || (paymentMethods.length > 0 ? paymentMethods[0].id : null),
@@ -108,7 +151,7 @@ export default function PaymentModal({
       setApplyLateFee(null);
       setLateFeeWaivedReason("");
     }
-  }, [invoice, isOpen]);
+  }, [invoice, isOpen, earlyDiscountSetting]);
 
   const overdueInstallment =
     invoice && paymentDate
@@ -116,6 +159,34 @@ export default function PaymentModal({
       : null;
   const shouldPromptLateFee =
     !!invoice && !!overdueInstallment && isLateFeeConfigured(lateFeeSetting);
+
+  const grossRemaining = invoice ? invoice.amount - invoice.paidAmount : 0;
+  const fullPayEligibility =
+    invoice &&
+    paymentDate &&
+    isEarlyPaymentDiscountConfigured(earlyDiscountSetting)
+      ? getEarlyPaymentDiscountEligibility({
+          invoice,
+          paymentDate,
+          additionalPaymentAmount: grossRemaining,
+          setting: earlyDiscountSetting,
+        })
+      : null;
+  const discountAmounts = invoice
+    ? getEarlyDiscountDisplayAmounts(invoice, fullPayEligibility)
+    : null;
+  const remainingBalance = discountAmounts?.displayRemaining ?? grossRemaining;
+
+  const earlyDiscountEligibility =
+    invoice && paymentDate && isEarlyPaymentDiscountConfigured(earlyDiscountSetting)
+      ? getEarlyPaymentDiscountEligibility({
+          invoice,
+          paymentDate,
+          additionalPaymentAmount:
+            paymentAmount > 0 ? paymentAmount : remainingBalance,
+          setting: earlyDiscountSetting,
+        })
+      : null;
 
   const handleRecordPayment = async () => {
     if (!invoice || paymentAmount <= 0) {
@@ -139,8 +210,6 @@ export default function PaymentModal({
         error: "Please provide a reason for waiving the late fee",
       };
     }
-
-    const remainingBalance = invoice.amount - invoice.paidAmount;
 
     setIsRecording(true);
     try {
@@ -170,9 +239,10 @@ export default function PaymentModal({
 
       if (res.ok) {
         const data = await res.json();
-        if (data.storeCreditAdded > 0) {
+        const totalStoreCredit = Number(data.storeCreditAdded || 0);
+        if (totalStoreCredit > 0) {
           alert(
-            `$${Number(data.storeCreditAdded).toFixed(2)} has been saved as Store Credit for this customer.`,
+            `$${totalStoreCredit.toFixed(2)} has been saved as Store Credit for this customer.`,
           );
         }
         onSuccess();
@@ -195,7 +265,6 @@ export default function PaymentModal({
 
   if (!invoice) return null;
 
-  const remainingBalance = invoice.amount - invoice.paidAmount;
   const currentStoreCredit = invoice.customer?.storeCredit || 0;
 
   const footer = (
@@ -286,7 +355,16 @@ export default function PaymentModal({
             <div className="flex justify-between text-sm">
               <span className="text-gray-600">Total Amount:</span>
               <span className="font-semibold text-gray-900">
-                ${invoice.amount.toFixed(2)}
+                {discountAmounts?.showDiscount ? (
+                  <>
+                    <span className="line-through text-gray-400 mr-2">
+                      ${invoice.amount.toFixed(2)}
+                    </span>
+                    ${(invoice.amount - discountAmounts.discountAmount).toFixed(2)}
+                  </>
+                ) : (
+                  <>${invoice.amount.toFixed(2)}</>
+                )}
               </span>
             </div>
             <div className="flex justify-between text-sm">
@@ -297,9 +375,16 @@ export default function PaymentModal({
             </div>
             <div className="border-t border-green-300 pt-2 flex justify-between">
               <span className="font-semibold text-gray-900">
-                Remaining Balance:
+                {discountAmounts?.showDiscount
+                  ? "Remaining (after early discount):"
+                  : "Remaining Balance:"}
               </span>
               <span className="text-xl font-bold text-green-700">
+                {discountAmounts?.showDiscount && (
+                  <span className="text-sm line-through text-gray-400 mr-2 font-normal">
+                    ${grossRemaining.toFixed(2)}
+                  </span>
+                )}
                 ${remainingBalance.toFixed(2)}
               </span>
             </div>
@@ -431,6 +516,14 @@ export default function PaymentModal({
                 </div>
               )}
             </div>
+          )}
+
+          {earlyDiscountEligibility && discountAmounts && (
+            <EarlyPaymentDiscountNotice
+              eligibility={earlyDiscountEligibility}
+              displayRemaining={discountAmounts.displayRemaining}
+              grossRemaining={discountAmounts.grossRemaining}
+            />
           )}
 
           <div>

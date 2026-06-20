@@ -13,7 +13,7 @@ export async function GET() {
           error:
             "Term model is not available on Prisma client. Run `npx prisma migrate dev` and `npx prisma generate`.",
         },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -27,14 +27,14 @@ export async function GET() {
     console.error("GET /api/terms error:", error);
     return NextResponse.json(
       { error: error?.message || "Server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    await requireSettingPermission("terms");
+    const user = await requireSettingPermission("terms");
 
     const { title, lines, isDefault } = await request.json();
 
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
           error:
             "Term model is not available on Prisma client. Run `npx prisma migrate dev` and `npx prisma generate`.",
         },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -87,7 +87,7 @@ export async function PUT(request: NextRequest) {
           error:
             "Term model is not available on Prisma client. Run `npx prisma migrate dev` and `npx prisma generate`.",
         },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -121,7 +121,7 @@ export async function DELETE(request: NextRequest) {
           error:
             "Term model is not available on Prisma client. Run `npx prisma migrate dev` and `npx prisma generate`.",
         },
-        { status: 500 }
+        { status: 500 },
       );
     }
 

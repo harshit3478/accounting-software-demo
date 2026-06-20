@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcrypt";
 import prisma from "../../../lib/prisma";
 import { isSuperAdmin, requireSettingPermission } from "../../../lib/auth";
-import { defaultPrivilegesForRole, sanitizePrivilegesForRole } from "../../../lib/permissions";
+import {
+  defaultPrivilegesForRole,
+  sanitizePrivilegesForRole,
+} from "../../../lib/permissions";
 import cache, { CACHE_KEYS, CACHE_TTL } from "../../../lib/cache";
 import { invalidateUsers } from "../../../lib/cache-helpers";
 
@@ -22,7 +25,10 @@ function filterVisibleUsers(
   });
 }
 
-function formatUserWriteError(error: unknown): { message: string; status: number } {
+function formatUserWriteError(error: unknown): {
+  message: string;
+  status: number;
+} {
   const err = error as { code?: string; message?: string };
   if (err.code === "P2002") {
     return {
@@ -150,7 +156,10 @@ export async function PUT(request: NextRequest) {
       await request.json();
 
     if (!id) {
-      return NextResponse.json({ error: "User id is required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "User id is required" },
+        { status: 400 },
+      );
     }
 
     const targetUser = await prisma.user.findUnique({

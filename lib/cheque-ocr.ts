@@ -66,7 +66,7 @@ async function extractChequeDataFromPdf(
 
 export async function extractChequeData(
   imageBuffer: Buffer,
-  mimeType: string
+  mimeType: string,
 ): Promise<ChequeOcrResult> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {

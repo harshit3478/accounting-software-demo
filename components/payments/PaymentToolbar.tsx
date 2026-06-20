@@ -210,20 +210,25 @@ export default function PaymentToolbar({
             <PopoverContent className="w-[200px] p-0" align="start">
               <div className="p-2">
                 {(
-                  ["all", "active", "refund", "deposit_fee"] as PaymentStatusFilter[]
+                  [
+                    "all",
+                    "active",
+                    "refund",
+                    "deposit_fee",
+                  ] as PaymentStatusFilter[]
                 ).map((status) => (
-                    <div
-                      key={status}
-                      className={`px-3 py-2 text-sm rounded-md cursor-pointer hover:bg-gray-100 flex items-center ${
-                        filterStatus === status
-                          ? "bg-blue-50 text-blue-700 font-medium"
-                          : "text-gray-700"
-                      }`}
-                      onClick={() => onStatusChange(status)}
-                    >
-                      {getStatusLabel(status)}
-                    </div>
-                  ))}
+                  <div
+                    key={status}
+                    className={`px-3 py-2 text-sm rounded-md cursor-pointer hover:bg-gray-100 flex items-center ${
+                      filterStatus === status
+                        ? "bg-blue-50 text-blue-700 font-medium"
+                        : "text-gray-700"
+                    }`}
+                    onClick={() => onStatusChange(status)}
+                  >
+                    {getStatusLabel(status)}
+                  </div>
+                ))}
               </div>
             </PopoverContent>
           </Popover>

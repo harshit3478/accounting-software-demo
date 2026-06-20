@@ -19,15 +19,19 @@ export interface InvoiceCSVData {
  * Escape CSV values to handle special characters
  */
 function escapeCSV(value: any): string {
-  if (value === null || value === undefined) return '';
-  
+  if (value === null || value === undefined) return "";
+
   const stringValue = String(value);
-  
+
   // If the value contains comma, double quote, or newline, wrap it in quotes and escape inner quotes
-  if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+  if (
+    stringValue.includes(",") ||
+    stringValue.includes('"') ||
+    stringValue.includes("\n")
+  ) {
     return `"${stringValue.replace(/"/g, '""')}"`;
   }
-  
+
   return stringValue;
 }
 
@@ -36,32 +40,32 @@ function escapeCSV(value: any): string {
  */
 export function invoicesToCSV(invoices: InvoiceCSVData[]): string {
   if (invoices.length === 0) {
-    return '';
+    return "";
   }
 
   // CSV Header
   const headers = [
-    'Invoice Number',
-    'Client Name',
-    'Subtotal',
-    'Tax',
-    'Discount',
-    'Amount',
-    'Paid Amount',
-    'Remaining',
-    'Status',
-    'Due Date',
-    'Created Date',
-    'Items',
+    "Invoice Number",
+    "Client Name",
+    "Subtotal",
+    "Tax",
+    "Discount",
+    "Amount",
+    "Paid Amount",
+    "Remaining",
+    "Status",
+    "Due Date",
+    "Created Date",
+    "Items",
   ];
 
-  const headerRow = headers.map(escapeCSV).join(',');
+  const headerRow = headers.map(escapeCSV).join(",");
 
   // CSV Data Rows
-  const dataRows = invoices.map(invoice => {
+  const dataRows = invoices.map((invoice) => {
     const remaining = invoice.amount - invoice.paidAmount;
-    const itemsStr = invoice.items || 'N/A';
-    
+    const itemsStr = invoice.items || "N/A";
+
     return [
       escapeCSV(invoice.invoiceNumber),
       escapeCSV(invoice.clientName),
@@ -75,23 +79,26 @@ export function invoicesToCSV(invoices: InvoiceCSVData[]): string {
       escapeCSV(invoice.dueDate),
       escapeCSV(invoice.createdAt),
       escapeCSV(itemsStr),
-    ].join(',');
+    ].join(",");
   });
 
-  return [headerRow, ...dataRows].join('\n');
+  return [headerRow, ...dataRows].join("\n");
 }
 
 /**
  * Download CSV file
  */
-export function downloadCSV(csvContent: string, filename: string = 'invoices.csv'): void {
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const link = document.createElement('a');
+export function downloadCSV(
+  csvContent: string,
+  filename: string = "invoices.csv",
+): void {
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const link = document.createElement("a");
   const url = URL.createObjectURL(blob);
 
-  link.setAttribute('href', url);
-  link.setAttribute('download', filename);
-  link.style.visibility = 'hidden';
+  link.setAttribute("href", url);
+  link.setAttribute("download", filename);
+  link.style.visibility = "hidden";
 
   document.body.appendChild(link);
   link.click();
@@ -106,7 +113,7 @@ export function downloadCSV(csvContent: string, filename: string = 'invoices.csv
  */
 export function exportInvoicesToCSV(
   invoices: InvoiceCSVData[],
-  filename: string = `invoices-${new Date().toISOString().split('T')[0]}.csv`
+  filename: string = `invoices-${new Date().toISOString().split("T")[0]}.csv`,
 ): void {
   const csv = invoicesToCSV(invoices);
   if (csv) {
@@ -134,40 +141,40 @@ export interface PaymentCSVData {
  */
 export function paymentsToCSV(payments: PaymentCSVData[]): string {
   if (payments.length === 0) {
-    return '';
+    return "";
   }
 
   // CSV Header
   const headers = [
-    'Amount',
-    'Payment Date',
-    'Method',
-    'Notes',
-    'Invoice Number',
-    'Client Name',
-    'Recorded By',
-    'Source',
-    'Created Date',
+    "Amount",
+    "Payment Date",
+    "Method",
+    "Notes",
+    "Invoice Number",
+    "Client Name",
+    "Recorded By",
+    "Source",
+    "Created Date",
   ];
 
-  const headerRow = headers.map(escapeCSV).join(',');
+  const headerRow = headers.map(escapeCSV).join(",");
 
   // CSV Data Rows
-  const dataRows = payments.map(payment => {
+  const dataRows = payments.map((payment) => {
     return [
       escapeCSV(payment.amount.toFixed(2)),
       escapeCSV(payment.paymentDate),
       escapeCSV(payment.methodName),
-      escapeCSV(payment.notes || ''),
-      escapeCSV(payment.invoiceNumber || ''),
-      escapeCSV(payment.clientName || ''),
+      escapeCSV(payment.notes || ""),
+      escapeCSV(payment.invoiceNumber || ""),
+      escapeCSV(payment.clientName || ""),
       escapeCSV(payment.recordedBy),
       escapeCSV(payment.source),
       escapeCSV(payment.createdAt),
-    ].join(',');
+    ].join(",");
   });
 
-  return [headerRow, ...dataRows].join('\n');
+  return [headerRow, ...dataRows].join("\n");
 }
 
 /**
@@ -175,11 +182,10 @@ export function paymentsToCSV(payments: PaymentCSVData[]): string {
  */
 export function exportPaymentsToCSV(
   payments: PaymentCSVData[],
-  filename: string = `payments-${new Date().toISOString().split('T')[0]}.csv`
+  filename: string = `payments-${new Date().toISOString().split("T")[0]}.csv`,
 ): void {
   const csv = paymentsToCSV(payments);
   if (csv) {
     downloadCSV(csv, filename);
   }
 }
-

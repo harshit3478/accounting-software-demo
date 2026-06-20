@@ -1,10 +1,14 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { FiDownload, FiTrash2, FiEdit2, FiEye, FiSearch } from 'react-icons/fi';
-import { formatFileSize, getFileTypeInfo, canPreviewFile } from '@/lib/file-utils';
-import FilePreview from './FilePreview';
-import ConfirmModal from './ConfirmModal';
+import { useState } from "react";
+import { FiDownload, FiTrash2, FiEdit2, FiEye, FiSearch } from "react-icons/fi";
+import {
+  formatFileSize,
+  getFileTypeInfo,
+  canPreviewFile,
+} from "@/lib/file-utils";
+import FilePreview from "./FilePreview";
+import ConfirmModal from "./ConfirmModal";
 
 interface Document {
   id: number;
@@ -25,20 +29,30 @@ interface FileListProps {
   onError?: (message: string) => void;
 }
 
-export default function FileList({ documents, canRename, canDelete, onRefresh, onSuccess, onError }: FileListProps) {
-  const [searchQuery, setSearchQuery] = useState('');
+export default function FileList({
+  documents,
+  canRename,
+  canDelete,
+  onRefresh,
+  onSuccess,
+  onError,
+}: FileListProps) {
+  const [searchQuery, setSearchQuery] = useState("");
   const [previewFile, setPreviewFile] = useState<Document | null>(null);
   const [renamingId, setRenamingId] = useState<number | null>(null);
-  const [newFileName, setNewFileName] = useState('');
-  const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; fileName: string } | null>(null);
+  const [newFileName, setNewFileName] = useState("");
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    id: number;
+    fileName: string;
+  } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
   const filteredDocuments = documents.filter((doc) =>
-    doc.fileName.toLowerCase().includes(searchQuery.toLowerCase())
+    doc.fileName.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
   const handleDownload = (doc: Document) => {
-    window.open(`/api/documents/${doc.id}/download`, '_blank');
+    window.open(`/api/documents/${doc.id}/download`, "_blank");
   };
 
   const handlePreview = (doc: Document) => {
@@ -59,11 +73,11 @@ export default function FileList({ documents, canRename, canDelete, onRefresh, o
     setIsDeleting(true);
     try {
       const response = await fetch(`/api/documents/${deleteConfirm.id}`, {
-        method: 'DELETE',
+        method: "DELETE",
       });
 
       if (response.ok) {
-        onSuccess?.('File deleted successfully');
+        onSuccess?.("File deleted successfully");
         setDeleteConfirm(null);
         onRefresh();
       } else {
@@ -71,8 +85,8 @@ export default function FileList({ documents, canRename, canDelete, onRefresh, o
         onError?.(`Failed to delete: ${data.error}`);
       }
     } catch (error) {
-      console.error('Delete error:', error);
-      onError?.('Failed to delete file');
+      console.error("Delete error:", error);
+      onError?.("Failed to delete file");
     } finally {
       setIsDeleting(false);
     }
@@ -85,24 +99,24 @@ export default function FileList({ documents, canRename, canDelete, onRefresh, o
 
   const cancelRename = () => {
     setRenamingId(null);
-    setNewFileName('');
+    setNewFileName("");
   };
 
   const handleRename = async (id: number) => {
     if (!newFileName.trim()) {
-      onError?.('File name cannot be empty');
+      onError?.("File name cannot be empty");
       return;
     }
 
     try {
       const response = await fetch(`/api/documents/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ newName: newFileName.trim() }),
       });
 
       if (response.ok) {
-        onSuccess?.('File renamed successfully');
+        onSuccess?.("File renamed successfully");
         cancelRename();
         onRefresh();
       } else {
@@ -110,19 +124,19 @@ export default function FileList({ documents, canRename, canDelete, onRefresh, o
         onError?.(`Failed to rename: ${data.error}`);
       }
     } catch (error) {
-      console.error('Rename error:', error);
-      onError?.('Failed to rename file');
+      console.error("Rename error:", error);
+      onError?.("Failed to rename file");
     }
   };
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
+    return date.toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
     });
   };
 
@@ -151,7 +165,9 @@ export default function FileList({ documents, canRename, canDelete, onRefresh, o
         <div className="text-center py-12 text-gray-500">
           <p className="text-lg mb-2">No documents found</p>
           <p className="text-sm">
-            {searchQuery ? 'Try a different search term' : 'Upload some files to get started'}
+            {searchQuery
+              ? "Try a different search term"
+              : "Upload some files to get started"}
           </p>
         </div>
       ) : (
@@ -214,15 +230,21 @@ export default function FileList({ documents, canRename, canDelete, onRefresh, o
                         </div>
                       ) : (
                         <div>
-                          <p className="text-sm font-medium text-gray-900">{doc.fileName}</p>
-                          <p className="text-xs text-gray-500">{fileInfo.category}</p>
+                          <p className="text-sm font-medium text-gray-900">
+                            {doc.fileName}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {fileInfo.category}
+                          </p>
                         </div>
                       )}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600">
                       {formatFileSize(doc.fileSize)}
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{doc.uploadedBy}</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">
+                      {doc.uploadedBy}
+                    </td>
                     <td className="px-4 py-3 text-sm text-gray-600">
                       {formatDate(doc.uploadedAt)}
                     </td>

@@ -28,10 +28,7 @@ export async function PATCH(request: NextRequest) {
     const trimmedName = typeof name === "string" ? name.trim() : "";
 
     if (!trimmedName) {
-      return NextResponse.json(
-        { error: "Name is required" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "Name is required" }, { status: 400 });
     }
 
     const user = await prisma.user.update({

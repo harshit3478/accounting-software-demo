@@ -62,19 +62,21 @@ export function generateAttendancePDF(data: AttendanceData) {
     doc.setFont("helvetica", "bold");
     doc.text(
       `Period: ${new Date(
-        data.dateRange.start
+        data.dateRange.start,
       ).toLocaleDateString()} - ${new Date(
-        data.dateRange.end
+        data.dateRange.end,
       ).toLocaleDateString()}`,
       105,
       yPos,
-      { align: "center" }
+      { align: "center" },
     );
     yPos += 10;
   }
 
   // Calculate summary statistics
-  const WORKING_HOURS = parseFloat(process.env.NEXT_PUBLIC_WORKING_HOURS_PER_DAY || "8");
+  const WORKING_HOURS = parseFloat(
+    process.env.NEXT_PUBLIC_WORKING_HOURS_PER_DAY || "8",
+  );
   const totalDays = data.entries.length;
   let totalHoursWorked = 0;
   let totalOvertime = 0;
@@ -101,7 +103,7 @@ export function generateAttendancePDF(data: AttendanceData) {
       totalHoursWorked += hours;
       daysWithFullData++;
       if (hours > WORKING_HOURS) {
-        totalOvertime += (hours - WORKING_HOURS);
+        totalOvertime += hours - WORKING_HOURS;
       }
     }
   });
@@ -126,28 +128,12 @@ export function generateAttendancePDF(data: AttendanceData) {
   doc.setFont("helvetica", "normal");
 
   doc.text(`Total Days Present: ${totalDays}`, 20, yPos);
-  doc.text(
-    `Total Hours Worked: ${totalHoursWorked.toFixed(2)} hrs`,
-    90,
-    yPos
-  );
+  doc.text(`Total Hours Worked: ${totalHoursWorked.toFixed(2)} hrs`, 90, yPos);
   yPos += 6;
-  doc.text(
-    `Days with Complete Data: ${daysWithFullData}`,
-    20,
-    yPos
-  );
-  doc.text(
-    `Average Hours/Day: ${avgHoursPerDay.toFixed(2)} hrs`,
-    90,
-    yPos
-  );
+  doc.text(`Days with Complete Data: ${daysWithFullData}`, 20, yPos);
+  doc.text(`Average Hours/Day: ${avgHoursPerDay.toFixed(2)} hrs`, 90, yPos);
   yPos += 6;
-  doc.text(
-    `Total Overtime: ${totalOvertime.toFixed(2)} hrs`,
-    90,
-    yPos
-  );
+  doc.text(`Total Overtime: ${totalOvertime.toFixed(2)} hrs`, 90, yPos);
 
   yPos += 15;
 
@@ -198,7 +184,9 @@ export function generateAttendancePDF(data: AttendanceData) {
   // Generate professional table with autoTable
   autoTable(doc, {
     startY: yPos,
-    head: [["Date", "Check In", "Check Out", "Total Hours", "Overtime", "Notes"]],
+    head: [
+      ["Date", "Check In", "Check Out", "Total Hours", "Overtime", "Notes"],
+    ],
     body: tableData,
     theme: "striped",
     headStyles: {
@@ -239,7 +227,7 @@ export function generateAttendancePDF(data: AttendanceData) {
       `Generated on ${new Date().toLocaleString()} - Page ${i} of ${pageCount}`,
       105,
       285,
-      { align: "center" }
+      { align: "center" },
     );
   }
 

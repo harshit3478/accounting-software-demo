@@ -5,6 +5,7 @@ import { updateInvoiceAfterPayment } from "../../../../lib/invoice-utils";
 import { Prisma } from "@prisma/client";
 import { stampPaymentCode } from "../../../../lib/payment-code";
 import { createLateFeePayment } from "../../../../lib/late-fee";
+import { recordStoreCreditApplication } from "../../../../lib/store-credit-apply";
 
 export async function POST(request: NextRequest) {
   try {
@@ -232,33 +233,16 @@ export async function POST(request: NextRequest) {
       }
 
       if (payment.source === "store_credit_excess") {
-        const ownerTx = await (tx as any).customerCreditTransaction.findFirst({
-          where: { paymentId: payment.id },
-          orderBy: { createdAt: "desc" },
-        });
-
-        const creditAppliedPayment = await tx.payment.create({
-          data: {
-            invoiceId,
-            amount: amountToLink,
-            paymentDate: payment.paymentDate,
-            methodId: payment.methodId,
-            notes: `Store credit applied (From payment ${payment.paymentCode || `#${payment.id}`})${payment.notes ? ` | ${payment.notes}` : ""}`,
-            userId: user.id,
-            isMatched: true,
-            source: "store_credit_applied",
-          },
-        });
-
-        await stampPaymentCode(tx, creditAppliedPayment.id);
-
-        return {
-          match,
-          debitFromCustomerId: ownerTx?.customerId ?? null,
-          debitAmount: amountToLink.toString(),
+        await recordStoreCreditApplication(tx, {
           paymentId: payment.id,
-          creditAppliedPaymentId: creditAppliedPayment.id,
-        };
+          invoiceId,
+          invoiceNumber: invoice.invoiceNumber,
+          amount: amountToLink.toNumber(),
+          customerId: invoice.customerId!,
+          userId: user.id,
+        });
+
+        return { match };
       }
 
       return { match };
@@ -293,40 +277,20 @@ export async function POST(request: NextRequest) {
       ]);
     }
 
-    // If the transaction returned a debit instruction (using existing store
-    // credit), perform a short transaction to decrement the customer's store
-    // credit and record the customerCreditTransaction of type 'debit'.
-    if ((result as any).debitFromCustomerId) {
-      const payload = result as any;
-      await prisma.$transaction([
-        prisma.customer.update({
-          where: { id: payload.debitFromCustomerId },
-          data: {
-            storeCredit: {
-              decrement: new Prisma.Decimal(payload.debitAmount),
-            },
-          },
-        }),
-        prisma.customerCreditTransaction.create({
-          data: {
-            customerId: payload.debitFromCustomerId,
-            amount: new Prisma.Decimal(payload.debitAmount),
-            type: "debit",
-            reason: `Applied store credit to invoice ${invoiceId}`,
-            paymentId: payload.paymentId,
-            invoiceId,
-            createdById: user.id,
-          },
-        }),
-      ]);
-    }
-
     // 5. Update Invoice Status (outside transactions)
-    await updateInvoiceAfterPayment(invoiceId);
+    const invoiceUpdateResult = await updateInvoiceAfterPayment(invoiceId);
 
     // Normalize response shape: return match
     const match = (result as any).match;
-    return NextResponse.json({ success: true, match });
+    return NextResponse.json({
+      success: true,
+      match,
+      storeCreditAdded: invoiceUpdateResult.earlyDiscountStoreCredit,
+      message:
+        invoiceUpdateResult.earlyDiscountStoreCredit > 0
+          ? `Payment linked. $${invoiceUpdateResult.earlyDiscountStoreCredit.toFixed(2)} saved as store credit from early payment discount.`
+          : undefined,
+    });
   } catch (error: any) {
     console.error("Error linking payment:", error);
     return NextResponse.json(

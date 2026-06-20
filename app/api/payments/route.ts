@@ -358,7 +358,8 @@ export async function POST(request: NextRequest) {
       payment = txResult.payment;
       storeCreditAdded = txResult.excessAmount;
 
-      await updateInvoiceAfterPayment(parsedInvoiceId);
+      const invoiceUpdateResult = await updateInvoiceAfterPayment(parsedInvoiceId);
+      storeCreditAdded += invoiceUpdateResult.earlyDiscountStoreCredit;
 
       // Fire-and-forget: email failure must never block the payment response
       const newRemaining = roundMoney(

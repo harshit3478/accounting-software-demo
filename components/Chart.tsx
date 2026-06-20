@@ -1,14 +1,17 @@
-'use client';
+"use client";
 
-import { useEffect, useRef } from 'react';
-import * as echarts from 'echarts';
+import { useEffect, useRef } from "react";
+import * as echarts from "echarts";
 
 interface ChartProps {
   option: echarts.EChartsOption;
   style?: React.CSSProperties;
 }
 
-export default function Chart({ option, style = { height: '300px' } }: ChartProps) {
+export default function Chart({
+  option,
+  style = { height: "300px" },
+}: ChartProps) {
   const chartRef = useRef<HTMLDivElement>(null);
   const chartInstance = useRef<echarts.ECharts | null>(null);
 
@@ -38,8 +41,8 @@ export default function Chart({ option, style = { height: '300px' } }: ChartProp
       }
     };
 
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
   }, []);
 
   return <div ref={chartRef} style={style} />;

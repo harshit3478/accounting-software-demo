@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 interface PaginationProps {
   currentPage: number;
@@ -34,7 +34,7 @@ export default function Pagination({
       pages.push(1);
 
       if (currentPage > 3) {
-        pages.push('...');
+        pages.push("...");
       }
 
       // Show pages around current page
@@ -46,7 +46,7 @@ export default function Pagination({
       }
 
       if (currentPage < totalPages - 2) {
-        pages.push('...');
+        pages.push("...");
       }
 
       // Always show last page
@@ -62,7 +62,8 @@ export default function Pagination({
     return (
       <div className="flex items-center justify-between px-6 py-4 bg-white border-t border-gray-200">
         <div className="text-sm text-gray-700">
-          Showing <span className="font-medium">{totalItems}</span> result{totalItems !== 1 ? 's' : ''}
+          Showing <span className="font-medium">{totalItems}</span> result
+          {totalItems !== 1 ? "s" : ""}
         </div>
       </div>
     );
@@ -72,8 +73,8 @@ export default function Pagination({
     <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-6 py-4 bg-white border-t border-gray-200">
       {/* Results info */}
       <div className="text-sm text-gray-700">
-        Showing <span className="font-medium">{startItem}</span> to{' '}
-        <span className="font-medium">{endItem}</span> of{' '}
+        Showing <span className="font-medium">{startItem}</span> to{" "}
+        <span className="font-medium">{endItem}</span> of{" "}
         <span className="font-medium">{totalItems}</span> results
       </div>
 
@@ -122,15 +123,15 @@ export default function Pagination({
           {/* Page numbers */}
           {getPageNumbers().map((page, index) => (
             <span key={index}>
-              {page === '...' ? (
+              {page === "..." ? (
                 <span className="px-3 py-2 text-sm text-gray-700">...</span>
               ) : (
                 <button
                   onClick={() => onPageChange(page as number)}
                   className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
                     currentPage === page
-                      ? 'bg-blue-600 text-white hover:bg-blue-700'
-                      : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50'
+                      ? "bg-blue-600 text-white hover:bg-blue-700"
+                      : "text-gray-700 bg-white border border-gray-300 hover:bg-gray-50"
                   }`}
                 >
                   {page}

@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
-import prisma from '../../../../lib/prisma';
-import { requireAuth, requireSettingPermission } from '../../../../lib/auth';
+import { NextRequest, NextResponse } from "next/server";
+import prisma from "../../../../lib/prisma";
+import { requireAuth, requireSettingPermission } from "../../../../lib/auth";
 
 export async function GET() {
   try {
@@ -15,35 +15,37 @@ export async function GET() {
         lastSyncAt: true,
         tokenExpiry: true,
         createdAt: true,
-        updatedAt: true
-      }
+        updatedAt: true,
+      },
     });
 
     return NextResponse.json({
       connected: !!connection && connection.isActive,
-      connection: connection ? {
-        ...connection,
-        isExpired: connection.tokenExpiry < new Date()
-      } : null
+      connection: connection
+        ? {
+            ...connection,
+            isExpired: connection.tokenExpiry < new Date(),
+          }
+        : null,
     });
   } catch (error: any) {
-    console.error('QuickBooks status error:', error);
+    console.error("QuickBooks status error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
 
 export async function DELETE() {
   try {
-    const user =     await requireSettingPermission('quickbooks');
+    const user = await requireSettingPermission("quickbooks");
 
     await prisma.quickBooksConnection.update({
       where: { userId: user.id },
-      data: { isActive: false }
+      data: { isActive: false },
     });
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
-    console.error('QuickBooks disconnect error:', error);
+    console.error("QuickBooks disconnect error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

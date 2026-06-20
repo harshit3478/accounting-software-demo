@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { FiX, FiDownload } from 'react-icons/fi';
+import { useState, useEffect } from "react";
+import { FiX, FiDownload } from "react-icons/fi";
 
 interface FilePreviewProps {
   fileId: number;
@@ -23,7 +23,7 @@ export default function FilePreview({
 
   useEffect(() => {
     // Parse CSV if it's a CSV file
-    if (fileType === 'text/csv') {
+    if (fileType === "text/csv") {
       fetchAndParseCSV();
     }
   }, [fileUrl, fileType]);
@@ -33,24 +33,24 @@ export default function FilePreview({
     try {
       const response = await fetch(fileUrl);
       const text = await response.text();
-      const rows = text.split('\n').map((row) =>
-        row.split(',').map((cell) => cell.trim())
-      );
+      const rows = text
+        .split("\n")
+        .map((row) => row.split(",").map((cell) => cell.trim()));
       setCsvData(rows);
     } catch (error) {
-      console.error('Error parsing CSV:', error);
+      console.error("Error parsing CSV:", error);
     } finally {
       setLoading(false);
     }
   };
 
   const handleDownload = () => {
-    window.open(`/api/documents/${fileId}/download`, '_blank');
+    window.open(`/api/documents/${fileId}/download`, "_blank");
   };
 
   const renderPreview = () => {
     // Image preview
-    if (fileType.startsWith('image/')) {
+    if (fileType.startsWith("image/")) {
       return (
         <div className="flex items-center justify-center p-4 bg-gray-50">
           <img
@@ -63,7 +63,7 @@ export default function FilePreview({
     }
 
     // PDF preview
-    if (fileType === 'application/pdf') {
+    if (fileType === "application/pdf") {
       return (
         <div className="w-full h-[70vh]">
           <iframe
@@ -76,7 +76,7 @@ export default function FilePreview({
     }
 
     // CSV preview
-    if (fileType === 'text/csv' && csvData) {
+    if (fileType === "text/csv" && csvData) {
       return (
         <div className="p-4 overflow-auto max-h-[70vh]">
           {loading ? (
@@ -85,7 +85,10 @@ export default function FilePreview({
             <table className="min-w-full border-collapse border border-gray-300">
               <tbody>
                 {csvData.map((row, rowIndex) => (
-                  <tr key={rowIndex} className={rowIndex === 0 ? 'bg-gray-100 font-medium' : ''}>
+                  <tr
+                    key={rowIndex}
+                    className={rowIndex === 0 ? "bg-gray-100 font-medium" : ""}
+                  >
                     {row.map((cell, cellIndex) => (
                       <td
                         key={cellIndex}
@@ -145,9 +148,7 @@ export default function FilePreview({
         </div>
 
         {/* Preview Content */}
-        <div className="flex-1 overflow-auto">
-          {renderPreview()}
-        </div>
+        <div className="flex-1 overflow-auto">{renderPreview()}</div>
       </div>
     </div>
   );

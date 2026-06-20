@@ -233,7 +233,9 @@ function xpsIdsMatch(a: unknown, b: string): boolean {
 }
 
 function normRef(s: unknown): string {
-  return String(s ?? "").trim().toLowerCase();
+  return String(s ?? "")
+    .trim()
+    .toLowerCase();
 }
 
 function collectSearchKeywords(ctx: XpsInvoiceContext): string[] {
@@ -270,16 +272,23 @@ function refFieldsMatchInvoice(
 function shipmentBelongsToOrder(shipment: any, invoiceId: string): boolean {
   if (xpsIdsMatch(shipment?.fulfillment?.orderId, invoiceId)) return true;
   const orderIds = shipment?.orderIds;
-  if (Array.isArray(orderIds) && orderIds.some((id: unknown) => xpsIdsMatch(id, invoiceId))) {
+  if (
+    Array.isArray(orderIds) &&
+    orderIds.some((id: unknown) => xpsIdsMatch(id, invoiceId))
+  ) {
     return true;
   }
   return false;
 }
 
-function shipmentBelongsToInvoice(shipment: any, ctx: XpsInvoiceContext): boolean {
+function shipmentBelongsToInvoice(
+  shipment: any,
+  ctx: XpsInvoiceContext,
+): boolean {
   const idStr = String(ctx.id);
   if (shipmentBelongsToOrder(shipment, idStr)) return true;
-  if (xpsIdsMatch(shipment?.fulfillment?.orderId, ctx.invoiceNumber)) return true;
+  if (xpsIdsMatch(shipment?.fulfillment?.orderId, ctx.invoiceNumber))
+    return true;
   if (
     refFieldsMatchInvoice(
       shipment,
@@ -302,7 +311,10 @@ function scoreShipment(s: any): number {
 }
 
 /** Strict: linkage via fulfillment / orderIds / references / invoice # as order id. */
-function pickShipmentStrict(shipments: any[], ctx: XpsInvoiceContext): any | null {
+function pickShipmentStrict(
+  shipments: any[],
+  ctx: XpsInvoiceContext,
+): any | null {
   const matched = shipments.filter((s) => shipmentBelongsToInvoice(s, ctx));
   if (matched.length === 0) return null;
   return [...matched].sort((a, b) => scoreShipment(b) - scoreShipment(a))[0];
@@ -312,7 +324,10 @@ function pickShipmentStrict(shipments: any[], ctx: XpsInvoiceContext): any | nul
  * When XPS returns booked rows with fulfillment:null (common for UI-created labels),
  * accept a small result set with a single plausible tracking row.
  */
-function pickShipmentLenient(shipments: any[], ctx: XpsInvoiceContext): any | null {
+function pickShipmentLenient(
+  shipments: any[],
+  ctx: XpsInvoiceContext,
+): any | null {
   const idStr = String(ctx.id);
   const nonVoid = shipments.filter((s) => !s?.voided);
   const withTrack = nonVoid.filter(
@@ -320,11 +335,18 @@ function pickShipmentLenient(shipments: any[], ctx: XpsInvoiceContext): any | nu
   );
   if (shipments.length <= 3 && withTrack.length === 1) return withTrack[0];
   const refMatched = withTrack.filter((s) =>
-    refFieldsMatchInvoice(s, idStr, ctx.invoiceNumber, ctx.externalInvoiceNumber),
+    refFieldsMatchInvoice(
+      s,
+      idStr,
+      ctx.invoiceNumber,
+      ctx.externalInvoiceNumber,
+    ),
   );
   if (refMatched.length === 1) return refMatched[0];
   if (shipments.length <= 5 && refMatched.length > 0) {
-    return [...refMatched].sort((a, b) => scoreShipment(b) - scoreShipment(a))[0];
+    return [...refMatched].sort(
+      (a, b) => scoreShipment(b) - scoreShipment(a),
+    )[0];
   }
   return null;
 }
@@ -375,7 +397,12 @@ async function searchBookedShipmentsMerged(
 
   let fallbackKey = 0;
   for (const kw of keywords) {
-    const list = await fetchSearchShipmentsForKeyword(kw, base, key, customerId);
+    const list = await fetchSearchShipmentsForKeyword(
+      kw,
+      base,
+      key,
+      customerId,
+    );
     for (const s of list) {
       const bn =
         s?.bookNumber != null && String(s.bookNumber).length > 0
@@ -388,15 +415,15 @@ async function searchBookedShipmentsMerged(
   return [...byBook.values()];
 }
 
-function mergeOrderAndShipment(order: any | null, shipment: any | null): any | null {
+function mergeOrderAndShipment(
+  order: any | null,
+  shipment: any | null,
+): any | null {
   if (!order && !shipment) return null;
   if (!order) return shipment;
   if (!shipment) return order;
 
-  const st =
-    shipment.trackingNumber ||
-    shipment.trackingNumbers?.[0] ||
-    null;
+  const st = shipment.trackingNumber || shipment.trackingNumbers?.[0] || null;
   const ordRec = order.receiver || order.destination;
   const shipRec = shipment.receiver || shipment.destination;
 
@@ -476,7 +503,9 @@ async function searchOrderForContext(
   return null;
 }
 
-function normalizeToContext(invoiceIdOrCtx: string | XpsInvoiceContext): XpsInvoiceContext {
+function normalizeToContext(
+  invoiceIdOrCtx: string | XpsInvoiceContext,
+): XpsInvoiceContext {
   if (typeof invoiceIdOrCtx === "object" && invoiceIdOrCtx !== null) {
     return invoiceIdOrCtx;
   }
@@ -492,7 +521,9 @@ function normalizeToContext(invoiceIdOrCtx: string | XpsInvoiceContext): XpsInvo
  * Resolves booked shipment (tracking) and/or pending order from XPS.
  * Pass full {@link XpsInvoiceContext} from DB so invoice # / external # can be searched.
  */
-export async function getShipmentFromXps(invoiceIdOrCtx: string | XpsInvoiceContext) {
+export async function getShipmentFromXps(
+  invoiceIdOrCtx: string | XpsInvoiceContext,
+) {
   const base = process.env.XPS_API_BASE || process.env.NEXT_PUBLIC_XPS_API_BASE;
   const key = process.env.XPS_API_KEY || process.env.NEXT_PUBLIC_XPS_API_KEY;
   const customerId = process.env.XPS_CUSTOMER_ID;
@@ -506,7 +537,12 @@ export async function getShipmentFromXps(invoiceIdOrCtx: string | XpsInvoiceCont
   const baseNorm = base.replace(/\/+$/, "");
   const ctx = normalizeToContext(invoiceIdOrCtx);
 
-  const merged = await searchBookedShipmentsMerged(ctx, baseNorm, key, customerId);
+  const merged = await searchBookedShipmentsMerged(
+    ctx,
+    baseNorm,
+    key,
+    customerId,
+  );
   let booked =
     pickShipmentStrict(merged, ctx) || pickShipmentLenient(merged, ctx);
 

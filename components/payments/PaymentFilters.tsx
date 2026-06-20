@@ -1,7 +1,11 @@
-'use client';
+"use client";
 
-import type { PaymentMethodFilter, DateRange, PaymentMethodType } from '../../hooks/usePayments';
-import DateRangePicker from '../DateRangePicker';
+import type {
+  PaymentMethodFilter,
+  DateRange,
+  PaymentMethodType,
+} from "../../hooks/usePayments";
+import DateRangePicker from "../DateRangePicker";
 
 interface PaymentFiltersProps {
   filterMethod: PaymentMethodFilter;
@@ -24,8 +28,12 @@ export default function PaymentFilters({
   onExportPDF,
   paymentMethods = [],
 }: PaymentFiltersProps) {
-  const filters: { value: PaymentMethodFilter; label: string; color: string }[] = [
-    { value: 'all', label: 'All Payments', color: '#2563EB' },
+  const filters: {
+    value: PaymentMethodFilter;
+    label: string;
+    color: string;
+  }[] = [
+    { value: "all", label: "All Payments", color: "#2563EB" },
     ...paymentMethods.map((m) => ({
       value: String(m.id) as PaymentMethodFilter,
       label: m.name,
@@ -39,7 +47,10 @@ export default function PaymentFilters({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Search */}
         <div>
-          <label htmlFor="search" className="block text-sm font-medium text-gray-700 mb-2">
+          <label
+            htmlFor="search"
+            className="block text-sm font-medium text-gray-700 mb-2"
+          >
             Search Payments
           </label>
           <div className="relative">
@@ -73,7 +84,9 @@ export default function PaymentFilters({
             Date Range
           </label>
           <DateRangePicker
-            value={dateRange || { startDate: '', endDate: '', preset: undefined }}
+            value={
+              dateRange || { startDate: "", endDate: "", preset: undefined }
+            }
             onChange={onDateRangeChange}
           />
         </div>
@@ -91,17 +104,20 @@ export default function PaymentFilters({
               onClick={() => onFilterChange(filter.value)}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                 filterMethod === filter.value
-                  ? 'text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  ? "text-white"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
               }`}
-              style={filterMethod === filter.value ? { backgroundColor: filter.color } : undefined}
+              style={
+                filterMethod === filter.value
+                  ? { backgroundColor: filter.color }
+                  : undefined
+              }
             >
               {filter.label}
             </button>
           ))}
         </div>
         {/* Place export pdf button here on right top corner */}
-        
       </div>
     </div>
   );

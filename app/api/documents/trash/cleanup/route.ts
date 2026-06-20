@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
-import { requireSuperAdmin } from '@/lib/auth';
-import { deleteFromR2 } from '@/lib/r2-client';
+import { NextRequest, NextResponse } from "next/server";
+import prisma from "@/lib/prisma";
+import { requireSuperAdmin } from "@/lib/auth";
+import { deleteFromR2 } from "@/lib/r2-client";
 
 // Trash retention period in days (must match trash/route.ts)
 const TRASH_RETENTION_DAYS = 60;
@@ -12,22 +12,24 @@ export async function POST(request: NextRequest) {
     await requireSuperAdmin();
 
     // Find all documents older than 60 days
-    const retentionThreshold = new Date(Date.now() - TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+    const retentionThreshold = new Date(
+      Date.now() - TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000,
+    );
 
     const oldDocs = await prisma.deletedDocument.findMany({
       where: {
         deletedAt: {
-          lt: retentionThreshold
-        }
-      }
+          lt: retentionThreshold,
+        },
+      },
     });
 
     if (oldDocs.length === 0) {
       return NextResponse.json({
         success: true,
-        message: 'No documents to clean up',
+        message: "No documents to clean up",
         deletedCount: 0,
-        failedCount: 0
+        failedCount: 0,
       });
     }
 
@@ -39,20 +41,20 @@ export async function POST(request: NextRequest) {
     for (const doc of oldDocs) {
       try {
         // Delete from R2 storage (only if it's a file with fileName)
-        if (doc.type === 'file' && doc.fileName) {
+        if (doc.type === "file" && doc.fileName) {
           await deleteFromR2(doc.fileName);
         }
-        
+
         // Delete from database
-        await prisma.deletedDocument.delete({ 
-          where: { id: doc.id } 
+        await prisma.deletedDocument.delete({
+          where: { id: doc.id },
         });
-        
+
         deletedCount++;
       } catch (error) {
         console.error(`Failed to delete ${doc.name}:`, error);
         failedCount++;
-        failedFiles.push(doc.name || 'Unknown');
+        failedFiles.push(doc.name || "Unknown");
       }
     }
 
@@ -61,28 +63,25 @@ export async function POST(request: NextRequest) {
       message: `Cleanup complete: ${deletedCount} permanently deleted, ${failedCount} failed`,
       deletedCount,
       failedCount,
-      failedFiles: failedCount > 0 ? failedFiles : undefined
+      failedFiles: failedCount > 0 ? failedFiles : undefined,
     });
   } catch (error: any) {
-    console.error('Error during cleanup:', error);
+    console.error("Error during cleanup:", error);
 
-    if (error.message === 'Super admin access required') {
+    if (error.message === "Super admin access required") {
       return NextResponse.json(
-        { error: 'Only superadmin can perform cleanup' },
-        { status: 403 }
+        { error: "Only superadmin can perform cleanup" },
+        { status: 403 },
       );
     }
 
-    if (error.message === 'Unauthorized') {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+    if (error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
+      { error: "Internal server error" },
+      { status: 500 },
     );
   }
 }

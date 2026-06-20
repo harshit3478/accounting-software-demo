@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { FiCheck, FiX, FiPlus, FiEdit2, FiTrash2 } from 'react-icons/fi';
-import LucideIcon from '../LucideIcon';
-import IconPicker from './IconPicker';
+import { useState, useEffect } from "react";
+import { FiCheck, FiX, FiPlus, FiEdit2, FiTrash2 } from "react-icons/fi";
+import LucideIcon from "../LucideIcon";
+import IconPicker from "./IconPicker";
 
 interface PaymentMethodType {
   id: number;
@@ -20,12 +20,19 @@ interface PaymentMethodsTabProps {
   showError: (msg: string) => void;
 }
 
-export default function PaymentMethodsTab({ showSuccess, showError }: PaymentMethodsTabProps) {
+export default function PaymentMethodsTab({
+  showSuccess,
+  showError,
+}: PaymentMethodsTabProps) {
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodType[]>([]);
   const [pmLoading, setPmLoading] = useState(true);
   const [showAddPM, setShowAddPM] = useState(false);
   const [editingPM, setEditingPM] = useState<PaymentMethodType | null>(null);
-  const [pmForm, setPmForm] = useState({ name: '', icon: '', color: '#6B7280' });
+  const [pmForm, setPmForm] = useState({
+    name: "",
+    icon: "",
+    color: "#6B7280",
+  });
   const [pmSaving, setPmSaving] = useState(false);
 
   useEffect(() => {
@@ -35,13 +42,13 @@ export default function PaymentMethodsTab({ showSuccess, showError }: PaymentMet
   const fetchPaymentMethods = async () => {
     setPmLoading(true);
     try {
-      const res = await fetch('/api/payment-methods?all=true');
+      const res = await fetch("/api/payment-methods?all=true");
       if (res.ok) {
         const data = await res.json();
         setPaymentMethods(data);
       }
     } catch (error) {
-      console.error('Failed to fetch payment methods:', error);
+      console.error("Failed to fetch payment methods:", error);
     } finally {
       setPmLoading(false);
     }
@@ -51,22 +58,22 @@ export default function PaymentMethodsTab({ showSuccess, showError }: PaymentMet
     if (!pmForm.name.trim()) return;
     setPmSaving(true);
     try {
-      const res = await fetch('/api/payment-methods', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/payment-methods", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(pmForm),
       });
       if (res.ok) {
         showSuccess(`Payment method "${pmForm.name}" created`);
         setShowAddPM(false);
-        setPmForm({ name: '', icon: '', color: '#6B7280' });
+        setPmForm({ name: "", icon: "", color: "#6B7280" });
         fetchPaymentMethods();
       } else {
         const err = await res.json();
-        showError(err.error || 'Failed to create payment method');
+        showError(err.error || "Failed to create payment method");
       }
     } catch {
-      showError('Failed to create payment method');
+      showError("Failed to create payment method");
     } finally {
       setPmSaving(false);
     }
@@ -76,33 +83,38 @@ export default function PaymentMethodsTab({ showSuccess, showError }: PaymentMet
     if (!editingPM) return;
     setPmSaving(true);
     try {
-      const res = await fetch('/api/payment-methods', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/payment-methods", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: editingPM.id, ...pmForm }),
       });
       if (res.ok) {
-        showSuccess('Payment method updated');
+        showSuccess("Payment method updated");
         setEditingPM(null);
-        setPmForm({ name: '', icon: '', color: '#6B7280' });
+        setPmForm({ name: "", icon: "", color: "#6B7280" });
         fetchPaymentMethods();
       } else {
         const err = await res.json();
-        showError(err.error || 'Failed to update payment method');
+        showError(err.error || "Failed to update payment method");
       }
     } catch {
-      showError('Failed to update payment method');
+      showError("Failed to update payment method");
     } finally {
       setPmSaving(false);
     }
   };
 
   const handleDeletePM = async (pm: PaymentMethodType) => {
-    if (!confirm(`Delete "${pm.name}"? If it has existing payments, it will be deactivated instead.`)) return;
+    if (
+      !confirm(
+        `Delete "${pm.name}"? If it has existing payments, it will be deactivated instead.`,
+      )
+    )
+      return;
     try {
-      const res = await fetch('/api/payment-methods', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/payment-methods", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: pm.id }),
       });
       if (res.ok) {
@@ -111,29 +123,29 @@ export default function PaymentMethodsTab({ showSuccess, showError }: PaymentMet
         fetchPaymentMethods();
       } else {
         const err = await res.json();
-        showError(err.error || 'Failed to delete payment method');
+        showError(err.error || "Failed to delete payment method");
       }
     } catch {
-      showError('Failed to delete payment method');
+      showError("Failed to delete payment method");
     }
   };
 
   const handleTogglePM = async (pm: PaymentMethodType) => {
     try {
-      const res = await fetch('/api/payment-methods', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/payment-methods", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: pm.id, isActive: !pm.isActive }),
       });
       if (res.ok) {
-        showSuccess(`${pm.name} ${pm.isActive ? 'deactivated' : 'activated'}`);
+        showSuccess(`${pm.name} ${pm.isActive ? "deactivated" : "activated"}`);
         fetchPaymentMethods();
       } else {
         const err = await res.json();
         showError(err.error);
       }
     } catch {
-      showError('Failed to update payment method');
+      showError("Failed to update payment method");
     }
   };
 
@@ -141,12 +153,16 @@ export default function PaymentMethodsTab({ showSuccess, showError }: PaymentMet
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h2 className="text-xl font-semibold text-gray-900 mb-1">Payment Methods</h2>
-          <p className="text-gray-600 text-sm">Manage available payment methods for recording payments</p>
+          <h2 className="text-xl font-semibold text-gray-900 mb-1">
+            Payment Methods
+          </h2>
+          <p className="text-gray-600 text-sm">
+            Manage available payment methods for recording payments
+          </p>
         </div>
         <button
           onClick={() => {
-            setPmForm({ name: '', icon: '', color: '#6B7280' });
+            setPmForm({ name: "", icon: "", color: "#6B7280" });
             setShowAddPM(true);
             setEditingPM(null);
           }}
@@ -161,7 +177,7 @@ export default function PaymentMethodsTab({ showSuccess, showError }: PaymentMet
       {(showAddPM || editingPM) && (
         <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
           <h3 className="font-medium text-gray-900 mb-3">
-            {editingPM ? `Edit "${editingPM.name}"` : 'Add Payment Method'}
+            {editingPM ? `Edit "${editingPM.name}"` : "Add Payment Method"}
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div>
@@ -188,13 +204,17 @@ export default function PaymentMethodsTab({ showSuccess, showError }: PaymentMet
                 <input
                   type="color"
                   value={pmForm.color}
-                  onChange={(e) => setPmForm({ ...pmForm, color: e.target.value })}
+                  onChange={(e) =>
+                    setPmForm({ ...pmForm, color: e.target.value })
+                  }
                   className="h-[38px] w-12 border border-gray-300 rounded cursor-pointer"
                 />
                 <input
                   type="text"
                   value={pmForm.color}
-                  onChange={(e) => setPmForm({ ...pmForm, color: e.target.value })}
+                  onChange={(e) =>
+                    setPmForm({ ...pmForm, color: e.target.value })
+                  }
                   className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
                 />
               </div>
@@ -206,10 +226,13 @@ export default function PaymentMethodsTab({ showSuccess, showError }: PaymentMet
               disabled={pmSaving || !pmForm.name.trim()}
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm disabled:opacity-50"
             >
-              {pmSaving ? 'Saving...' : editingPM ? 'Update' : 'Create'}
+              {pmSaving ? "Saving..." : editingPM ? "Update" : "Create"}
             </button>
             <button
-              onClick={() => { setShowAddPM(false); setEditingPM(null); }}
+              onClick={() => {
+                setShowAddPM(false);
+                setEditingPM(null);
+              }}
               className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm"
             >
               Cancel
@@ -229,7 +252,9 @@ export default function PaymentMethodsTab({ showSuccess, showError }: PaymentMet
             <div
               key={pm.id}
               className={`flex items-center justify-between p-3 rounded-lg border ${
-                pm.isActive ? 'border-gray-200 bg-white' : 'border-gray-100 bg-gray-50 opacity-60'
+                pm.isActive
+                  ? "border-gray-200 bg-white"
+                  : "border-gray-100 bg-gray-50 opacity-60"
               }`}
             >
               <div className="flex items-center gap-3">
@@ -241,17 +266,25 @@ export default function PaymentMethodsTab({ showSuccess, showError }: PaymentMet
                 </div>
                 <span className="font-medium text-gray-900">{pm.name}</span>
                 {pm.isSystem && (
-                  <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full">System</span>
+                  <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full">
+                    System
+                  </span>
                 )}
                 {!pm.isActive && (
-                  <span className="text-xs px-2 py-0.5 bg-red-50 text-red-500 rounded-full">Inactive</span>
+                  <span className="text-xs px-2 py-0.5 bg-red-50 text-red-500 rounded-full">
+                    Inactive
+                  </span>
                 )}
               </div>
               <div className="flex items-center gap-1">
                 <button
                   onClick={() => {
                     setEditingPM(pm);
-                    setPmForm({ name: pm.name, icon: pm.icon || '', color: pm.color });
+                    setPmForm({
+                      name: pm.name,
+                      icon: pm.icon || "",
+                      color: pm.color,
+                    });
                     setShowAddPM(false);
                   }}
                   className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
@@ -265,10 +298,10 @@ export default function PaymentMethodsTab({ showSuccess, showError }: PaymentMet
                       onClick={() => handleTogglePM(pm)}
                       className={`p-1.5 rounded text-xs ${
                         pm.isActive
-                          ? 'text-gray-400 hover:text-amber-600 hover:bg-amber-50'
-                          : 'text-green-500 hover:text-green-700 hover:bg-green-50'
+                          ? "text-gray-400 hover:text-amber-600 hover:bg-amber-50"
+                          : "text-green-500 hover:text-green-700 hover:bg-green-50"
                       }`}
-                      title={pm.isActive ? 'Deactivate' : 'Activate'}
+                      title={pm.isActive ? "Deactivate" : "Activate"}
                     >
                       {pm.isActive ? <FiX size={14} /> : <FiCheck size={14} />}
                     </button>

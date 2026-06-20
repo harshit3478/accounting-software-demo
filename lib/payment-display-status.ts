@@ -4,11 +4,7 @@ export type PaymentDisplayStatus =
   | "deposit_fee"
   | "restocking_fee";
 
-export type PaymentStatusFilter =
-  | "active"
-  | "refund"
-  | "deposit_fee"
-  | "all";
+export type PaymentStatusFilter = "active" | "refund" | "deposit_fee" | "all";
 
 export function getPaymentDisplayStatus(payment: {
   isAbandoned?: boolean;
@@ -37,7 +33,9 @@ export function getPaymentDisplayStatusLabel(
 }
 
 /** Prisma where clause for payments list/export status filter */
-export function buildPaymentStatusWhere(status: string): Record<string, unknown> {
+export function buildPaymentStatusWhere(
+  status: string,
+): Record<string, unknown> {
   if (status === "refund") {
     return {
       isAbandoned: true,

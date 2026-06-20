@@ -1,20 +1,23 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getUserFromToken, isSuperAdmin } from '@/lib/auth';
-import { buildPermissionsPayload } from '@/lib/permissions';
-import { formatUserDisplayName } from '@/lib/user-display';
+import { NextRequest, NextResponse } from "next/server";
+import { getUserFromToken, isSuperAdmin } from "@/lib/auth";
+import { buildPermissionsPayload } from "@/lib/permissions";
+import { formatUserDisplayName } from "@/lib/user-display";
 
 export async function GET(request: NextRequest) {
-  const token = request.cookies.get('token')?.value;
+  const token = request.cookies.get("token")?.value;
 
   if (!token) {
-    return NextResponse.json({ authenticated: false, message: 'No token found' });
+    return NextResponse.json({
+      authenticated: false,
+      message: "No token found",
+    });
   }
 
   try {
     const dbUser = await getUserFromToken();
     if (!dbUser) {
       return NextResponse.json(
-        { authenticated: false, message: 'Invalid token' },
+        { authenticated: false, message: "Invalid token" },
         { status: 401 },
       );
     }
@@ -42,9 +45,12 @@ export async function GET(request: NextRequest) {
       user,
     });
   } catch (error: any) {
-    return NextResponse.json({ 
-      authenticated: false, 
-      error: error.message 
-    }, { status: 401 });
+    return NextResponse.json(
+      {
+        authenticated: false,
+        error: error.message,
+      },
+      { status: 401 },
+    );
   }
 }

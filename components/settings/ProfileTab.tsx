@@ -18,7 +18,10 @@ interface ProfileData {
   displayName: string;
 }
 
-export default function ProfileTab({ showSuccess, showError }: ProfileTabProps) {
+export default function ProfileTab({
+  showSuccess,
+  showError,
+}: ProfileTabProps) {
   const { user } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [profile, setProfile] = useState<ProfileData | null>(null);

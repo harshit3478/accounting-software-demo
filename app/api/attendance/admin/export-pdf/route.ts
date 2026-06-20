@@ -11,22 +11,19 @@ export async function GET(req: Request) {
     const endDate = url.searchParams.get("endDate");
 
     if (!userId) {
-       return NextResponse.json(
+      return NextResponse.json(
         { error: "User ID is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
-    
+
     // Fetch target user to get name/email
     const targetUser = await prisma.user.findUnique({
-        where: { id: parseInt(userId) }
+      where: { id: parseInt(userId) },
     });
 
     if (!targetUser) {
-        return NextResponse.json(
-            { error: "User not found" },
-            { status: 404 }
-        );
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
     const whereClause: any = { userId: parseInt(userId) };
@@ -65,13 +62,14 @@ export async function GET(req: Request) {
         entries,
         employeeName: targetUser.name || "Employee",
         employeeEmail: targetUser.email || "",
-        dateRange: startDate && endDate ? { start: startDate, end: endDate } : null,
+        dateRange:
+          startDate && endDate ? { start: startDate, end: endDate } : null,
       },
     });
   } catch (err: any) {
     return NextResponse.json(
       { error: err.message || "Unauthorized" },
-      { status: 401 }
+      { status: 401 },
     );
   }
 }

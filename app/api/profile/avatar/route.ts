@@ -23,11 +23,7 @@ export async function POST(request: NextRequest) {
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    const avatarUrl = await saveAvatarFile(
-      currentUser.id,
-      buffer,
-      file.type,
-    );
+    const avatarUrl = await saveAvatarFile(currentUser.id, buffer, file.type);
 
     if (currentUser.avatarUrl) {
       await deleteStoredAvatar(currentUser.avatarUrl);

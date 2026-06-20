@@ -5,7 +5,7 @@ import { sendChequeStatusNotification } from "@/lib/email";
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const admin = await requireChequeVaultApprove();
@@ -22,7 +22,7 @@ export async function PUT(
     if (!correctionNote || !correctionNote.trim()) {
       return NextResponse.json(
         { error: "Correction note is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -39,8 +39,10 @@ export async function PUT(
 
     if (cheque.status === "APPROVED" || cheque.status === "REJECTED") {
       return NextResponse.json(
-        { error: "Cannot request correction on an approved or rejected cheque" },
-        { status: 400 }
+        {
+          error: "Cannot request correction on an approved or rejected cheque",
+        },
+        { status: 400 },
       );
     }
 
@@ -62,7 +64,9 @@ export async function PUT(
         amount: Number(cheque.amount),
         status: "NEEDS_CORRECTION",
         reason: correctionNote.trim(),
-      }).catch((err) => console.error("[request-correction] email error:", err));
+      }).catch((err) =>
+        console.error("[request-correction] email error:", err),
+      );
     }
 
     return NextResponse.json({ message: "Correction requested" });
@@ -71,9 +75,15 @@ export async function PUT(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     if (error.message === "Forbidden") {
-      return NextResponse.json({ error: "Cheque approval permission required" }, { status: 403 });
+      return NextResponse.json(
+        { error: "Cheque approval permission required" },
+        { status: 403 },
+      );
     }
     console.error("[cheque-vault/[id]/request-correction PUT]", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
   }
 }

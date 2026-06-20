@@ -1,7 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
-import { requireAuth } from '@/lib/auth';
-import { MAX_TOTAL_STORAGE, formatFileSize, calculateStoragePercentage } from '@/lib/file-utils';
+import { NextRequest, NextResponse } from "next/server";
+import prisma from "@/lib/prisma";
+import { requireAuth } from "@/lib/auth";
+import {
+  MAX_TOTAL_STORAGE,
+  formatFileSize,
+  calculateStoragePercentage,
+} from "@/lib/file-utils";
 
 export async function GET(request: NextRequest) {
   try {
@@ -31,18 +35,15 @@ export async function GET(request: NextRequest) {
       availableFormatted: formatFileSize(MAX_TOTAL_STORAGE - totalUsed),
     });
   } catch (error: any) {
-    console.error('Error fetching storage stats:', error);
+    console.error("Error fetching storage stats:", error);
 
-    if (error.message === 'Unauthorized') {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+    if (error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
+      { error: "Internal server error" },
+      { status: 500 },
     );
   }
 }

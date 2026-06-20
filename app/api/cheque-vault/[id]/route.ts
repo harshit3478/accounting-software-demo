@@ -35,7 +35,7 @@ function serializeCheque(cheque: any) {
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const user = await requireAuth();
@@ -89,13 +89,16 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     console.error("[cheque-vault/[id] GET]", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
   }
 }
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const user = await requireAuth();
@@ -107,9 +110,20 @@ export async function PATCH(
     }
 
     const body = await request.json();
-    const { invoices, chequeNumber, payorName, payeeName, amount, chequeDate, bankName, customerEmail } = body;
+    const {
+      invoices,
+      chequeNumber,
+      payorName,
+      payeeName,
+      amount,
+      chequeDate,
+      bankName,
+      customerEmail,
+    } = body;
 
-    const cheque = await prisma.chequeVault.findUnique({ where: { id: chequeId } });
+    const cheque = await prisma.chequeVault.findUnique({
+      where: { id: chequeId },
+    });
     if (!cheque) {
       return NextResponse.json({ error: "Cheque not found" }, { status: 404 });
     }
@@ -140,7 +154,9 @@ export async function PATCH(
     if (reviewer) {
       if (wantsFieldUpdate) {
         return NextResponse.json(
-          { error: "Reviewers can only link invoices, not edit cheque details" },
+          {
+            error: "Reviewers can only link invoices, not edit cheque details",
+          },
           { status: 403 },
         );
       }
@@ -240,11 +256,7 @@ export async function PATCH(
     }
 
     // Re-submit after correction: reset status to PENDING
-    if (
-      cheque.status === "NEEDS_CORRECTION" &&
-      wantsFieldUpdate &&
-      !reviewer
-    ) {
+    if (cheque.status === "NEEDS_CORRECTION" && wantsFieldUpdate && !reviewer) {
       updateData.status = "PENDING";
       updateData.correctionNote = null;
       updateData.correctionRequestedById = null;
@@ -266,7 +278,7 @@ export async function PATCH(
     const chequeAmount = Number(updated.amount);
     const totalAllocated = (updated.invoiceAllocations || []).reduce(
       (sum: number, a: any) => sum + Number(a.allocatedAmount),
-      0
+      0,
     );
     const response: any = { cheque: serializeCheque(updated) };
     if (totalAllocated > chequeAmount + 0.01) {
@@ -279,7 +291,10 @@ export async function PATCH(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     console.error("[cheque-vault/[id] PATCH]", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
   }
 }
 
@@ -340,6 +355,9 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     console.error("[cheque-vault/[id] DELETE]", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
   }
 }

@@ -1,11 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
-import { requireAuth } from '@/lib/auth';
-import { updateInvoiceAfterPayment } from '@/lib/invoice-utils';
+import { NextRequest, NextResponse } from "next/server";
+import prisma from "@/lib/prisma";
+import { requireAuth } from "@/lib/auth";
+import { updateInvoiceAfterPayment } from "@/lib/invoice-utils";
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string; matchId: string }> }
+  { params }: { params: Promise<{ id: string; matchId: string }> },
 ) {
   try {
     await requireAuth();
@@ -21,32 +21,35 @@ export async function DELETE(
         invoice: {
           select: {
             id: true,
-            invoiceNumber: true
-          }
-        }
-      }
+            invoiceNumber: true,
+          },
+        },
+      },
     });
 
     if (!match) {
-      return NextResponse.json({ error: 'Match not found' }, { status: 404 });
+      return NextResponse.json({ error: "Match not found" }, { status: 404 });
     }
 
     // Verify match belongs to the specified payment
     if (match.paymentId !== paymentId) {
-      return NextResponse.json({ error: 'Match does not belong to this payment' }, { status: 400 });
+      return NextResponse.json(
+        { error: "Match does not belong to this payment" },
+        { status: 400 },
+      );
     }
 
     const invoiceId = match.invoiceId;
 
     // Delete the match
     await prisma.paymentInvoiceMatch.delete({
-      where: { id: matchIdInt }
+      where: { id: matchIdInt },
     });
 
     // Update payment to unmatched
     await prisma.payment.update({
       where: { id: paymentId },
-      data: { isMatched: false }
+      data: { isMatched: false },
     });
 
     // Recalculate invoice totals
@@ -65,12 +68,12 @@ export async function DELETE(
                 clientName: true,
                 amount: true,
                 paidAmount: true,
-                status: true
-              }
-            }
-          }
-        }
-      }
+                status: true,
+              },
+            },
+          },
+        },
+      },
     });
 
     // Fetch updated invoice
@@ -82,35 +85,38 @@ export async function DELETE(
         clientName: true,
         amount: true,
         paidAmount: true,
-        status: true
-      }
+        status: true,
+      },
     });
 
     return NextResponse.json({
       success: true,
-      message: 'Match removed successfully',
-      payment: updatedPayment ? {
-        ...updatedPayment,
-        amount: updatedPayment.amount.toNumber(),
-        paymentMatches: updatedPayment.paymentMatches.map(m => ({
-          ...m,
-          amount: m.amount.toNumber(),
-          invoice: {
-            ...m.invoice,
-            amount: m.invoice.amount.toNumber(),
-            paidAmount: m.invoice.paidAmount.toNumber()
+      message: "Match removed successfully",
+      payment: updatedPayment
+        ? {
+            ...updatedPayment,
+            amount: updatedPayment.amount.toNumber(),
+            paymentMatches: updatedPayment.paymentMatches.map((m) => ({
+              ...m,
+              amount: m.amount.toNumber(),
+              invoice: {
+                ...m.invoice,
+                amount: m.invoice.amount.toNumber(),
+                paidAmount: m.invoice.paidAmount.toNumber(),
+              },
+            })),
           }
-        }))
-      } : null,
-      invoice: updatedInvoice ? {
-        ...updatedInvoice,
-        amount: updatedInvoice.amount.toNumber(),
-        paidAmount: updatedInvoice.paidAmount.toNumber()
-      } : null
+        : null,
+      invoice: updatedInvoice
+        ? {
+            ...updatedInvoice,
+            amount: updatedInvoice.amount.toNumber(),
+            paidAmount: updatedInvoice.paidAmount.toNumber(),
+          }
+        : null,
     });
-
   } catch (error: any) {
-    console.error('Unmatch payment error:', error);
+    console.error("Unmatch payment error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

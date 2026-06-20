@@ -1,13 +1,13 @@
-'use client';
+"use client";
 
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 
 export default function TermsRedirect() {
   const router = useRouter();
 
   useEffect(() => {
-    router.replace('/settings?tab=terms');
+    router.replace("/settings?tab=terms");
   }, [router]);
 
   return (

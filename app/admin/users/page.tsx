@@ -1,13 +1,13 @@
-'use client';
+"use client";
 
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 
 export default function AdminUsersRedirect() {
   const router = useRouter();
 
   useEffect(() => {
-    router.replace('/settings?tab=users');
+    router.replace("/settings?tab=users");
   }, [router]);
 
   return (

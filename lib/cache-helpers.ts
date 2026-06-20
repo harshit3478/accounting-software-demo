@@ -1,28 +1,28 @@
 /**
  * Cache Invalidation Helpers
- * 
+ *
  * Centralized functions for cache invalidation to maintain consistency
  * across the application.
- * 
+ *
  * Usage:
  * import { invalidateDashboard, invalidateDocuments } from '@/lib/cache-helpers';
- * 
+ *
  * // After creating/updating an invoice:
  * invalidateDashboard();
- * 
+ *
  * // After creating/deleting a folder:
  * invalidateDocuments();
  */
 
-import cache, { CACHE_KEYS } from './cache';
+import cache, { CACHE_KEYS } from "./cache";
 
 /**
  * Invalidate all dashboard-related caches
  * Call after: invoice/payment creation, update, deletion
  */
 export function invalidateDashboard() {
-  cache.invalidatePattern('dashboard:.*');
-  console.log('[Cache] Invalidated dashboard metrics');
+  cache.invalidatePattern("dashboard:.*");
+  console.log("[Cache] Invalidated dashboard metrics");
 }
 
 /**
@@ -31,8 +31,8 @@ export function invalidateDashboard() {
  */
 export function invalidateDocuments() {
   cache.delete(CACHE_KEYS.DOCUMENT_TREE);
-  cache.invalidatePattern('folder:.*:breadcrumb');
-  console.log('[Cache] Invalidated document tree and breadcrumbs');
+  cache.invalidatePattern("folder:.*:breadcrumb");
+  console.log("[Cache] Invalidated document tree and breadcrumbs");
 }
 
 /**
@@ -41,7 +41,7 @@ export function invalidateDocuments() {
  */
 export function invalidateUsers() {
   cache.delete(CACHE_KEYS.ALL_USERS);
-  console.log('[Cache] Invalidated user list');
+  console.log("[Cache] Invalidated user list");
 }
 
 /**
@@ -60,9 +60,9 @@ export function invalidateUser(userId: number) {
  * Call after: invoice creation, update, deletion
  */
 export function invalidateInvoices() {
-  cache.invalidatePattern('invoices:.*');
+  cache.invalidatePattern("invoices:.*");
   invalidateDashboard(); // Invoices affect dashboard metrics
-  console.log('[Cache] Invalidated invoice caches');
+  console.log("[Cache] Invalidated invoice caches");
 }
 
 /**
@@ -70,9 +70,9 @@ export function invalidateInvoices() {
  * Call after: payment creation, update, deletion, matching
  */
 export function invalidatePayments() {
-  cache.invalidatePattern('payments:.*');
+  cache.invalidatePattern("payments:.*");
   invalidateDashboard(); // Payments affect dashboard metrics
-  console.log('[Cache] Invalidated payment caches');
+  console.log("[Cache] Invalidated payment caches");
 }
 
 /**
@@ -81,5 +81,5 @@ export function invalidatePayments() {
  */
 export function invalidateAll() {
   cache.clear();
-  console.log('[Cache] Cleared entire cache');
+  console.log("[Cache] Cleared entire cache");
 }

@@ -1,10 +1,17 @@
-import React, { useEffect, useState } from 'react';
-import { ChevronRight, ChevronDown, Folder, FolderOpen, Plus, Loader2 } from 'lucide-react';
+import React, { useEffect, useState } from "react";
+import {
+  ChevronRight,
+  ChevronDown,
+  Folder,
+  FolderOpen,
+  Plus,
+  Loader2,
+} from "lucide-react";
 
 interface TreeNode {
   id: number;
   name: string;
-  type: 'folder';
+  type: "folder";
   parentId: number | null;
   children: TreeNode[];
   itemCount?: number;
@@ -21,12 +28,14 @@ export default function FolderTree({
   currentFolderId,
   onFolderSelect,
   onCreateFolder,
-  refreshTrigger = 0
+  refreshTrigger = 0,
 }: FolderTreeProps) {
   const [tree, setTree] = useState<TreeNode[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [expandedFolders, setExpandedFolders] = useState<Set<number>>(new Set());
+  const [expandedFolders, setExpandedFolders] = useState<Set<number>>(
+    new Set(),
+  );
 
   // Load folder tree
   useEffect(() => {
@@ -37,23 +46,23 @@ export default function FolderTree({
     try {
       setLoading(true);
       setError(null);
-      
-      const response = await fetch('/api/documents/tree');
-      
+
+      const response = await fetch("/api/documents/tree");
+
       if (!response.ok) {
-        throw new Error('Failed to load folder tree');
+        throw new Error("Failed to load folder tree");
       }
-      
+
       const data = await response.json();
       setTree(data.tree || []);
-      
+
       // Auto-expand folders in current path
       if (currentFolderId) {
         await expandPathToFolder(currentFolderId);
       }
     } catch (err: any) {
-      console.error('Error loading folder tree:', err);
-      setError(err.message || 'Failed to load folders');
+      console.error("Error loading folder tree:", err);
+      setError(err.message || "Failed to load folders");
     } finally {
       setLoading(false);
     }
@@ -68,20 +77,20 @@ export default function FolderTree({
         const folderIds = data.breadcrumb
           .filter((item: any) => item.id > 0)
           .map((item: any) => item.id);
-        
-        setExpandedFolders(prev => {
+
+        setExpandedFolders((prev) => {
           const newSet = new Set(prev);
           folderIds.forEach((id: number) => newSet.add(id));
           return newSet;
         });
       }
     } catch (err) {
-      console.error('Error expanding path:', err);
+      console.error("Error expanding path:", err);
     }
   };
 
   const toggleFolder = (folderId: number) => {
-    setExpandedFolders(prev => {
+    setExpandedFolders((prev) => {
       const newSet = new Set(prev);
       if (newSet.has(folderId)) {
         newSet.delete(folderId);
@@ -104,7 +113,7 @@ export default function FolderTree({
           className={`
             flex items-center gap-1 py-1.5 px-2 cursor-pointer rounded-md
             hover:bg-gray-100 transition-colors
-            ${isSelected ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'}
+            ${isSelected ? "bg-blue-50 text-blue-700 font-medium" : "text-gray-700"}
           `}
           style={{ paddingLeft: `${paddingLeft}px` }}
           onClick={() => onFolderSelect(node.id)}
@@ -164,7 +173,7 @@ export default function FolderTree({
         {/* Render Children */}
         {isExpanded && hasChildren && (
           <div>
-            {node.children.map(child => renderTreeNode(child, depth + 1))}
+            {node.children.map((child) => renderTreeNode(child, depth + 1))}
           </div>
         )}
       </div>
@@ -200,7 +209,7 @@ export default function FolderTree({
         className={`
           flex items-center gap-2 py-2 px-3 cursor-pointer rounded-md
           hover:bg-gray-100 transition-colors mb-1
-          ${currentFolderId === null ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'}
+          ${currentFolderId === null ? "bg-blue-50 text-blue-700 font-medium" : "text-gray-700"}
         `}
         onClick={() => onFolderSelect(null)}
       >
@@ -232,7 +241,7 @@ export default function FolderTree({
             </button>
           </div>
         ) : (
-          tree.map(node => renderTreeNode(node, 0))
+          tree.map((node) => renderTreeNode(node, 0))
         )}
       </div>
     </div>

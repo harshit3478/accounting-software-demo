@@ -42,10 +42,16 @@ function validateUnitRange(minUnit: number | null, maxUnit: number | null) {
 }
 
 function normalizeUnitKey(unitName: string) {
-  return String(unitName || "").trim().toLowerCase();
+  return String(unitName || "")
+    .trim()
+    .toLowerCase();
 }
 
-async function getRulesForUnit(ruleModel: any, unitName: string, excludeId?: number) {
+async function getRulesForUnit(
+  ruleModel: any,
+  unitName: string,
+  excludeId?: number,
+) {
   const unitKey = normalizeUnitKey(unitName);
   const rules = await ruleModel.findMany({
     select: { id: true, unitName: true, ruleType: true, isActive: true },
@@ -185,7 +191,9 @@ function validateFlatRuleFields({
   }
 
   if (minUnit !== null || maxUnit !== null) {
-    throw new Error("Flat deposit fee rules cannot use minimum or maximum units");
+    throw new Error(
+      "Flat deposit fee rules cannot use minimum or maximum units",
+    );
   }
 
   return {
@@ -215,7 +223,11 @@ export async function GET(request: NextRequest) {
     const where = activeOnly ? { isActive: true } : {};
     const rules = await ruleModel.findMany({
       where,
-      orderBy: [{ sortOrder: "asc" }, { unitName: "asc" }, { createdAt: "desc" }],
+      orderBy: [
+        { sortOrder: "asc" },
+        { unitName: "asc" },
+        { createdAt: "desc" },
+      ],
       include: {
         creator: {
           select: {
@@ -289,7 +301,11 @@ export async function POST(request: NextRequest) {
     const created = await prisma.$transaction(async (tx) => {
       const model = (tx as any).depositFeeRule;
 
-      if (parsedRuleType === "flat" && willBeActive && replaceConflictingRules) {
+      if (
+        parsedRuleType === "flat" &&
+        willBeActive &&
+        replaceConflictingRules
+      ) {
         await deactivateRangeRulesForUnit(model, parsedUnitName);
       }
 
@@ -441,9 +457,7 @@ export async function PUT(request: NextRequest) {
     data.isPercentage = flatFields.isPercentage;
 
     const nextIsActive =
-      data.isActive !== undefined
-        ? data.isActive
-        : !!existing.isActive;
+      data.isActive !== undefined ? data.isActive : !!existing.isActive;
 
     await validateRuleCompatibility(ruleModel, {
       unitName: nextUnitName,

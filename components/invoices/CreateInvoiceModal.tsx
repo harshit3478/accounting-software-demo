@@ -30,6 +30,7 @@ interface CustomerOption {
   email: string | null;
   phone: string | null;
   address: string | null;
+  storeCredit?: number;
 }
 
 interface TermOption {
@@ -87,6 +88,7 @@ export default function CreateInvoiceModal({
 
   const [clientName, setClientName] = useState("");
   const [customerId, setCustomerId] = useState<number | null>(null);
+  const [applyStoreCredit, setApplyStoreCredit] = useState(false);
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
   const [showNewCustomerForm, setShowNewCustomerForm] = useState(false);
@@ -162,12 +164,20 @@ export default function CreateInvoiceModal({
     }
   }, []);
 
+  const loadCustomers = async () => {
+    try {
+      const res = await fetch("/api/customers?all=true");
+      if (res.ok) {
+        setCustomers(await res.json());
+      }
+    } catch {
+      // ignore
+    }
+  };
+
   // Fetch customers for autocomplete
   useEffect(() => {
-    fetch("/api/customers?all=true")
-      .then((res) => (res.ok ? res.json() : []))
-      .then((data) => setCustomers(data))
-      .catch(() => {});
+    loadCustomers();
   }, []);
 
   const selectedCustomer = customerId
@@ -177,6 +187,12 @@ export default function CreateInvoiceModal({
           customer.name.trim().toLowerCase() ===
           clientName.trim().toLowerCase(),
       ) || null;
+
+  const availableStoreCredit = Number(selectedCustomer?.storeCredit || 0);
+
+  useEffect(() => {
+    setApplyStoreCredit(false);
+  }, [customerId, clientName]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -559,20 +575,12 @@ export default function CreateInvoiceModal({
       });
       if (res.ok) {
         const created = await res.json();
-        setCustomers((prev: any) => [
-          ...prev,
-          {
-            id: created.id,
-            name: created.name,
-            email: created.email,
-            phone: created.phone,
-          },
-        ]);
         setClientName(created.name);
         setCustomerId(created.id);
         setCustomerAddress(created.address || "");
         setShowNewCustomerForm(false);
         setNewCustomerData({ name: "", email: "", phone: "", address: "" });
+        await loadCustomers();
       } else {
         const err = await res.json();
         onError?.(err.error || "Failed to create customer");
@@ -584,29 +592,29 @@ export default function CreateInvoiceModal({
     }
   };
 
-  const handleAddCustomerSuccess = (customer: CustomerOption) => {
-    // Add the new customer to the list
-    setCustomers((prev) => [...prev, customer]);
+  const handleAddCustomerSuccess = async (customer: CustomerOption) => {
     setClientName(customer.name);
     setCustomerId(customer.id);
     setCustomerAddress(customer.address || "");
     setShowAddCustomerModal(false);
     setPendingNewCustomerName("");
+    await loadCustomers();
     // Continue with invoice creation
     setTimeout(() => {
+      setApplyStoreCredit(false);
       setShowPreview(true);
     }, 100);
   };
 
-  const handleUpdateCustomerFieldsSuccess = (customer: CustomerOption) => {
-    // Update the customer in the list
-    setCustomers((prev) =>
-      prev.map((c) => (c.id === customer.id ? customer : c)),
-    );
+  const handleUpdateCustomerFieldsSuccess = async (
+    customer: CustomerOption,
+  ) => {
     setCustomerAddress(customer.address || "");
     setShowUpdateCustomerFieldsModal(false);
+    await loadCustomers();
     // Continue with invoice creation
     setTimeout(() => {
+      setApplyStoreCredit(false);
       setShowPreview(true);
     }, 100);
   };
@@ -646,6 +654,7 @@ export default function CreateInvoiceModal({
     setDateError("");
     setShowNewCustomerForm(false);
     setNewCustomerData({ name: "", email: "", phone: "", address: "" });
+    setApplyStoreCredit(false);
   };
 
   const handleCreateInvoice = async () => {
@@ -747,6 +756,7 @@ export default function CreateInvoiceModal({
     }
 
     // Show preview instead of creating directly
+    setApplyStoreCredit(false);
     setShowPreview(true);
   };
 
@@ -785,6 +795,8 @@ export default function CreateInvoiceModal({
             notes: layawayNotes || undefined,
           },
         }),
+        applyStoreCredit:
+          applyStoreCredit && availableStoreCredit > 0 && !!selectedCustomer,
       };
 
       if (selectedTermsId !== "custom" && selectedTermsId !== "none") {
@@ -1573,16 +1585,15 @@ export default function CreateInvoiceModal({
                             const total = calculateTotal();
                             const previewInstallments =
                               buildLayawayInstallmentSchedule({
-                                invoiceDate: invoiceDate || getTodayDateString(),
+                                invoiceDate:
+                                  invoiceDate || getTodayDateString(),
                                 frequency: layawayFrequency,
                                 months: layawayMonths,
                                 downPayment: layawayDownPayment,
                                 totalAmount: total,
                               });
-                            const visibleInstallments = previewInstallments.slice(
-                              0,
-                              12,
-                            );
+                            const visibleInstallments =
+                              previewInstallments.slice(0, 12);
                             const hiddenCount =
                               previewInstallments.length -
                               visibleInstallments.length;
@@ -1755,7 +1766,10 @@ export default function CreateInvoiceModal({
 
       <PreviewInvoiceModal
         isOpen={showPreview}
-        onClose={() => setShowPreview(false)}
+        onClose={() => {
+          setApplyStoreCredit(false);
+          setShowPreview(false);
+        }}
         onConfirm={handleConfirmCreate}
         clientName={clientName}
         invoiceDate={invoiceDate}
@@ -1777,6 +1791,11 @@ export default function CreateInvoiceModal({
         isLayaway={isLayaway}
         isSubmitting={isCreating}
         useDefaultTerms={false}
+        availableStoreCredit={
+          selectedCustomer ? availableStoreCredit : 0
+        }
+        applyStoreCredit={applyStoreCredit}
+        onApplyStoreCreditChange={setApplyStoreCredit}
         customTerms={
           selectedTermsId === "custom"
             ? customTerms.filter((t) => t.trim())

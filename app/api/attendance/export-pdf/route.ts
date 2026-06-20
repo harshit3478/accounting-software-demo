@@ -45,13 +45,14 @@ export async function GET(req: Request) {
         entries,
         employeeName: user.name || "Employee",
         employeeEmail: user.email || "",
-        dateRange: startDate && endDate ? { start: startDate, end: endDate } : null,
+        dateRange:
+          startDate && endDate ? { start: startDate, end: endDate } : null,
       },
     });
   } catch (err: any) {
     return NextResponse.json(
       { error: err.message || "Unauthorized" },
-      { status: 401 }
+      { status: 401 },
     );
   }
 }

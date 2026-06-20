@@ -1,27 +1,27 @@
-import { NextRequest, NextResponse } from 'next/server';
-import prisma from '../../../../lib/prisma';
-import { requireAuth } from '../../../../lib/auth';
-import { getOAuthClient } from '../../../../lib/quickbooks';
+import { NextRequest, NextResponse } from "next/server";
+import prisma from "../../../../lib/prisma";
+import { requireAuth } from "../../../../lib/auth";
+import { getOAuthClient } from "../../../../lib/quickbooks";
 
 export async function GET(request: NextRequest) {
   try {
     const user = await requireAuth();
     const { searchParams } = new URL(request.url);
-    
-    const code = searchParams.get('code');
-    const realmId = searchParams.get('realmId');
-    const state = searchParams.get('state');
-    const error = searchParams.get('error');
+
+    const code = searchParams.get("code");
+    const realmId = searchParams.get("realmId");
+    const state = searchParams.get("state");
+    const error = searchParams.get("error");
 
     if (error) {
       return NextResponse.redirect(
-        new URL(`/settings?qb_error=${encodeURIComponent(error)}`, request.url)
+        new URL(`/settings?qb_error=${encodeURIComponent(error)}`, request.url),
       );
     }
 
     if (!code || !realmId) {
       return NextResponse.redirect(
-        new URL('/settings?qb_error=missing_parameters', request.url)
+        new URL("/settings?qb_error=missing_parameters", request.url),
       );
     }
 
@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
         accessToken: tokenResponse.access_token,
         refreshToken: tokenResponse.refresh_token,
         tokenExpiry,
-        isActive: true
+        isActive: true,
       },
       update: {
         realmId,
@@ -52,18 +52,21 @@ export async function GET(request: NextRequest) {
         refreshToken: tokenResponse.refresh_token,
         tokenExpiry,
         isActive: true,
-        updatedAt: new Date()
-      }
+        updatedAt: new Date(),
+      },
     });
 
     // Redirect to settings page with success message
     return NextResponse.redirect(
-      new URL('/settings?qb_success=true', request.url)
+      new URL("/settings?qb_success=true", request.url),
     );
   } catch (error: any) {
-    console.error('QuickBooks callback error:', error);
+    console.error("QuickBooks callback error:", error);
     return NextResponse.redirect(
-      new URL(`/settings?qb_error=${encodeURIComponent(error.message)}`, request.url)
+      new URL(
+        `/settings?qb_error=${encodeURIComponent(error.message)}`,
+        request.url,
+      ),
     );
   }
 }

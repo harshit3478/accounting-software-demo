@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { FiCheck, FiRefreshCw } from 'react-icons/fi';
-import ConfirmModal from '../ConfirmModal';
+import { useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { FiCheck, FiRefreshCw } from "react-icons/fi";
+import ConfirmModal from "../ConfirmModal";
 
 interface QuickBooksConnection {
   connected: boolean;
@@ -23,11 +23,16 @@ interface QuickBooksTabProps {
   showError: (msg: string) => void;
 }
 
-export default function QuickBooksTab({ showSuccess, showError }: QuickBooksTabProps) {
+export default function QuickBooksTab({
+  showSuccess,
+  showError,
+}: QuickBooksTabProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const [qbConnection, setQbConnection] = useState<QuickBooksConnection | null>(null);
+  const [qbConnection, setQbConnection] = useState<QuickBooksConnection | null>(
+    null,
+  );
   const [isLoading, setIsLoading] = useState(true);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
@@ -37,29 +42,29 @@ export default function QuickBooksTab({ showSuccess, showError }: QuickBooksTabP
   useEffect(() => {
     fetchConnectionStatus();
 
-    const qbSuccess = searchParams?.get('qb_success');
-    const qbError = searchParams?.get('qb_error');
+    const qbSuccess = searchParams?.get("qb_success");
+    const qbError = searchParams?.get("qb_error");
 
     if (qbSuccess) {
-      showSuccess('Successfully connected to QuickBooks!');
-      router.replace('/settings?tab=quickbooks');
+      showSuccess("Successfully connected to QuickBooks!");
+      router.replace("/settings?tab=quickbooks");
     }
     if (qbError) {
       showError(`QuickBooks connection failed: ${qbError}`);
-      router.replace('/settings?tab=quickbooks');
+      router.replace("/settings?tab=quickbooks");
     }
   }, [searchParams]);
 
   const fetchConnectionStatus = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch('/api/quickbooks/connection');
+      const res = await fetch("/api/quickbooks/connection");
       if (res.ok) {
         const data = await res.json();
         setQbConnection(data);
       }
     } catch (error) {
-      console.error('Failed to fetch connection status:', error);
+      console.error("Failed to fetch connection status:", error);
     } finally {
       setIsLoading(false);
     }
@@ -68,17 +73,17 @@ export default function QuickBooksTab({ showSuccess, showError }: QuickBooksTabP
   const handleConnect = async () => {
     setIsConnecting(true);
     try {
-      const res = await fetch('/api/quickbooks/auth');
+      const res = await fetch("/api/quickbooks/auth");
       if (res.ok) {
         const data = await res.json();
         window.location.href = data.authUri;
       } else {
-        showError('Failed to initiate QuickBooks connection');
+        showError("Failed to initiate QuickBooks connection");
         setIsConnecting(false);
       }
     } catch (error) {
-      console.error('Connection error:', error);
-      showError('Failed to connect to QuickBooks');
+      console.error("Connection error:", error);
+      showError("Failed to connect to QuickBooks");
       setIsConnecting(false);
     }
   };
@@ -86,22 +91,24 @@ export default function QuickBooksTab({ showSuccess, showError }: QuickBooksTabP
   const handleSync = async () => {
     setIsSyncing(true);
     try {
-      const res = await fetch('/api/quickbooks/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/quickbooks/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ daysBack: 30 }),
       });
       if (res.ok) {
         const data = await res.json();
-        showSuccess(`Sync completed: ${data.created} created, ${data.updated} updated, ${data.skipped} skipped`);
+        showSuccess(
+          `Sync completed: ${data.created} created, ${data.updated} updated, ${data.skipped} skipped`,
+        );
         fetchConnectionStatus();
       } else {
         const error = await res.json();
-        showError(`Sync failed: ${error.error || 'Unknown error'}`);
+        showError(`Sync failed: ${error.error || "Unknown error"}`);
       }
     } catch (error) {
-      console.error('Sync error:', error);
-      showError('Failed to sync with QuickBooks');
+      console.error("Sync error:", error);
+      showError("Failed to sync with QuickBooks");
     } finally {
       setIsSyncing(false);
     }
@@ -110,17 +117,19 @@ export default function QuickBooksTab({ showSuccess, showError }: QuickBooksTabP
   const confirmDisconnect = async () => {
     setIsDisconnecting(true);
     try {
-      const res = await fetch('/api/quickbooks/connection', { method: 'DELETE' });
+      const res = await fetch("/api/quickbooks/connection", {
+        method: "DELETE",
+      });
       if (res.ok) {
-        showSuccess('Successfully disconnected from QuickBooks');
+        showSuccess("Successfully disconnected from QuickBooks");
         setShowDisconnectConfirm(false);
         fetchConnectionStatus();
       } else {
-        showError('Failed to disconnect from QuickBooks');
+        showError("Failed to disconnect from QuickBooks");
       }
     } catch (error) {
-      console.error('Disconnect error:', error);
-      showError('Failed to disconnect from QuickBooks');
+      console.error("Disconnect error:", error);
+      showError("Failed to disconnect from QuickBooks");
     } finally {
       setIsDisconnecting(false);
     }
@@ -132,8 +141,12 @@ export default function QuickBooksTab({ showSuccess, showError }: QuickBooksTabP
       <div>
         <div className="flex items-start justify-between mb-6">
           <div>
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">QuickBooks Integration</h2>
-            <p className="text-gray-600">Connect your QuickBooks account to automatically sync payments</p>
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">
+              QuickBooks Integration
+            </h2>
+            <p className="text-gray-600">
+              Connect your QuickBooks account to automatically sync payments
+            </p>
           </div>
           <div className="flex-shrink-0">
             <img
@@ -154,8 +167,12 @@ export default function QuickBooksTab({ showSuccess, showError }: QuickBooksTabP
               <div className="flex items-center">
                 <FiCheck className="text-green-600 text-xl mr-3" />
                 <div className="flex-1">
-                  <p className="font-medium text-green-900">Connected to QuickBooks</p>
-                  <p className="text-sm text-green-700 mt-1">Company ID: {qbConnection.connection?.realmId}</p>
+                  <p className="font-medium text-green-900">
+                    Connected to QuickBooks
+                  </p>
+                  <p className="text-sm text-green-700 mt-1">
+                    Company ID: {qbConnection.connection?.realmId}
+                  </p>
                 </div>
               </div>
             </div>
@@ -165,7 +182,9 @@ export default function QuickBooksTab({ showSuccess, showError }: QuickBooksTabP
                 <p className="text-sm text-gray-600 mb-1">Status</p>
                 <p className="font-medium text-gray-900">
                   {qbConnection.connection?.isExpired ? (
-                    <span className="text-amber-600">Token Expired - Reconnect</span>
+                    <span className="text-amber-600">
+                      Token Expired - Reconnect
+                    </span>
                   ) : (
                     <span className="text-green-600">Active</span>
                   )}
@@ -175,8 +194,10 @@ export default function QuickBooksTab({ showSuccess, showError }: QuickBooksTabP
                 <p className="text-sm text-gray-600 mb-1">Last Sync</p>
                 <p className="font-medium text-gray-900">
                   {qbConnection.connection?.lastSyncAt
-                    ? new Date(qbConnection.connection.lastSyncAt).toLocaleDateString()
-                    : 'Never'}
+                    ? new Date(
+                        qbConnection.connection.lastSyncAt,
+                      ).toLocaleDateString()
+                    : "Never"}
                 </p>
               </div>
             </div>
@@ -187,15 +208,17 @@ export default function QuickBooksTab({ showSuccess, showError }: QuickBooksTabP
                 disabled={isSyncing}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center disabled:opacity-50"
               >
-                <FiRefreshCw className={`mr-2 ${isSyncing ? 'animate-spin' : ''}`} />
-                {isSyncing ? 'Syncing...' : 'Sync Now'}
+                <FiRefreshCw
+                  className={`mr-2 ${isSyncing ? "animate-spin" : ""}`}
+                />
+                {isSyncing ? "Syncing..." : "Sync Now"}
               </button>
               <button
                 onClick={() => setShowDisconnectConfirm(true)}
                 disabled={isDisconnecting}
                 className="px-4 py-2 border border-red-300 text-red-700 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50"
               >
-                {isDisconnecting ? 'Disconnecting...' : 'Disconnect'}
+                {isDisconnecting ? "Disconnecting..." : "Disconnect"}
               </button>
               {qbConnection.connection?.isExpired && (
                 <button
@@ -212,7 +235,10 @@ export default function QuickBooksTab({ showSuccess, showError }: QuickBooksTabP
           <div>
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
               <p className="text-sm text-blue-800">
-                <strong>How it works:</strong> When you receive a payment in QuickBooks, it will automatically create an unmatched payment entry in this system. You can then match it to invoices using the Payment Matching feature.
+                <strong>How it works:</strong> When you receive a payment in
+                QuickBooks, it will automatically create an unmatched payment
+                entry in this system. You can then match it to invoices using
+                the Payment Matching feature.
               </p>
             </div>
             <button
@@ -220,7 +246,7 @@ export default function QuickBooksTab({ showSuccess, showError }: QuickBooksTabP
               disabled={isConnecting}
               className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium disabled:opacity-50"
             >
-              {isConnecting ? 'Connecting...' : 'Connect to QuickBooks'}
+              {isConnecting ? "Connecting..." : "Connect to QuickBooks"}
             </button>
           </div>
         )}

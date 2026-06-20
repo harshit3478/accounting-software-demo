@@ -28,7 +28,9 @@ function ChequeVaultContent() {
   const { isSuperAdmin, canUploadCheques, canApproveCheques, user } = useAuth();
   const vault = useChequeVault();
   const canUploadCheque = canUploadCheques;
-  const [deleteTarget, setDeleteTarget] = useState<ChequeVaultRecord | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ChequeVaultRecord | null>(
+    null,
+  );
   const [isDeleting, setIsDeleting] = useState(false);
 
   const confirmDelete = async () => {
@@ -61,8 +63,18 @@ function ChequeVaultContent() {
               onClick={() => vault.setShowUploadModal(true)}
               className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                />
               </svg>
               Upload Cheque
             </button>
@@ -103,7 +115,9 @@ function ChequeVaultContent() {
               className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               {STATUS_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
               ))}
             </select>
 
@@ -118,8 +132,18 @@ function ChequeVaultContent() {
 
             {/* Date range */}
             <DateRangePicker
-              value={vault.dateRange ? { ...vault.dateRange, preset: "" } : { startDate: "", endDate: "", preset: "" }}
-              onChange={(r) => vault.setDateRange(r.startDate && r.endDate ? { startDate: r.startDate, endDate: r.endDate } : null)}
+              value={
+                vault.dateRange
+                  ? { ...vault.dateRange, preset: "" }
+                  : { startDate: "", endDate: "", preset: "" }
+              }
+              onChange={(r) =>
+                vault.setDateRange(
+                  r.startDate && r.endDate
+                    ? { startDate: r.startDate, endDate: r.endDate }
+                    : null,
+                )
+              }
             />
 
             {/* Admin: uploaded by filter could be added here */}
@@ -163,7 +187,10 @@ function ChequeVaultContent() {
       <ChequeDetailModal
         isOpen={vault.showDetailModal}
         cheque={vault.selectedCheque}
-        onClose={() => { vault.setShowDetailModal(false); vault.setSelectedCheque(null); }}
+        onClose={() => {
+          vault.setShowDetailModal(false);
+          vault.setSelectedCheque(null);
+        }}
         onApprove={vault.handleApprove}
         onReject={vault.handleReject}
         onRequestCorrection={vault.handleRequestCorrection}
@@ -208,7 +235,9 @@ function StatCard({
   };
   return (
     <div className={`rounded-xl border p-4 ${colorStyles[color]}`}>
-      <p className="text-xs font-medium opacity-70 uppercase tracking-wide">{label}</p>
+      <p className="text-xs font-medium opacity-70 uppercase tracking-wide">
+        {label}
+      </p>
       <p className="text-xl font-bold mt-1">{value}</p>
     </div>
   );

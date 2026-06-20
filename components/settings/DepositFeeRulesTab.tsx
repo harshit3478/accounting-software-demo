@@ -92,10 +92,16 @@ export default function DepositFeeRulesTab({
     );
   }, [rules, selectedUnitKey, editingRule?.id]);
 
-  const hasOtherFlatRule = otherRulesForUnit.some((rule) => rule.ruleType === "flat");
-  const rangeRulesForUnit = otherRulesForUnit.filter((rule) => rule.ruleType !== "flat");
+  const hasOtherFlatRule = otherRulesForUnit.some(
+    (rule) => rule.ruleType === "flat",
+  );
+  const rangeRulesForUnit = otherRulesForUnit.filter(
+    (rule) => rule.ruleType !== "flat",
+  );
   const hasRangeRulesForUnit = rangeRulesForUnit.length > 0;
-  const activeRangeRulesForUnit = rangeRulesForUnit.filter((rule) => rule.isActive);
+  const activeRangeRulesForUnit = rangeRulesForUnit.filter(
+    (rule) => rule.isActive,
+  );
   const hasActiveRangeRulesForUnit = activeRangeRulesForUnit.length > 0;
   const activeFlatForUnit = otherRulesForUnit.some(
     (rule) => rule.ruleType === "flat" && rule.isActive,
@@ -255,7 +261,10 @@ export default function DepositFeeRulesTab({
 
     const payload = buildPayload();
 
-    if (!Number.isFinite(payload.fee as number) || (payload.fee as number) < 0) {
+    if (
+      !Number.isFinite(payload.fee as number) ||
+      (payload.fee as number) < 0
+    ) {
       showError("Fee must be a valid non-negative number");
       return;
     }
@@ -270,7 +279,11 @@ export default function DepositFeeRulesTab({
       return;
     }
 
-    if (form.ruleType === "flat" && form.isActive && hasActiveRangeRulesForUnit) {
+    if (
+      form.ruleType === "flat" &&
+      form.isActive &&
+      hasActiveRangeRulesForUnit
+    ) {
       setSwitchConfirm({
         mode: "flat",
         payload,
@@ -531,14 +544,17 @@ export default function DepositFeeRulesTab({
 
           {form.ruleType === "flat" && hasOtherFlatRule && (
             <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mt-3">
-              This unit already has a flat rule. Edit the existing flat rule instead.
+              This unit already has a flat rule. Edit the existing flat rule
+              instead.
             </p>
           )}
 
           <div className="flex gap-2 mt-4">
             <button
               onClick={saveRule}
-              disabled={isSaving || (form.ruleType === "flat" && hasOtherFlatRule)}
+              disabled={
+                isSaving || (form.ruleType === "flat" && hasOtherFlatRule)
+              }
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm disabled:opacity-50"
             >
               {isSaving ? "Saving..." : "Save"}

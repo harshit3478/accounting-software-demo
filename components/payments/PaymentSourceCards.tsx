@@ -1,8 +1,12 @@
-'use client';
+"use client";
 
-import { Filter } from 'lucide-react';
-import LucideIcon from '../LucideIcon';
-import type { PaymentStats, PaymentMethodFilter, PaymentMethodType } from '../../hooks/usePayments';
+import { Filter } from "lucide-react";
+import LucideIcon from "../LucideIcon";
+import type {
+  PaymentStats,
+  PaymentMethodFilter,
+  PaymentMethodType,
+} from "../../hooks/usePayments";
 
 interface PaymentSourceCardsProps {
   stats: PaymentStats;
@@ -51,24 +55,35 @@ export default function PaymentSourceCards({
                 key={method.id}
                 role="button"
                 tabIndex={-1}
-                onClick={() => onFilterChange(methodId === filterMethod ? 'all' : methodId)}
+                onClick={() =>
+                  onFilterChange(methodId === filterMethod ? "all" : methodId)
+                }
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
+                  if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
-                    onFilterChange(methodId === filterMethod ? 'all' : methodId);
+                    onFilterChange(
+                      methodId === filterMethod ? "all" : methodId,
+                    );
                   }
                 }}
                 className={`flex-shrink-0 snap-start w-[118px] sm:w-[128px] flex items-stretch p-2 bg-white border rounded-md shadow-sm cursor-pointer transition-all ${
                   filterMethod === methodId
-                    ? 'ring-2 ring-blue-500 border-blue-500'
-                    : 'border-gray-200 hover:border-gray-300'
+                    ? "ring-2 ring-blue-500 border-blue-500"
+                    : "border-gray-200 hover:border-gray-300"
                 }`}
               >
                 <div
                   className="p-1.5 rounded-md mr-2 text-base flex items-center justify-center flex-shrink-0 self-start"
-                  style={{ backgroundColor: `${method.color}20`, color: method.color }}
+                  style={{
+                    backgroundColor: `${method.color}20`,
+                    color: method.color,
+                  }}
                 >
-                  <LucideIcon name={method.icon} fallback={method.name} size={18} />
+                  <LucideIcon
+                    name={method.icon}
+                    fallback={method.name}
+                    size={18}
+                  />
                 </div>
                 <div className="min-w-0 flex-1">
                   <p
@@ -78,7 +93,10 @@ export default function PaymentSourceCards({
                     {method.name}
                   </p>
                   <div className="flex items-baseline gap-1 mt-0.5">
-                    <p className="text-sm font-bold text-gray-900 leading-tight tabular-nums truncate" title={`$${amount.toFixed(2)}`}>
+                    <p
+                      className="text-sm font-bold text-gray-900 leading-tight tabular-nums truncate"
+                      title={`$${amount.toFixed(2)}`}
+                    >
                       ${amount.toFixed(2)}
                     </p>
                     <span className="text-[10px] text-gray-400 flex-shrink-0">

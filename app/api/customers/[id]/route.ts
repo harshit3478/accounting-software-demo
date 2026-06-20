@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "../../../../lib/prisma";
 import { requireAuth, requireSettingPermission } from "../../../../lib/auth";
+import {
+  assertCustomerEmailAvailable,
+  customerEmailErrorResponse,
+} from "../../../../lib/customer-email";
 
 function isStoreCreditCompatibilityError(error: any): boolean {
   const message = String(error?.message || "");
@@ -266,11 +270,13 @@ export async function PUT(
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
     }
 
+    const normalizedEmail = await assertCustomerEmailAvailable(prisma, email, id);
+
     const customer = await prisma.customer.update({
       where: { id },
       data: {
         name: name.trim(),
-        email: email || null,
+        email: normalizedEmail,
         phone: phone || null,
         address: address || null,
         notes: notes || null,
@@ -289,6 +295,13 @@ export async function PUT(
 
     return NextResponse.json(customer);
   } catch (error: any) {
+    const emailError = customerEmailErrorResponse(error);
+    if (emailError) {
+      return NextResponse.json(
+        { error: emailError.message },
+        { status: emailError.status },
+      );
+    }
     if (error.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -329,7 +342,13 @@ export async function PATCH(
 
     // Build update data with only provided fields
     const updateData: any = {};
-    if (email !== undefined) updateData.email = email || null;
+    if (email !== undefined) {
+      updateData.email = await assertCustomerEmailAvailable(
+        prisma,
+        email,
+        id,
+      );
+    }
     if (phone !== undefined) updateData.phone = phone || null;
     if (address !== undefined) updateData.address = address || null;
 
@@ -350,6 +369,13 @@ export async function PATCH(
 
     return NextResponse.json(customer);
   } catch (error: any) {
+    const emailError = customerEmailErrorResponse(error);
+    if (emailError) {
+      return NextResponse.json(
+        { error: emailError.message },
+        { status: emailError.status },
+      );
+    }
     if (error.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

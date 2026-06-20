@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { X, Folder, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect } from "react";
+import { X, Folder, AlertCircle } from "lucide-react";
 
 interface FolderModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
-  mode: 'create' | 'rename';
+  mode: "create" | "rename";
   parentId?: number | null;
   folderId?: number;
   currentName?: string;
@@ -18,7 +18,7 @@ export default function FolderModal({
   mode,
   parentId,
   folderId,
-  currentName = ''
+  currentName = "",
 }: FolderModalProps) {
   const [name, setName] = useState(currentName);
   const [loading, setLoading] = useState(false);
@@ -35,9 +35,9 @@ export default function FolderModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!name.trim()) {
-      setError('Folder name is required');
+      setError("Folder name is required");
       return;
     }
 
@@ -45,39 +45,42 @@ export default function FolderModal({
       setLoading(true);
       setError(null);
 
-      if (mode === 'create') {
+      if (mode === "create") {
         // Create new folder
-        const response = await fetch('/api/documents/folders', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+        const response = await fetch("/api/documents/folders", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             name: name.trim(),
-            parentId: parentId || null
-          })
+            parentId: parentId || null,
+          }),
         });
 
         if (!response.ok) {
           const data = await response.json();
-          throw new Error(data.error || 'Failed to create folder');
+          throw new Error(data.error || "Failed to create folder");
         }
       } else {
         // Rename existing folder
         const response = await fetch(`/api/documents/folders/${folderId}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: name.trim() })
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: name.trim() }),
         });
 
         if (!response.ok) {
           const data = await response.json();
-          throw new Error(data.error || 'Failed to rename folder');
+          throw new Error(data.error || "Failed to rename folder");
         }
       }
 
       onSuccess();
       onClose();
     } catch (err: any) {
-      console.error(`Error ${mode === 'create' ? 'creating' : 'renaming'} folder:`, err);
+      console.error(
+        `Error ${mode === "create" ? "creating" : "renaming"} folder:`,
+        err,
+      );
       setError(err.message || `Failed to ${mode} folder`);
     } finally {
       setLoading(false);
@@ -92,7 +95,7 @@ export default function FolderModal({
           <div className="flex items-center gap-2">
             <Folder className="w-5 h-5 text-blue-600" />
             <h2 className="text-lg font-semibold">
-              {mode === 'create' ? 'Create New Folder' : 'Rename Folder'}
+              {mode === "create" ? "Create New Folder" : "Rename Folder"}
             </h2>
           </div>
           <button
@@ -114,7 +117,10 @@ export default function FolderModal({
           )}
 
           <div className="mb-6">
-            <label htmlFor="folderName" className="block text-sm font-medium text-gray-700 mb-2">
+            <label
+              htmlFor="folderName"
+              className="block text-sm font-medium text-gray-700 mb-2"
+            >
               Folder Name
             </label>
             <input
@@ -148,7 +154,11 @@ export default function FolderModal({
               className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={loading || !name.trim()}
             >
-              {loading ? 'Saving...' : mode === 'create' ? 'Create Folder' : 'Rename'}
+              {loading
+                ? "Saving..."
+                : mode === "create"
+                  ? "Create Folder"
+                  : "Rename"}
             </button>
           </div>
         </form>

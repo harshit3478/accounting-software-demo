@@ -1,16 +1,22 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import type { InvoiceFilter } from '../../hooks/useInvoices';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
-import { Badge } from '../ui/badge';
-import { Button } from '../ui/button';
-import { Input } from '../ui/input';
-import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
-import { Calendar } from '../ui/calendar';
-import { Separator } from '../ui/separator';
-import { CalendarIcon, Search, X, Filter, ChevronDown } from 'lucide-react';
-import { format } from 'date-fns';
+import { useState } from "react";
+import type { InvoiceFilter } from "../../hooks/useInvoices";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "../ui/card";
+import { Badge } from "../ui/badge";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
+import { Calendar } from "../ui/calendar";
+import { Separator } from "../ui/separator";
+import { CalendarIcon, Search, X, Filter, ChevronDown } from "lucide-react";
+import { format } from "date-fns";
 
 interface InvoiceFiltersProps {
   filter: InvoiceFilter;
@@ -39,31 +45,37 @@ export default function InvoiceFiltersNew({
 }: InvoiceFiltersProps) {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [dateFrom, setDateFrom] = useState<Date | undefined>(
-    dateRange?.start ? new Date(dateRange.start) : undefined
+    dateRange?.start ? new Date(dateRange.start) : undefined,
   );
   const [dateTo, setDateTo] = useState<Date | undefined>(
-    dateRange?.end ? new Date(dateRange.end) : undefined
+    dateRange?.end ? new Date(dateRange.end) : undefined,
   );
 
-  const filters: { value: InvoiceFilter; label: string; color: string; count?: number }[] = [
-    { value: 'all', label: 'All', color: 'default' },
-    { value: 'pending', label: 'Pending', color: 'secondary' },
-    { value: 'paid', label: 'Paid', color: 'default' },
-    { value: 'overdue', label: 'Overdue', color: 'destructive' },
-    { value: 'partial', label: 'Partial', color: 'default' },
-    { value: 'layaway', label: 'Layaway', color: 'default' },
+  const filters: {
+    value: InvoiceFilter;
+    label: string;
+    color: string;
+    count?: number;
+  }[] = [
+    { value: "all", label: "All", color: "default" },
+    { value: "pending", label: "Pending", color: "secondary" },
+    { value: "paid", label: "Paid", color: "default" },
+    { value: "overdue", label: "Overdue", color: "destructive" },
+    { value: "partial", label: "Partial", color: "default" },
+    { value: "layaway", label: "Layaway", color: "default" },
   ];
 
-  const hasActiveFilters = filter !== 'all' || searchTerm !== '' || dateRange !== null;
+  const hasActiveFilters =
+    filter !== "all" || searchTerm !== "" || dateRange !== null;
   const activeFilterCount = [
-    filter !== 'all' ? 1 : 0,
-    searchTerm !== '' ? 1 : 0,
+    filter !== "all" ? 1 : 0,
+    searchTerm !== "" ? 1 : 0,
     dateRange !== null ? 1 : 0,
   ].reduce((a, b) => a + b, 0);
 
   const handleClearFilters = () => {
-    onFilterChange('all');
-    onSearchChange('');
+    onFilterChange("all");
+    onSearchChange("");
     onDateRangeChange?.(null);
     setDateFrom(undefined);
     setDateTo(undefined);
@@ -72,8 +84,8 @@ export default function InvoiceFiltersNew({
   const handleApplyDateRange = () => {
     if (dateFrom && dateTo) {
       onDateRangeChange?.({
-        start: format(dateFrom, 'yyyy-MM-dd'),
-        end: format(dateTo, 'yyyy-MM-dd'),
+        start: format(dateFrom, "yyyy-MM-dd"),
+        end: format(dateTo, "yyyy-MM-dd"),
       });
       setShowDatePicker(false);
     }
@@ -127,22 +139,22 @@ export default function InvoiceFiltersNew({
       <CardContent className="space-y-6">
         {/* Status Filter Buttons */}
         <div className="space-y-3">
-          <label className="text-sm font-medium text-muted-foreground">Status</label>
+          <label className="text-sm font-medium text-muted-foreground">
+            Status
+          </label>
           <div className="flex flex-wrap gap-2">
             {filters.map((f) => (
               <Button
                 key={f.value}
-                variant={filter === f.value ? 'default' : 'outline'}
+                variant={filter === f.value ? "default" : "outline"}
                 size="sm"
                 onClick={() => onFilterChange(f.value)}
                 className={`transition-all ${
-                  filter === f.value
-                    ? 'shadow-md scale-105'
-                    : 'hover:scale-105'
+                  filter === f.value ? "shadow-md scale-105" : "hover:scale-105"
                 }`}
               >
                 {f.label}
-                {filter === f.value && f.value !== 'all' && (
+                {filter === f.value && f.value !== "all" && (
                   <Badge variant="secondary" className="ml-2 bg-white/20">
                     ✓
                   </Badge>
@@ -158,7 +170,9 @@ export default function InvoiceFiltersNew({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Search */}
           <div className="space-y-2">
-            <label className="text-sm font-medium text-muted-foreground">Search</label>
+            <label className="text-sm font-medium text-muted-foreground">
+              Search
+            </label>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -170,7 +184,7 @@ export default function InvoiceFiltersNew({
               />
               {searchTerm && (
                 <button
-                  onClick={() => onSearchChange('')}
+                  onClick={() => onSearchChange("")}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                 >
                   <X className="h-4 w-4" />
@@ -181,20 +195,22 @@ export default function InvoiceFiltersNew({
 
           {/* Date Range */}
           <div className="space-y-2">
-            <label className="text-sm font-medium text-muted-foreground">Date Range</label>
+            <label className="text-sm font-medium text-muted-foreground">
+              Date Range
+            </label>
             <Popover open={showDatePicker} onOpenChange={setShowDatePicker}>
               <PopoverTrigger asChild>
                 <Button
-                  variant={dateRange ? 'default' : 'outline'}
+                  variant={dateRange ? "default" : "outline"}
                   className={`w-full justify-start text-left font-normal ${
-                    dateRange ? 'shadow-md' : ''
+                    dateRange ? "shadow-md" : ""
                   }`}
                 >
                   <CalendarIcon className="mr-2 h-4 w-4" />
                   {dateRange ? (
                     <>
-                      {format(new Date(dateRange.start), 'MMM dd, yyyy')} -{' '}
-                      {format(new Date(dateRange.end), 'MMM dd, yyyy')}
+                      {format(new Date(dateRange.start), "MMM dd, yyyy")} -{" "}
+                      {format(new Date(dateRange.end), "MMM dd, yyyy")}
                     </>
                   ) : (
                     <span>Pick a date range</span>
@@ -208,7 +224,9 @@ export default function InvoiceFiltersNew({
                     <h4 className="font-medium text-sm">Select Date Range</h4>
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label className="text-xs text-muted-foreground">From</label>
+                        <label className="text-xs text-muted-foreground">
+                          From
+                        </label>
                         <Calendar
                           mode="single"
                           selected={dateFrom}
@@ -217,12 +235,16 @@ export default function InvoiceFiltersNew({
                         />
                       </div>
                       <div>
-                        <label className="text-xs text-muted-foreground">To</label>
+                        <label className="text-xs text-muted-foreground">
+                          To
+                        </label>
                         <Calendar
                           mode="single"
                           selected={dateTo}
                           onSelect={setDateTo}
-                          disabled={(date) => dateFrom ? date < dateFrom : false}
+                          disabled={(date) =>
+                            dateFrom ? date < dateFrom : false
+                          }
                         />
                       </div>
                     </div>
@@ -255,7 +277,9 @@ export default function InvoiceFiltersNew({
 
         {/* Sort Dropdown */}
         <div className="space-y-2">
-          <label className="text-sm font-medium text-muted-foreground">Sort By</label>
+          <label className="text-sm font-medium text-muted-foreground">
+            Sort By
+          </label>
           <select
             value={sortBy}
             onChange={(e) => onSortChange(e.target.value)}
@@ -274,9 +298,14 @@ export default function InvoiceFiltersNew({
           <div className="flex items-center gap-2 px-4 py-3 bg-blue-50 border border-blue-200 rounded-lg">
             <CalendarIcon className="h-4 w-4 text-blue-600" />
             <span className="text-sm text-blue-900 flex-1">
-              Showing invoices from{' '}
-              <span className="font-medium">{format(new Date(dateRange.start), 'MMM dd, yyyy')}</span> to{' '}
-              <span className="font-medium">{format(new Date(dateRange.end), 'MMM dd, yyyy')}</span>
+              Showing invoices from{" "}
+              <span className="font-medium">
+                {format(new Date(dateRange.start), "MMM dd, yyyy")}
+              </span>{" "}
+              to{" "}
+              <span className="font-medium">
+                {format(new Date(dateRange.end), "MMM dd, yyyy")}
+              </span>
             </span>
             <Button
               size="sm"

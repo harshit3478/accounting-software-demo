@@ -1,6 +1,12 @@
-'use client';
+"use client";
 
-import { FileText, CheckCircle, AlertCircle, Clock, Filter } from 'lucide-react';
+import {
+  FileText,
+  CheckCircle,
+  AlertCircle,
+  Clock,
+  Filter,
+} from "lucide-react";
 
 interface InvoiceStatsProps {
   stats: {
@@ -16,56 +22,61 @@ interface InvoiceStatsProps {
   showFiltered?: boolean;
 }
 
-export default function InvoiceStats({ stats, showFiltered = false }: InvoiceStatsProps) {
-  const isFiltered = showFiltered && (
-    stats.filteredTotal !== undefined && 
-    stats.filteredTotal !== stats.total
-  );
+export default function InvoiceStats({
+  stats,
+  showFiltered = false,
+}: InvoiceStatsProps) {
+  const isFiltered =
+    showFiltered &&
+    stats.filteredTotal !== undefined &&
+    stats.filteredTotal !== stats.total;
 
-  const displayStats = isFiltered ? {
-    total: stats.filteredTotal!,
-    paidThisMonth: stats.filteredPaidThisMonth!,
-    overdue: stats.filteredOverdue!,
-    pending: stats.filteredPending!,
-  } : {
-    total: stats.total,
-    paidThisMonth: stats.paidThisMonth,
-    overdue: stats.overdue,
-    pending: stats.pending,
-  };
+  const displayStats = isFiltered
+    ? {
+        total: stats.filteredTotal!,
+        paidThisMonth: stats.filteredPaidThisMonth!,
+        overdue: stats.filteredOverdue!,
+        pending: stats.filteredPending!,
+      }
+    : {
+        total: stats.total,
+        paidThisMonth: stats.paidThisMonth,
+        overdue: stats.overdue,
+        pending: stats.pending,
+      };
 
   const cards = [
     {
-      title: isFiltered ? 'Filtered Invoices' : 'Total Invoices',
+      title: isFiltered ? "Filtered Invoices" : "Total Invoices",
       value: displayStats.total.toString(),
       icon: FileText,
-      color: 'text-blue-600',
-      bg: 'bg-blue-50',
-      border: 'border-blue-100'
+      color: "text-blue-600",
+      bg: "bg-blue-50",
+      border: "border-blue-100",
     },
     {
-      title: isFiltered ? 'Filtered Paid' : 'Paid (Month)',
+      title: isFiltered ? "Filtered Paid" : "Paid (Month)",
       value: `$${displayStats.paidThisMonth.toFixed(2)}`,
       icon: CheckCircle,
-      color: 'text-emerald-600',
-      bg: 'bg-emerald-50',
-      border: 'border-emerald-100'
+      color: "text-emerald-600",
+      bg: "bg-emerald-50",
+      border: "border-emerald-100",
     },
     {
-      title: isFiltered ? 'Filtered Overdue' : 'Overdue',
+      title: isFiltered ? "Filtered Overdue" : "Overdue",
       value: displayStats.overdue.toString(),
       icon: AlertCircle,
-      color: 'text-red-600',
-      bg: 'bg-red-50',
-      border: 'border-red-100'
+      color: "text-red-600",
+      bg: "bg-red-50",
+      border: "border-red-100",
     },
     {
-      title: isFiltered ? 'Filtered Pending' : 'Pending',
+      title: isFiltered ? "Filtered Pending" : "Pending",
       value: displayStats.pending.toString(),
       icon: Clock,
-      color: 'text-amber-600',
-      bg: 'bg-amber-50',
-      border: 'border-amber-100'
+      color: "text-amber-600",
+      bg: "bg-amber-50",
+      border: "border-amber-100",
     },
   ];
 
@@ -77,7 +88,7 @@ export default function InvoiceStats({ stats, showFiltered = false }: InvoiceSta
           Showing filtered results
         </div>
       )}
-      
+
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {cards.map((card) => (
           <div

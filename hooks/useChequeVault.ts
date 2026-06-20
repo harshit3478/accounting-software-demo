@@ -4,7 +4,11 @@ import { useState, useEffect, useCallback } from "react";
 import { useToastContext } from "../components/ToastContext";
 import { canDeleteChequeRequest } from "../lib/cheque-vault-permissions";
 
-export type ChequeStatus = "PENDING" | "APPROVED" | "REJECTED" | "NEEDS_CORRECTION";
+export type ChequeStatus =
+  | "PENDING"
+  | "APPROVED"
+  | "REJECTED"
+  | "NEEDS_CORRECTION";
 
 export interface InvoiceAllocation {
   id: number;
@@ -87,7 +91,8 @@ export function useChequeVault() {
   // Modals
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
-  const [selectedCheque, setSelectedCheque] = useState<ChequeVaultRecord | null>(null);
+  const [selectedCheque, setSelectedCheque] =
+    useState<ChequeVaultRecord | null>(null);
 
   // Debounce payee search
   useEffect(() => {
@@ -110,7 +115,8 @@ export function useChequeVault() {
         params.set("startDate", dateRange.startDate);
         params.set("endDate", dateRange.endDate);
       }
-      if (filterUploadedBy) params.set("uploadedBy", filterUploadedBy.toString());
+      if (filterUploadedBy)
+        params.set("uploadedBy", filterUploadedBy.toString());
 
       const res = await fetch(`/api/cheque-vault?${params.toString()}`);
       if (!res.ok) throw new Error("Failed to fetch");
@@ -125,7 +131,15 @@ export function useChequeVault() {
     } finally {
       setIsLoading(false);
     }
-  }, [currentPage, itemsPerPage, filterStatus, debouncedPayee, dateRange, filterUploadedBy, showError]);
+  }, [
+    currentPage,
+    itemsPerPage,
+    filterStatus,
+    debouncedPayee,
+    dateRange,
+    filterUploadedBy,
+    showError,
+  ]);
 
   useEffect(() => {
     fetchCheques();
@@ -136,9 +150,13 @@ export function useChequeVault() {
     setShowDetailModal(true);
   };
 
-  const handleApprove = async (id: number): Promise<{ paymentRefs?: string[]; warnings?: string[] } | null> => {
+  const handleApprove = async (
+    id: number,
+  ): Promise<{ paymentRefs?: string[]; warnings?: string[] } | null> => {
     try {
-      const res = await fetch(`/api/cheque-vault/${id}/approve`, { method: "PUT" });
+      const res = await fetch(`/api/cheque-vault/${id}/approve`, {
+        method: "PUT",
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to approve");
       const refs: string[] = data.paymentRefs || [];
@@ -154,7 +172,10 @@ export function useChequeVault() {
     }
   };
 
-  const handleReject = async (id: number, rejectionReason: string): Promise<boolean> => {
+  const handleReject = async (
+    id: number,
+    rejectionReason: string,
+  ): Promise<boolean> => {
     try {
       const res = await fetch(`/api/cheque-vault/${id}/reject`, {
         method: "PUT",
@@ -172,7 +193,10 @@ export function useChequeVault() {
     }
   };
 
-  const handleRequestCorrection = async (id: number, correctionNote: string): Promise<boolean> => {
+  const handleRequestCorrection = async (
+    id: number,
+    correctionNote: string,
+  ): Promise<boolean> => {
     try {
       const res = await fetch(`/api/cheque-vault/${id}/request-correction`, {
         method: "PUT",
@@ -180,7 +204,8 @@ export function useChequeVault() {
         body: JSON.stringify({ correctionNote }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to request correction");
+      if (!res.ok)
+        throw new Error(data.error || "Failed to request correction");
       showSuccess("Correction requested");
       await fetchCheques();
       return true;
@@ -241,7 +266,7 @@ export function useChequeVault() {
 
   const handleUpdateAllocations = async (
     chequeId: number,
-    invoices: { invoiceId: number; allocatedAmount: number }[]
+    invoices: { invoiceId: number; allocatedAmount: number }[],
   ): Promise<boolean> => {
     try {
       const res = await fetch(`/api/cheque-vault/${chequeId}`, {
@@ -250,8 +275,11 @@ export function useChequeVault() {
         body: JSON.stringify({ invoices }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to update invoice links");
-      showSuccess(invoices.length > 0 ? "Invoices linked" : "Invoice links cleared");
+      if (!res.ok)
+        throw new Error(data.error || "Failed to update invoice links");
+      showSuccess(
+        invoices.length > 0 ? "Invoices linked" : "Invoice links cleared",
+      );
       if (selectedCheque?.id === chequeId) {
         setSelectedCheque(data.cheque);
       }
@@ -269,7 +297,8 @@ export function useChequeVault() {
       .filter((c) => c.status === "APPROVED")
       .reduce((sum, c) => sum + c.amount, 0),
     rejectedCount: cheques.filter((c) => c.status === "REJECTED").length,
-    needsCorrectionCount: cheques.filter((c) => c.status === "NEEDS_CORRECTION").length,
+    needsCorrectionCount: cheques.filter((c) => c.status === "NEEDS_CORRECTION")
+      .length,
   };
 
   return {
@@ -280,13 +309,22 @@ export function useChequeVault() {
 
     // Filters
     filterStatus,
-    setFilterStatus: (s: ChequeStatus | "all") => { setFilterStatus(s); setCurrentPage(1); },
+    setFilterStatus: (s: ChequeStatus | "all") => {
+      setFilterStatus(s);
+      setCurrentPage(1);
+    },
     searchPayee,
     setSearchPayee,
     dateRange,
-    setDateRange: (r: DateRange | null) => { setDateRange(r); setCurrentPage(1); },
+    setDateRange: (r: DateRange | null) => {
+      setDateRange(r);
+      setCurrentPage(1);
+    },
     filterUploadedBy,
-    setFilterUploadedBy: (id: number | null) => { setFilterUploadedBy(id); setCurrentPage(1); },
+    setFilterUploadedBy: (id: number | null) => {
+      setFilterUploadedBy(id);
+      setCurrentPage(1);
+    },
 
     // Modals
     showUploadModal,

@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
-import { requireAuth, requireAdmin } from '@/lib/auth';
+import { NextRequest, NextResponse } from "next/server";
+import prisma from "@/lib/prisma";
+import { requireAuth, requireAdmin } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
@@ -14,8 +14,8 @@ export async function GET(request: NextRequest) {
 
     if (!folder) {
       return NextResponse.json(
-        { error: 'Default folder not found' },
-        { status: 404 }
+        { error: "Default folder not found" },
+        { status: 404 },
       );
     }
 
@@ -25,18 +25,15 @@ export async function GET(request: NextRequest) {
       isDefault: folder.isDefault,
     });
   } catch (error: any) {
-    console.error('Error fetching folder:', error);
+    console.error("Error fetching folder:", error);
 
-    if (error.message === 'Unauthorized') {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+    if (error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
+      { error: "Internal server error" },
+      { status: 500 },
     );
   }
 }
@@ -49,17 +46,21 @@ export async function PATCH(request: NextRequest) {
     const body = await request.json();
     const { newName } = body;
 
-    if (!newName || typeof newName !== 'string' || newName.trim().length === 0) {
+    if (
+      !newName ||
+      typeof newName !== "string" ||
+      newName.trim().length === 0
+    ) {
       return NextResponse.json(
-        { error: 'Invalid folder name' },
-        { status: 400 }
+        { error: "Invalid folder name" },
+        { status: 400 },
       );
     }
 
     if (newName.trim().length > 100) {
       return NextResponse.json(
-        { error: 'Folder name too long (max 100 characters)' },
-        { status: 400 }
+        { error: "Folder name too long (max 100 characters)" },
+        { status: 400 },
       );
     }
 
@@ -71,8 +72,8 @@ export async function PATCH(request: NextRequest) {
 
     if (folder.count === 0) {
       return NextResponse.json(
-        { error: 'Default folder not found' },
-        { status: 404 }
+        { error: "Default folder not found" },
+        { status: 404 },
       );
     }
 
@@ -83,7 +84,7 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: 'Folder renamed successfully',
+      message: "Folder renamed successfully",
       folder: {
         id: updatedFolder!.id,
         name: updatedFolder!.name,
@@ -91,25 +92,22 @@ export async function PATCH(request: NextRequest) {
       },
     });
   } catch (error: any) {
-    console.error('Error renaming folder:', error);
+    console.error("Error renaming folder:", error);
 
-    if (error.message === 'Forbidden') {
+    if (error.message === "Forbidden") {
       return NextResponse.json(
-        { error: 'Only admins can rename the folder' },
-        { status: 403 }
+        { error: "Only admins can rename the folder" },
+        { status: 403 },
       );
     }
 
-    if (error.message === 'Unauthorized') {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+    if (error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
+      { error: "Internal server error" },
+      { status: 500 },
     );
   }
 }

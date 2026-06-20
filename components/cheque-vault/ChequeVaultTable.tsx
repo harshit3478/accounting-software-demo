@@ -51,8 +51,21 @@ export default function ChequeVaultTable({
         <table className="w-full">
           <thead className="bg-gray-50">
             <tr>
-              {["Date", "Cheque #", "Customer / Payor", "Bank", "Amount", "Invoice", "Uploaded By", "Status", ""].map((h) => (
-                <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              {[
+                "Date",
+                "Cheque #",
+                "Customer / Payor",
+                "Bank",
+                "Amount",
+                "Invoice",
+                "Uploaded By",
+                "Status",
+                "",
+              ].map((h) => (
+                <th
+                  key={h}
+                  className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                >
                   {h}
                 </th>
               ))}
@@ -78,8 +91,18 @@ export default function ChequeVaultTable({
     return (
       <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
         <div className="text-gray-400 mb-2">
-          <svg className="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          <svg
+            className="w-12 h-12 mx-auto"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+            />
           </svg>
         </div>
         <p className="text-gray-500 font-medium">No cheques found</p>
@@ -98,15 +121,33 @@ export default function ChequeVaultTable({
         <table className="w-full text-sm">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Upload Date</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cheque #</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer / Payor</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Bank</th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cheque Date</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Invoice</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Uploaded By</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Upload Date
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Cheque #
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Customer / Payor
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Bank
+              </th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Amount
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Cheque Date
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Invoice
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Uploaded By
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Status
+              </th>
               <th className="px-4 py-3" />
             </tr>
           </thead>
@@ -121,10 +162,14 @@ export default function ChequeVaultTable({
                   {formatDate(cheque.createdAt)}
                 </td>
                 <td className="px-4 py-3 font-medium text-gray-900">
-                  {cheque.chequeNumber || <span className="text-gray-400 italic">Not set</span>}
+                  {cheque.chequeNumber || (
+                    <span className="text-gray-400 italic">Not set</span>
+                  )}
                 </td>
                 <td className="px-4 py-3 text-gray-700 max-w-[160px] truncate">
-                  {cheque.payorName || <span className="text-gray-400 italic">Unknown</span>}
+                  {cheque.payorName || (
+                    <span className="text-gray-400 italic">Unknown</span>
+                  )}
                 </td>
                 <td className="px-4 py-3 text-gray-600">
                   {cheque.bankName || <span className="text-gray-400">—</span>}
@@ -138,20 +183,27 @@ export default function ChequeVaultTable({
                 <td className="px-4 py-3">
                   {cheque.invoiceAllocations.length > 0 ? (
                     <span className="text-blue-600 font-medium">
-                      {cheque.invoiceAllocations[0].invoice?.invoiceNumber || "—"}
+                      {cheque.invoiceAllocations[0].invoice?.invoiceNumber ||
+                        "—"}
                       {cheque.invoiceAllocations.length > 1 && (
-                        <span className="text-blue-400 ml-1 text-xs">+{cheque.invoiceAllocations.length - 1} more</span>
+                        <span className="text-blue-400 ml-1 text-xs">
+                          +{cheque.invoiceAllocations.length - 1} more
+                        </span>
                       )}
                     </span>
                   ) : (
-                    <span className="text-gray-400 text-xs italic">Not linked</span>
+                    <span className="text-gray-400 text-xs italic">
+                      Not linked
+                    </span>
                   )}
                 </td>
                 <td className="px-4 py-3 text-gray-600">
                   {cheque.uploadedBy?.name || "—"}
                 </td>
                 <td className="px-4 py-3">
-                  <span className={`px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap ${STATUS_STYLES[cheque.status]}`}>
+                  <span
+                    className={`px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap ${STATUS_STYLES[cheque.status]}`}
+                  >
                     {STATUS_LABELS[cheque.status]}
                   </span>
                 </td>

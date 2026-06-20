@@ -6,6 +6,13 @@ import {
   findOverdueLayawayInstallmentClient,
   isLateFeeConfigured,
 } from "../../lib/late-fee-client";
+import {
+  getEarlyDiscountDisplayAmounts,
+  getEarlyPaymentDiscountEligibility,
+  isEarlyPaymentDiscountConfigured,
+  type EarlyPaymentDiscountSettingSnapshot,
+} from "../../lib/early-payment-discount-client";
+import EarlyPaymentDiscountNotice from "../invoices/EarlyPaymentDiscountNotice";
 
 interface Payment {
   id: number;
@@ -25,6 +32,8 @@ interface Invoice {
   paidAmount: string | number;
   status: string;
   dueDate: string;
+  invoiceDate?: string;
+  earlyPaymentDiscount?: number;
   isLayaway?: boolean;
   layawayPlan?: {
     installments?: Array<{
@@ -62,6 +71,8 @@ export default function LinkInvoiceModal({
     amount: 0,
     isActive: false,
   });
+  const [earlyDiscountSetting, setEarlyDiscountSetting] =
+    useState<EarlyPaymentDiscountSettingSnapshot | null>(null);
   const [applyLateFee, setApplyLateFee] = useState(true);
   const [lateFeeWaivedReason, setLateFeeWaivedReason] = useState("");
 
@@ -75,6 +86,20 @@ export default function LinkInvoiceModal({
           if (data) {
             setLateFeeSetting({
               amount: Number(data.amount ?? 0),
+              isActive: !!data.isActive,
+            });
+          }
+        })
+        .catch(() => {});
+      fetch("/api/early-payment-discount")
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data) {
+            setEarlyDiscountSetting({
+              daysWindow: Number(data.daysWindow ?? 0),
+              discountPercent: Number(data.discountPercent ?? 0),
+              paymentThreshold:
+                data.paymentThreshold === "half" ? "half" : "full",
               isActive: !!data.isActive,
             });
           }
@@ -146,14 +171,38 @@ export default function LinkInvoiceModal({
       });
   }, [invoices, searchTerm, payment]);
 
+  const getInvoiceEarlyDiscountEligibility = (invoice: Invoice) => {
+    if (!payment || !isEarlyPaymentDiscountConfigured(earlyDiscountSetting)) {
+      return null;
+    }
+
+    const remaining = Number(invoice.amount) - Number(invoice.paidAmount);
+    const linkableAmount = Math.min(getPaymentBalance(payment), remaining);
+    if (linkableAmount <= 0) {
+      return null;
+    }
+
+    return getEarlyPaymentDiscountEligibility({
+      invoice,
+      paymentDate: payment.paymentDate,
+      additionalPaymentAmount: linkableAmount,
+      setting: earlyDiscountSetting,
+    });
+  };
+
   const handleSelectInvoice = (invoice: Invoice) => {
     if (!payment) return;
     setSelectedInvoiceId(invoice.id);
 
     const available = getPaymentBalance(payment);
-    const remaining = Number(invoice.amount) - Number(invoice.paidAmount);
+    const grossRemaining = Number(invoice.amount) - Number(invoice.paidAmount);
+    const eligibility = getInvoiceEarlyDiscountEligibility(invoice);
+    const dueAmount = getEarlyDiscountDisplayAmounts(
+      invoice,
+      eligibility,
+    ).displayRemaining;
 
-    setLinkAmount(Math.min(available, remaining));
+    setLinkAmount(Math.min(available, dueAmount));
   };
 
   const handleLinkInvoice = async () => {
@@ -187,6 +236,11 @@ export default function LinkInvoiceModal({
       const data = await res.json();
 
       if (res.ok) {
+        if (data.storeCreditAdded > 0) {
+          alert(
+            `$${Number(data.storeCreditAdded).toFixed(2)} has been saved as Store Credit from the early payment discount.`,
+          );
+        }
         onSuccess();
         onClose();
       } else {
@@ -215,6 +269,30 @@ export default function LinkInvoiceModal({
     !!selectedInvoice &&
     !!overdueInstallment &&
     isLateFeeConfigured(lateFeeSetting);
+
+  const earlyDiscountEligibility =
+    selectedInvoice &&
+    linkAmount > 0 &&
+    isEarlyPaymentDiscountConfigured(earlyDiscountSetting)
+      ? getEarlyPaymentDiscountEligibility({
+          invoice: selectedInvoice,
+          paymentDate: payment.paymentDate,
+          additionalPaymentAmount:
+            Number(selectedInvoice.amount) - Number(selectedInvoice.paidAmount),
+          setting: earlyDiscountSetting,
+        })
+      : null;
+
+  const selectedDiscountAmounts = selectedInvoice
+    ? getEarlyDiscountDisplayAmounts(selectedInvoice, earlyDiscountEligibility)
+    : null;
+  const selectedMaxLink = selectedInvoice
+    ? Math.min(
+        paymentBalance,
+        selectedDiscountAmounts?.displayRemaining ??
+          Number(selectedInvoice.amount) - Number(selectedInvoice.paidAmount),
+      )
+    : 0;
 
   const footer = (
     <div className="flex justify-end space-x-4">
@@ -291,6 +369,14 @@ export default function LinkInvoiceModal({
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
+
+        {earlyDiscountEligibility && selectedDiscountAmounts && (
+          <EarlyPaymentDiscountNotice
+            eligibility={earlyDiscountEligibility}
+            displayRemaining={selectedDiscountAmounts.displayRemaining}
+            grossRemaining={selectedDiscountAmounts.grossRemaining}
+          />
+        )}
 
         {shouldPromptLateFee && overdueInstallment && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-3 mb-3">
@@ -379,7 +465,12 @@ export default function LinkInvoiceModal({
           ) : (
             <div className="space-y-1 pb-4">
               {filteredInvoices.map((inv) => {
-                const rem = Number(inv.amount) - Number(inv.paidAmount);
+                const invoiceEarlyDiscount =
+                  getInvoiceEarlyDiscountEligibility(inv);
+                const dueAmounts = getEarlyDiscountDisplayAmounts(
+                  inv,
+                  invoiceEarlyDiscount,
+                );
                 return (
                   <div
                     key={inv.id}
@@ -393,6 +484,11 @@ export default function LinkInvoiceModal({
                         >
                           {inv.invoiceNumber}
                         </span>
+                        {invoiceEarlyDiscount && (
+                          <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 border border-emerald-200">
+                            Early discount
+                          </span>
+                        )}
                       </div>
                       <div className="flex items-center gap-2 text-xs text-gray-500">
                         <span className="font-medium text-gray-700 truncate max-w-[120px]">
@@ -400,14 +496,32 @@ export default function LinkInvoiceModal({
                         </span>
                         <span className="w-1 h-1 rounded-full bg-gray-300"></span>
                         <span className="text-gray-400">
-                          Total: ${Number(inv.amount).toFixed(2)}
+                          Total: $
+                          {dueAmounts.showDiscount ? (
+                            <>
+                              <span className="line-through mr-1">
+                                {Number(inv.amount).toFixed(2)}
+                              </span>
+                              {(
+                                Number(inv.amount) - dueAmounts.discountAmount
+                              ).toFixed(2)}
+                            </>
+                          ) : (
+                            Number(inv.amount).toFixed(2)
+                          )}
                         </span>
                       </div>
                     </div>
                     <span
                       className={`text-[10px] font-bold tracking-wide px-2 py-1 rounded-md uppercase border transition-colors ${selectedInvoiceId === inv.id ? "bg-white text-purple-600 border-purple-100" : "bg-gray-100 text-gray-500 border-gray-200 group-hover:border-gray-300"}`}
                     >
-                      ${rem.toFixed(2)} Due
+                      {dueAmounts.showDiscount && (
+                        <span className="line-through text-gray-400 mr-1 normal-case">
+                          $
+                          {dueAmounts.grossRemaining.toFixed(2)}
+                        </span>
+                      )}
+                      ${dueAmounts.displayRemaining.toFixed(2)} Due
                     </span>
                   </div>
                 );
@@ -424,12 +538,7 @@ export default function LinkInvoiceModal({
                 <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">
                   Amount to Link
                   <span className="ml-2 font-normal text-purple-600 normal-case bg-purple-50 px-1.5 py-0.5 rounded">
-                    Max: $
-                    {Math.min(
-                      paymentBalance,
-                      Number(selectedInvoice.amount) -
-                        Number(selectedInvoice.paidAmount),
-                    ).toFixed(2)}
+                    Max: ${selectedMaxLink.toFixed(2)}
                   </span>
                 </label>
                 <div className="relative">
@@ -440,11 +549,7 @@ export default function LinkInvoiceModal({
                     type="number"
                     min="0.01"
                     step="0.01"
-                    max={Math.min(
-                      paymentBalance,
-                      Number(selectedInvoice.amount) -
-                        Number(selectedInvoice.paidAmount),
-                    )}
+                    max={selectedMaxLink}
                     value={linkAmount}
                     onChange={(e) => setLinkAmount(parseFloat(e.target.value))}
                     className="w-full pl-0 pr-4 py-2 bg-gray-50 border-gray-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all text-xl font-bold text-gray-900 placeholder-gray-300 outline-none"

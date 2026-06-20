@@ -30,7 +30,11 @@ export function forceLogoutAndRedirect() {
   if (typeof window === "undefined" || isLoggingOut) return;
 
   const path = window.location.pathname;
-  if (path === "/login" || path.startsWith("/forgot-password") || path.startsWith("/reset-password")) {
+  if (
+    path === "/login" ||
+    path.startsWith("/forgot-password") ||
+    path.startsWith("/reset-password")
+  ) {
     return;
   }
 

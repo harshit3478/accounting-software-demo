@@ -6,6 +6,7 @@ import {
   parseInvoiceSpreadsheet,
   validateInvoiceSheetRows,
 } from "../../../../../lib/invoice-bulk-sheet";
+import { normalizeCustomerEmail } from "../../../../../lib/customer-email";
 
 export async function POST(request: NextRequest) {
   try {
@@ -32,7 +33,13 @@ export async function POST(request: NextRequest) {
     const { invalidRows } = validateInvoiceSheetRows(rows);
     const groupedRows = groupInvoiceSpreadsheetRows(rows);
     const emailGroups = groupedRows.filter((group) => group.email);
-    const uniqueEmails = [...new Set(emailGroups.map((group) => group.email!))];
+    const uniqueEmails = [
+      ...new Set(
+        emailGroups
+          .map((group) => normalizeCustomerEmail(group.email))
+          .filter((email): email is string => !!email),
+      ),
+    ];
 
     const existingCustomers = uniqueEmails.length
       ? await prisma.customer.findMany({
@@ -48,7 +55,9 @@ export async function POST(request: NextRequest) {
       : [];
 
     const existingEmailSet = new Set(
-      existingCustomers.map((customer) => customer.email?.trim().toLowerCase()),
+      existingCustomers
+        .map((customer) => normalizeCustomerEmail(customer.email))
+        .filter((email): email is string => !!email),
     );
 
     const missingEmailRows = groupedRows
@@ -60,9 +69,10 @@ export async function POST(request: NextRequest) {
       }));
 
     const missingCustomers = emailGroups
-      .filter(
-        (group) => !existingEmailSet.has(group.email!.trim().toLowerCase()),
-      )
+      .filter((group) => {
+        const normalizedEmail = normalizeCustomerEmail(group.email);
+        return normalizedEmail && !existingEmailSet.has(normalizedEmail);
+      })
       .map((group) => ({
         email: group.email!,
         name: group.rows[0]?.name || "",

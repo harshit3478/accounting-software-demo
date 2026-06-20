@@ -29,7 +29,7 @@ export async function PUT(req: Request, { params }: any) {
   } catch (err: any) {
     return NextResponse.json(
       { error: err.message || "Unauthorized" },
-      { status: 401 }
+      { status: 401 },
     );
   }
 }

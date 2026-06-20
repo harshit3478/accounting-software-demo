@@ -1,11 +1,11 @@
 /**
  * Client-Side Cache Hook
- * 
+ *
  * Implements SWR-like caching for API requests on the frontend.
  * Reduces redundant API calls and provides instant UI updates.
  */
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef } from "react";
 
 interface CacheEntry<T> {
   data: T;
@@ -25,7 +25,7 @@ interface UseClientCacheOptions {
 export function useClientCache<T>(
   key: string,
   fetcher: () => Promise<T>,
-  options: UseClientCacheOptions = {}
+  options: UseClientCacheOptions = {},
 ) {
   const {
     staleTime = 5 * 60 * 1000, // 5 minutes
@@ -54,11 +54,11 @@ export function useClientCache<T>(
 
       try {
         const result = await fetcher();
-        
+
         if (mountedRef.current) {
           setData(result);
           setError(null);
-          
+
           // Update cache
           cache.set(key, {
             data: result,
@@ -82,17 +82,18 @@ export function useClientCache<T>(
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [key, cacheTime] // Intentionally exclude fetcher to prevent infinite loops
+    [key, cacheTime], // Intentionally exclude fetcher to prevent infinite loops
   );
 
   const mutate = useCallback(
     async (newData?: T | ((current: T | null) => T)) => {
       // Optimistic update
       if (newData !== undefined) {
-        const updatedData = typeof newData === 'function' 
-          ? (newData as (current: T | null) => T)(data)
-          : newData;
-        
+        const updatedData =
+          typeof newData === "function"
+            ? (newData as (current: T | null) => T)(data)
+            : newData;
+
         setData(updatedData);
         cache.set(key, {
           data: updatedData,
@@ -104,7 +105,7 @@ export function useClientCache<T>(
       await fetchData(true);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [key, data] // Intentionally exclude fetchData - it's stable enough
+    [key, data], // Intentionally exclude fetchData - it's stable enough
   );
 
   const invalidate = useCallback(() => {
@@ -121,7 +122,7 @@ export function useClientCache<T>(
     if (cached && !isStale()) {
       setData(cached.data);
       setIsLoading(false);
-      
+
       // Still fetch in background if refetchOnMount is true
       if (refetchOnMount) {
         fetchData(true);

@@ -25,11 +25,15 @@ function serializePaymentRow(
     isAbandoned?: boolean;
     refundProofUrl?: string | null;
   },
-  extras?: { type?: "direct" | "matched"; matchId?: number },
+  extras?: {
+    type?: "direct" | "matched";
+    matchId?: number;
+    amount?: number;
+  },
 ) {
   return {
     id: payment.id,
-    amount: payment.amount.toNumber(),
+    amount: extras?.amount ?? payment.amount.toNumber(),
     source: payment.source,
     paymentCode: payment.paymentCode || formatPaymentCode(payment.id),
     method: payment.method,
@@ -66,9 +70,6 @@ export async function GET(
     const directPayments = await prisma.payment.findMany({
       where: {
         invoiceId,
-        source: {
-          not: "store_credit_applied",
-        },
       },
       include: {
         method: true,
@@ -81,6 +82,10 @@ export async function GET(
         },
       },
     });
+
+    const hasStoreCreditApplied = directPayments.some(
+      (payment) => payment.source === "store_credit_applied",
+    );
 
     // Fetch matched payments (through PaymentInvoiceMatch table)
     const matchedPayments = await prisma.paymentInvoiceMatch.findMany({
@@ -103,7 +108,10 @@ export async function GET(
 
     // Combine and format payments, preferring the direct row when the same
     // payment is represented in both direct and matched forms.
-    const allPaymentsMap = new Map<number, ReturnType<typeof serializePaymentRow>>();
+    const allPaymentsMap = new Map<
+      number,
+      ReturnType<typeof serializePaymentRow>
+    >();
 
     for (const payment of directPayments) {
       allPaymentsMap.set(
@@ -117,11 +125,20 @@ export async function GET(
         continue;
       }
 
+      // Store credit applications are shown via store_credit_applied rows above.
+      if (
+        match.payment.source === "store_credit_excess" &&
+        hasStoreCreditApplied
+      ) {
+        continue;
+      }
+
       allPaymentsMap.set(
         match.payment.id,
         serializePaymentRow(match.payment, {
           type: "matched",
           matchId: match.id,
+          amount: match.amount.toNumber(),
         }),
       );
     }

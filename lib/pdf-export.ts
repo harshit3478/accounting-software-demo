@@ -3,6 +3,7 @@ import autoTable from "jspdf-autotable";
 import { BUSINESS_CONFIG } from "./business-config";
 import {
   buildInvoicePdfSummaryRows,
+  formatInvoiceSummaryRowValue,
   getInvoiceAmountDue,
   getInvoicePaymentsForPdf,
   getInvoicePdfPaymentLabel,
@@ -51,6 +52,7 @@ interface Invoice {
   subtotal?: number;
   tax?: number;
   discount?: number;
+  earlyPaymentDiscount?: number;
   shippingFee?: number;
   insuranceAmount?: number;
   isLayaway?: boolean;
@@ -684,7 +686,7 @@ export async function generateSingleInvoicePDF(
 
   summaryRows.forEach((row) => {
     doc.text(row.label, summaryLabelX, y, { align: "right" });
-    doc.text(`$${Number(row.value || 0).toFixed(2)}`, R, y, { align: "right" });
+    doc.text(formatInvoiceSummaryRowValue(row.value), R, y, { align: "right" });
     y += 6;
   });
 
@@ -1082,7 +1084,9 @@ export function buildSingleInvoicePdfBuffer(
   doc.line(110, y, R, y);
   y += 6;
 
-  const summaryRows = buildInvoicePdfSummaryRows(invoice);
+  const summaryRows = buildInvoicePdfSummaryRows(invoice, {
+    includeSubtotal: true,
+  });
 
   const recalculationFeeEntries = isAbandonedInvoice(invoice)
     ? []
@@ -1093,7 +1097,7 @@ export function buildSingleInvoicePdfBuffer(
   doc.setTextColor(26, 26, 26);
   summaryRows.forEach((row) => {
     doc.text(row.label, 130, y, { align: "right" });
-    doc.text(`$${Number(row.value || 0).toFixed(2)}`, R, y, { align: "right" });
+    doc.text(formatInvoiceSummaryRowValue(row.value), R, y, { align: "right" });
     y += 6;
   });
 

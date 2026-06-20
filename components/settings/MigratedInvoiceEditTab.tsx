@@ -35,7 +35,9 @@ export default function MigratedInvoiceEditTab({
         const data = await res.json();
         setSetting({ isActive: !!data?.isActive });
       } catch (error: any) {
-        showError(error.message || "Failed to load migrated invoice edit setting");
+        showError(
+          error.message || "Failed to load migrated invoice edit setting",
+        );
       } finally {
         setIsLoading(false);
       }
@@ -62,7 +64,9 @@ export default function MigratedInvoiceEditTab({
       setSetting({ isActive: !!data?.isActive });
       showSuccess("Migrated invoice edit setting saved");
     } catch (error: any) {
-      showError(error.message || "Failed to save migrated invoice edit setting");
+      showError(
+        error.message || "Failed to save migrated invoice edit setting",
+      );
     } finally {
       setIsSaving(false);
     }
@@ -76,9 +80,9 @@ export default function MigratedInvoiceEditTab({
         </h2>
         <p className="text-gray-600 text-sm">
           Control whether permitted admins can use the migrated invoice edit
-          checkbox when editing layaway invoices. Cash invoices are not affected.
-          When enabled, those users can save layaway corrections without
-          recalculating fees; edits are tagged in audit history.
+          checkbox when editing layaway invoices. Cash invoices are not
+          affected. When enabled, those users can save layaway corrections
+          without recalculating fees; edits are tagged in audit history.
         </p>
       </div>
 

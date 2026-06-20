@@ -1,22 +1,22 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '../../../../../lib/auth';
-import Papa from 'papaparse';
+import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "../../../../../lib/auth";
+import Papa from "papaparse";
 import {
   validatePaymentRow,
   detectPaymentDuplicates,
   ValidationError,
-  PaymentRow
-} from '../../../../../lib/csv-validation';
+  PaymentRow,
+} from "../../../../../lib/csv-validation";
 
 export async function POST(request: NextRequest) {
   try {
     await requireAuth();
 
     const formData = await request.formData();
-    const file = formData.get('file') as File;
+    const file = formData.get("file") as File;
 
     if (!file) {
-      return NextResponse.json({ error: 'No file provided' }, { status: 400 });
+      return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
     // Read file content
@@ -27,22 +27,28 @@ export async function POST(request: NextRequest) {
       header: true,
       skipEmptyLines: true,
       transformHeader: (header: string) => header.trim(),
-      transform: (value: string) => value.trim()
+      transform: (value: string) => value.trim(),
     });
 
     if (parseResult.errors.length > 0) {
-      return NextResponse.json({
-        error: 'CSV parsing error',
-        details: parseResult.errors
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          error: "CSV parsing error",
+          details: parseResult.errors,
+        },
+        { status: 400 },
+      );
     }
 
     const rows = parseResult.data;
-    
+
     if (rows.length === 0) {
-      return NextResponse.json({
-        error: 'CSV file is empty'
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          error: "CSV file is empty",
+        },
+        { status: 400 },
+      );
     }
 
     // Validate each row
@@ -59,16 +65,18 @@ export async function POST(request: NextRequest) {
 
     // Group errors by row
     const errorsByRow: { [row: number]: string[] } = {};
-    validationErrors.forEach(error => {
+    validationErrors.forEach((error) => {
       if (!errorsByRow[error.row]) {
         errorsByRow[error.row] = [];
       }
-      errorsByRow[error.row].push(error.field ? `${error.field}: ${error.error}` : error.error);
+      errorsByRow[error.row].push(
+        error.field ? `${error.field}: ${error.error}` : error.error,
+      );
     });
 
-    const invalidRows = Object.keys(errorsByRow).map(rowNum => ({
+    const invalidRows = Object.keys(errorsByRow).map((rowNum) => ({
       row: parseInt(rowNum),
-      errors: errorsByRow[parseInt(rowNum)]
+      errors: errorsByRow[parseInt(rowNum)],
     }));
 
     return NextResponse.json({
@@ -76,14 +84,13 @@ export async function POST(request: NextRequest) {
       totalRows: rows.length,
       validRows: rows.length - invalidRows.length,
       invalidRows,
-      duplicates: duplicates.map(dup => ({
+      duplicates: duplicates.map((dup) => ({
         rows: dup.rows,
-        reason: dup.reason
-      }))
+        reason: dup.reason,
+      })),
     });
-
   } catch (error: any) {
-    console.error('Validate CSV error:', error);
+    console.error("Validate CSV error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

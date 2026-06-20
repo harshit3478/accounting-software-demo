@@ -17,6 +17,8 @@ import InsuranceRulesTab from "../../components/settings/InsuranceRulesTab";
 import QuickBooksTab from "../../components/settings/QuickBooksTab";
 import LayawaySettingsTab from "../../components/settings/LayawaySettingsTab";
 import LateFeeTab from "../../components/settings/LateFeeTab";
+import EarlyPaymentDiscountTab from "../../components/settings/EarlyPaymentDiscountTab";
+import DueReminderTab from "../../components/settings/DueReminderTab";
 import DepositFeeRulesTab from "../../components/settings/DepositFeeRulesTab";
 import RestockingFeeTab from "../../components/settings/RestockingFeeTab";
 import RecalculationFeeTab from "../../components/settings/RecalculationFeeTab";
@@ -58,6 +60,12 @@ const ADMIN_TABS = [
   { id: "due-date-reasons", label: "Due Date Reasons", icon: CalendarClock },
   { id: "layaway", label: "Layaway", icon: Layers },
   { id: "late-fee", label: "Late Fee", icon: CalendarClock },
+  {
+    id: "early-payment-discount",
+    label: "Early Payment Discount",
+    icon: CalendarClock,
+  },
+  { id: "due-reminders", label: "Due Reminders", icon: CalendarClock },
   { id: "deposit-fees", label: "Deposit Fees", icon: Shield },
   { id: "restocking-fee", label: "Restocking Fee", icon: Shield },
   { id: "recalculation-fee", label: "Recalculation Fee", icon: CalendarClock },
@@ -69,9 +77,7 @@ const ADMIN_TABS = [
   { id: "quickbooks", label: "QuickBooks", icon: Link2 },
 ] as const;
 
-type TabId =
-  | typeof PROFILE_TAB.id
-  | (typeof ADMIN_TABS)[number]["id"];
+type TabId = typeof PROFILE_TAB.id | (typeof ADMIN_TABS)[number]["id"];
 
 function SettingsContent() {
   const searchParams = useSearchParams();
@@ -140,6 +146,17 @@ function SettingsContent() {
         );
       case "late-fee":
         return <LateFeeTab showSuccess={showSuccess} showError={showError} />;
+      case "early-payment-discount":
+        return (
+          <EarlyPaymentDiscountTab
+            showSuccess={showSuccess}
+            showError={showError}
+          />
+        );
+      case "due-reminders":
+        return (
+          <DueReminderTab showSuccess={showSuccess} showError={showError} />
+        );
       case "deposit-fees":
         return (
           <DepositFeeRulesTab showSuccess={showSuccess} showError={showError} />

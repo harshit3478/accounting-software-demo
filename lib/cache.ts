@@ -1,17 +1,17 @@
 /**
  * Simple In-Memory Cache for Frequently Accessed Data
- * 
+ *
  * This is a lightweight, in-process caching solution that serves as
  * an alternative to Redis for small datasets like user permissions,
  * system settings, and other frequently-accessed data.
- * 
+ *
  * Benefits:
  * - Zero external dependencies
  * - No network overhead
  * - Perfect for single-instance deployments
  * - Automatic TTL (Time To Live) management
  * - Memory-safe with size limits
- * 
+ *
  * Limitations:
  * - Not shared across multiple server instances
  * - Data lost on server restart
@@ -96,7 +96,7 @@ class InMemoryCache {
   async getOrSet<T>(
     key: string,
     fetchFn: () => Promise<T>,
-    ttl?: number
+    ttl?: number,
   ): Promise<T> {
     const cached = this.get<T>(key);
     if (cached !== null) {
@@ -193,8 +193,8 @@ class InMemoryCache {
 
 // Singleton instance
 const cache = new InMemoryCache(
-  parseInt(process.env.CACHE_MAX_SIZE || '1000'),
-  parseInt(process.env.CACHE_DEFAULT_TTL || '300000')
+  parseInt(process.env.CACHE_MAX_SIZE || "1000"),
+  parseInt(process.env.CACHE_DEFAULT_TTL || "300000"),
 );
 
 export default cache;
@@ -204,24 +204,24 @@ export const CACHE_KEYS = {
   // User-related
   USER_BY_ID: (id: number) => `user:${id}`,
   USER_PERMISSIONS: (id: number) => `user:${id}:permissions`,
-  ALL_USERS: 'users:all',
+  ALL_USERS: "users:all",
 
   // Dashboard metrics
   DASHBOARD_METRICS: (userId: number) => `dashboard:${userId}`,
-  
+
   // Document tree (rarely changes, cache for 10 minutes)
-  DOCUMENT_TREE: 'documents:tree',
+  DOCUMENT_TREE: "documents:tree",
   FOLDER_BREADCRUMB: (id: number) => `folder:${id}:breadcrumb`,
-  
+
   // Invoice/Payment aggregates
-  INVOICE_STATS: 'invoices:stats',
-  PAYMENT_STATS: 'payments:stats',
+  INVOICE_STATS: "invoices:stats",
+  PAYMENT_STATS: "payments:stats",
 };
 
 // Cache TTL constants (in milliseconds)
 export const CACHE_TTL = {
-  SHORT: 60 * 1000,           // 1 minute
-  MEDIUM: 5 * 60 * 1000,      // 5 minutes
-  LONG: 10 * 60 * 1000,       // 10 minutes
-  VERY_LONG: 30 * 60 * 1000,  // 30 minutes
+  SHORT: 60 * 1000, // 1 minute
+  MEDIUM: 5 * 60 * 1000, // 5 minutes
+  LONG: 10 * 60 * 1000, // 10 minutes
+  VERY_LONG: 30 * 60 * 1000, // 30 minutes
 };

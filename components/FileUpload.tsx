@@ -1,8 +1,12 @@
-'use client';
+"use client";
 
-import { useState, useRef, DragEvent, ChangeEvent } from 'react';
-import { FiUploadCloud, FiX, FiFile } from 'react-icons/fi';
-import { formatFileSize, isValidFileSize, isValidFileType } from '@/lib/file-utils';
+import { useState, useRef, DragEvent, ChangeEvent } from "react";
+import { FiUploadCloud, FiX, FiFile } from "react-icons/fi";
+import {
+  formatFileSize,
+  isValidFileSize,
+  isValidFileType,
+} from "@/lib/file-utils";
 
 interface FileWithPreview {
   file: File;
@@ -17,7 +21,12 @@ interface FileUploadProps {
   folderId?: number | null;
 }
 
-export default function FileUpload({ onUploadComplete, onUploadSuccess, onUploadError, folderId }: FileUploadProps) {
+export default function FileUpload({
+  onUploadComplete,
+  onUploadSuccess,
+  onUploadError,
+  folderId,
+}: FileUploadProps) {
   const [files, setFiles] = useState<FileWithPreview[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -56,7 +65,7 @@ export default function FileUpload({ onUploadComplete, onUploadSuccess, onUpload
       if (!isValidFileSize(file.size)) {
         error = `File size exceeds 20MB limit`;
       } else if (!isValidFileType(file.type)) {
-        error = 'File type not supported';
+        error = "File type not supported";
       }
 
       return {
@@ -77,7 +86,7 @@ export default function FileUpload({ onUploadComplete, onUploadSuccess, onUpload
     const validFiles = files.filter((f) => !f.error);
 
     if (validFiles.length === 0) {
-      onUploadError?.('No valid files to upload');
+      onUploadError?.("No valid files to upload");
       return;
     }
 
@@ -87,19 +96,19 @@ export default function FileUpload({ onUploadComplete, onUploadSuccess, onUpload
     try {
       const formData = new FormData();
       validFiles.forEach((fileItem) => {
-        formData.append('files', fileItem.file);
+        formData.append("files", fileItem.file);
       });
-      
+
       // Add folderId if provided
       if (folderId !== undefined && folderId !== null) {
-        formData.append('folderId', folderId.toString());
+        formData.append("folderId", folderId.toString());
       }
 
       // Create XMLHttpRequest for progress tracking
       const xhr = new XMLHttpRequest();
 
       // Track upload progress
-      xhr.upload.addEventListener('progress', (e) => {
+      xhr.upload.addEventListener("progress", (e) => {
         if (e.lengthComputable) {
           const percentComplete = Math.round((e.loaded / e.total) * 100);
           setUploadProgress(percentComplete);
@@ -107,32 +116,40 @@ export default function FileUpload({ onUploadComplete, onUploadSuccess, onUpload
       });
 
       // Handle completion
-      const uploadPromise = new Promise<{ ok: boolean; data: any }>((resolve, reject) => {
-        xhr.addEventListener('load', () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            resolve({ ok: true, data: JSON.parse(xhr.responseText) });
-          } else {
-            reject(new Error(xhr.statusText));
-          }
-        });
-        xhr.addEventListener('error', () => reject(new Error('Upload failed')));
-        xhr.addEventListener('abort', () => reject(new Error('Upload cancelled')));
-      });
+      const uploadPromise = new Promise<{ ok: boolean; data: any }>(
+        (resolve, reject) => {
+          xhr.addEventListener("load", () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              resolve({ ok: true, data: JSON.parse(xhr.responseText) });
+            } else {
+              reject(new Error(xhr.statusText));
+            }
+          });
+          xhr.addEventListener("error", () =>
+            reject(new Error("Upload failed")),
+          );
+          xhr.addEventListener("abort", () =>
+            reject(new Error("Upload cancelled")),
+          );
+        },
+      );
 
-      xhr.open('POST', '/api/documents/upload');
+      xhr.open("POST", "/api/documents/upload");
       xhr.send(formData);
 
       const { data } = await uploadPromise;
 
-      onUploadSuccess?.(`Successfully uploaded ${data.uploaded.length} file(s)`);
+      onUploadSuccess?.(
+        `Successfully uploaded ${data.uploaded.length} file(s)`,
+      );
       setFiles([]);
       setUploadProgress(0);
       if (onUploadComplete) {
         onUploadComplete();
       }
     } catch (error: any) {
-      console.error('Upload error:', error);
-      onUploadError?.(error.message || 'Upload failed. Please try again.');
+      console.error("Upload error:", error);
+      onUploadError?.(error.message || "Upload failed. Please try again.");
       setUploadProgress(0);
     } finally {
       setIsUploading(false);
@@ -141,7 +158,9 @@ export default function FileUpload({ onUploadComplete, onUploadSuccess, onUpload
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-      <h3 className="text-lg font-semibold text-gray-900 mb-4">Upload Documents</h3>
+      <h3 className="text-lg font-semibold text-gray-900 mb-4">
+        Upload Documents
+      </h3>
 
       {/* Drop Zone */}
       <div
@@ -150,8 +169,8 @@ export default function FileUpload({ onUploadComplete, onUploadSuccess, onUpload
         onDrop={handleDrop}
         className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
           isDragging
-            ? 'border-blue-500 bg-blue-50'
-            : 'border-gray-300 hover:border-gray-400'
+            ? "border-blue-500 bg-blue-50"
+            : "border-gray-300 hover:border-gray-400"
         }`}
       >
         <FiUploadCloud className="mx-auto text-5xl text-gray-400 mb-4" />
@@ -159,7 +178,8 @@ export default function FileUpload({ onUploadComplete, onUploadSuccess, onUpload
           Drag & drop files here, or click to select
         </p>
         <p className="text-sm text-gray-500 mb-4">
-          Maximum file size: 20MB. Supports images, PDFs, documents, spreadsheets, and more.
+          Maximum file size: 20MB. Supports images, PDFs, documents,
+          spreadsheets, and more.
         </p>
         <button
           type="button"
@@ -189,16 +209,22 @@ export default function FileUpload({ onUploadComplete, onUploadSuccess, onUpload
               <div
                 key={fileItem.id}
                 className={`flex items-center justify-between p-3 rounded-lg ${
-                  fileItem.error ? 'bg-red-50 border border-red-200' : 'bg-gray-50'
+                  fileItem.error
+                    ? "bg-red-50 border border-red-200"
+                    : "bg-gray-50"
                 }`}
               >
                 <div className="flex items-center space-x-3 flex-1">
-                  <FiFile className={`text-xl ${fileItem.error ? 'text-red-500' : 'text-gray-500'}`} />
+                  <FiFile
+                    className={`text-xl ${fileItem.error ? "text-red-500" : "text-gray-500"}`}
+                  />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-900 truncate">
                       {fileItem.file.name}
                     </p>
-                    <p className={`text-xs ${fileItem.error ? 'text-red-600' : 'text-gray-500'}`}>
+                    <p
+                      className={`text-xs ${fileItem.error ? "text-red-600" : "text-gray-500"}`}
+                    >
                       {fileItem.error || formatFileSize(fileItem.file.size)}
                     </p>
                   </div>
@@ -218,8 +244,12 @@ export default function FileUpload({ onUploadComplete, onUploadSuccess, onUpload
           {isUploading && (
             <div className="mt-4">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-gray-700">Uploading...</span>
-                <span className="text-sm font-medium text-blue-600">{uploadProgress}%</span>
+                <span className="text-sm font-medium text-gray-700">
+                  Uploading...
+                </span>
+                <span className="text-sm font-medium text-blue-600">
+                  {uploadProgress}%
+                </span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
                 <div
@@ -237,11 +267,13 @@ export default function FileUpload({ onUploadComplete, onUploadSuccess, onUpload
               disabled={isUploading || files.every((f) => f.error)}
               className={`px-6 py-2 rounded-lg font-medium transition-colors ${
                 isUploading || files.every((f) => f.error)
-                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                  : 'bg-green-600 text-white hover:bg-green-700'
+                  ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                  : "bg-green-600 text-white hover:bg-green-700"
               }`}
             >
-              {isUploading ? `Uploading... ${uploadProgress}%` : `Upload ${files.filter((f) => !f.error).length} File(s)`}
+              {isUploading
+                ? `Uploading... ${uploadProgress}%`
+                : `Upload ${files.filter((f) => !f.error).length} File(s)`}
             </button>
           </div>
         </div>

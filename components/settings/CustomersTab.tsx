@@ -1,7 +1,15 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Plus, Search, Eye, Edit2, Trash2, Download } from "lucide-react";
+import {
+  Plus,
+  Search,
+  Eye,
+  Edit2,
+  Trash2,
+  Download,
+  Receipt,
+} from "lucide-react";
 import ConfirmModal from "../ConfirmModal";
 
 interface CustomerStats {
@@ -145,6 +153,18 @@ export default function CustomersTab({
   } | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  const [processingFeeTx, setProcessingFeeTx] = useState<{
+    id: number;
+    amount: number;
+    reason: string | null;
+    invoiceId: number | null;
+  } | null>(null);
+  const [processingFeeInvoiceId, setProcessingFeeInvoiceId] = useState<
+    number | null
+  >(null);
+  const [processingFeeAmount, setProcessingFeeAmount] = useState(0);
+  const [processingFeeSubmitting, setProcessingFeeSubmitting] = useState(false);
+
   const fetchCustomers = useCallback(async () => {
     setLoading(true);
     try {
@@ -241,6 +261,54 @@ export default function CustomersTab({
       }
     } finally {
       setViewLoading(false);
+    }
+  };
+
+  const openProcessingFeeModal = (tx: {
+    id: number;
+    amount: number;
+    reason: string | null;
+    invoiceId: number | null;
+  }) => {
+    setProcessingFeeTx(tx);
+    setProcessingFeeAmount(Number(tx.amount));
+    setProcessingFeeInvoiceId(tx.invoiceId);
+  };
+
+  const handleApplyProcessingFee = async () => {
+    if (!viewingCustomer || !processingFeeTx || !processingFeeInvoiceId) return;
+    if (processingFeeAmount <= 0) {
+      showError("Amount must be greater than 0");
+      return;
+    }
+
+    setProcessingFeeSubmitting(true);
+    try {
+      const res = await fetch(
+        `/api/customers/${viewingCustomer.id}/apply-processing-fee`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            invoiceId: processingFeeInvoiceId,
+            amount: processingFeeAmount,
+            creditTransactionId: processingFeeTx.id,
+          }),
+        },
+      );
+      const data = await res.json();
+      if (res.ok) {
+        showSuccess(
+          `Processing fee of ${formatCurrency(processingFeeAmount)} applied to ${data.invoiceNumber}`,
+        );
+        setProcessingFeeTx(null);
+        await viewCustomer(viewingCustomer.id);
+        fetchCustomers();
+      } else {
+        showError(data.error || "Failed to apply processing fee");
+      }
+    } finally {
+      setProcessingFeeSubmitting(false);
     }
   };
 
@@ -893,6 +961,9 @@ export default function CustomersTab({
                                 <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">
                                   Reason
                                 </th>
+                                <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600">
+                                  Actions
+                                </th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
@@ -915,6 +986,23 @@ export default function CustomersTab({
                                   </td>
                                   <td className="px-3 py-2 text-gray-600">
                                     {tx.reason || "-"}
+                                  </td>
+                                  <td className="px-3 py-2 text-right">
+                                    {tx.type === "credit" &&
+                                      (viewingCustomer.storeCredit || 0) >
+                                        0 && (
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            openProcessingFeeModal(tx)
+                                          }
+                                          className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-amber-800 bg-amber-100 hover:bg-amber-200 rounded-md transition-colors"
+                                          title="Apply this credit as a processing fee on an invoice"
+                                        >
+                                          <Receipt size={12} />
+                                          Processing Fee
+                                        </button>
+                                      )}
                                   </td>
                                 </tr>
                               ))}
@@ -1108,6 +1196,118 @@ export default function CustomersTab({
                 </>
               )
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Apply Processing Fee Modal */}
+      {processingFeeTx && viewingCustomer && (
+        <div className="fixed inset-0 flex items-center justify-center z-[60] backdrop-blur-sm">
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => !processingFeeSubmitting && setProcessingFeeTx(null)}
+          />
+          <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-1">
+              Apply Processing Fee
+            </h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Move store credit to a processing fee on an invoice. This removes
+              the amount from store credit and adds it to the invoice total.
+            </p>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">
+                  Credit Amount
+                </label>
+                <p className="text-sm text-gray-800">
+                  {formatCurrency(Number(processingFeeTx.amount))}
+                </p>
+                {processingFeeTx.reason && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    {processingFeeTx.reason}
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Invoice
+                </label>
+                <select
+                  value={processingFeeInvoiceId ?? ""}
+                  onChange={(e) =>
+                    setProcessingFeeInvoiceId(
+                      e.target.value ? Number(e.target.value) : null,
+                    )
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                >
+                  <option value="">Select invoice...</option>
+                  {viewingCustomer.invoices
+                    .filter(
+                      (inv) =>
+                        inv.status !== "abandoned" && inv.status !== "inactive",
+                    )
+                    .map((inv) => (
+                      <option key={inv.id} value={inv.id}>
+                        {inv.invoiceNumber} —{" "}
+                        {formatCurrency(Number(inv.amount))}
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Amount to apply
+                </label>
+                <input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  max={Math.min(
+                    Number(processingFeeTx.amount),
+                    viewingCustomer.storeCredit || 0,
+                  )}
+                  value={processingFeeAmount}
+                  onChange={(e) =>
+                    setProcessingFeeAmount(parseFloat(e.target.value) || 0)
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Available store credit:{" "}
+                  {formatCurrency(viewingCustomer.storeCredit || 0)}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                type="button"
+                onClick={() => setProcessingFeeTx(null)}
+                disabled={processingFeeSubmitting}
+                className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleApplyProcessingFee}
+                disabled={
+                  processingFeeSubmitting ||
+                  !processingFeeInvoiceId ||
+                  processingFeeAmount <= 0
+                }
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors disabled:opacity-50"
+              >
+                {processingFeeSubmitting
+                  ? "Applying..."
+                  : "Apply Processing Fee"}
+              </button>
+            </div>
           </div>
         </div>
       )}
