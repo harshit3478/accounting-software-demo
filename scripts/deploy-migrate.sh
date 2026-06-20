@@ -6,33 +6,122 @@ cd /var/www/accounting
 
 # Prisma loads .env internally — do NOT `source .env` (values with commas/spaces break bash).
 
-set +e
-MIGRATE_OUT=$(npx prisma migrate deploy 2>&1)
-MIGRATE_EXIT=$?
-set -e
+apply_migration_sql() {
+  local migration_name=$1
+  local sql_file="prisma/migrations/${migration_name}/migration.sql"
 
-echo "$MIGRATE_OUT"
-
-if [ "$MIGRATE_EXIT" -eq 0 ]; then
-  echo "✅ Migrations applied successfully."
-  exit 0
-fi
-
-if echo "$MIGRATE_OUT" | grep -q "P3009"; then
-  echo "⚠️  P3009 detected: a migration was interrupted. Checking schema drift..."
-
-  FAILED_MIG=$(echo "$MIGRATE_OUT" | sed -n 's/.*The `\([^`]*\)` migration.*/\1/p' | head -1)
-
-  if [ -z "$FAILED_MIG" ]; then
-    echo "🔴 Could not parse failed migration name. Manual intervention required."
-    echo "   Run: npx prisma migrate status"
-    exit 1
+  if [ ! -f "$sql_file" ]; then
+    echo "🔴 Migration SQL not found: $sql_file"
+    return 1
   fi
 
-  echo "   Failed migration: $FAILED_MIG"
+  echo "🔧 Applying SQL for failed migration: $migration_name"
+  set +e
+  local exec_out
+  exec_out=$(npx prisma db execute --file "$sql_file" --schema prisma/schema.prisma 2>&1)
+  local exec_exit=$?
+  set -e
+  echo "$exec_out"
 
-  if [ "$FAILED_MIG" = "20260620000100_customer_email_unique" ]; then
-    echo "🔧 Attempting customer email unique index recovery..."
+  if [ "$exec_exit" -eq 0 ]; then
+    return 0
+  fi
+
+  if echo "$exec_out" | grep -qiE "Duplicate column|Duplicate key name|already exists"; then
+    echo "ℹ️  Schema change already present — continuing recovery."
+    return 0
+  fi
+
+  return "$exec_exit"
+}
+
+recover_failed_migration() {
+  local failed_mig=$1
+
+  if [ "$failed_mig" = "20260620000100_customer_email_unique" ]; then
+    echo "🔧 Running customer email dedupe recovery..."
+    set +e
+    local recovery_out
+    recovery_out=$(npx prisma db execute \
+      --file prisma/migrations/20260620000101_fix_customer_email_unique_recovery/migration.sql \
+      --schema prisma/schema.prisma 2>&1)
+    local recovery_exit=$?
+    set -e
+    echo "$recovery_out"
+
+    if [ "$recovery_exit" -eq 0 ]; then
+      return 0
+    fi
+
+    if echo "$recovery_out" | grep -qiE "Duplicate key name|already exists"; then
+      return 0
+    fi
+  fi
+
+  apply_migration_sql "$failed_mig"
+}
+
+parse_failed_migration() {
+  echo "$1" | sed -n 's/.*The `\([^`]*\)` migration.*/\1/p' | head -1
+}
+
+MAX_RECOVERY_ATTEMPTS=6
+attempt=0
+
+while [ "$attempt" -lt "$MAX_RECOVERY_ATTEMPTS" ]; do
+  echo "🔵 Running migrations (attempt $((attempt + 1))/$MAX_RECOVERY_ATTEMPTS)..."
+
+  set +e
+  MIGRATE_OUT=$(npx prisma migrate deploy 2>&1)
+  MIGRATE_EXIT=$?
+  set -e
+
+  echo "$MIGRATE_OUT"
+
+  if [ "$MIGRATE_EXIT" -eq 0 ]; then
+    echo "✅ Migrations applied successfully."
+    exit 0
+  fi
+
+  if echo "$MIGRATE_OUT" | grep -q "P3009"; then
+    FAILED_MIG=$(parse_failed_migration "$MIGRATE_OUT")
+
+    if [ -z "$FAILED_MIG" ]; then
+      echo "🔴 Could not parse failed migration name."
+      echo "   Run: npx prisma migrate status"
+      exit 1
+    fi
+
+    echo "⚠️  P3009: recovering failed migration → $FAILED_MIG"
+
+    if ! recover_failed_migration "$FAILED_MIG"; then
+      echo "🔴 Failed to apply recovery SQL for $FAILED_MIG"
+
+      set +e
+      npx prisma migrate diff \
+        --from-schema-datasource prisma/schema.prisma \
+        --to-schema-datamodel prisma/schema.prisma \
+        --exit-code > /dev/null 2>&1
+      DIFF_EXIT=$?
+      set -e
+
+      if [ "$DIFF_EXIT" -eq 0 ]; then
+        echo "✅ Live DB already matches schema. Marking migration as applied..."
+      else
+        echo "🔴 Schema drift remains (exit $DIFF_EXIT). Manual fix required:"
+        echo "   cd /var/www/accounting && npx prisma migrate status"
+        exit 1
+      fi
+    fi
+
+    echo "✅ Marking $FAILED_MIG as applied..."
+    npx prisma migrate resolve --applied "$FAILED_MIG"
+    attempt=$((attempt + 1))
+    continue
+  fi
+
+  if echo "$MIGRATE_OUT" | grep -qiE "customers_email_key|Duplicate entry|Unique constraint failed"; then
+    echo "🔧 Duplicate customer emails detected. Running dedupe recovery..."
     set +e
     npx prisma db execute \
       --file prisma/migrations/20260620000101_fix_customer_email_unique_recovery/migration.sql \
@@ -41,55 +130,14 @@ if echo "$MIGRATE_OUT" | grep -q "P3009"; then
     set -e
 
     if [ "$RECOVERY_EXIT" -eq 0 ]; then
-      npx prisma migrate resolve --applied "$FAILED_MIG"
-      npx prisma migrate deploy
-      exit 0
+      attempt=$((attempt + 1))
+      continue
     fi
-
-    echo "⚠️  Recovery SQL failed (exit $RECOVERY_EXIT). Falling back to schema diff check..."
   fi
 
-  set +e
-  npx prisma migrate diff \
-    --from-schema-datasource prisma/schema.prisma \
-    --to-schema-datamodel prisma/schema.prisma \
-    --exit-code > /dev/null 2>&1
-  DIFF_EXIT=$?
-  set -e
+  echo "🔴 Migration failed (exit $MIGRATE_EXIT)."
+  exit "$MIGRATE_EXIT"
+done
 
-  if [ "$DIFF_EXIT" -eq 0 ]; then
-    echo "✅ Schema is fully applied. Marking migration as applied in Prisma..."
-    npx prisma migrate resolve --applied "$FAILED_MIG"
-    npx prisma migrate deploy
-    exit 0
-  fi
-
-  echo "🔴 Schema drift detected — the failed migration was only partially applied (exit $DIFF_EXIT)."
-  echo "   Manual resolution required:"
-  echo "   1. SSH into the server"
-  echo "   2. cd /var/www/accounting"
-  echo "   3. npx prisma migrate status"
-  echo "   4. Manually apply the missing SQL, then run:"
-  echo "      npx prisma migrate resolve --applied $FAILED_MIG"
-  exit 1
-fi
-
-echo "🔴 Migration failed (exit $MIGRATE_EXIT)."
-
-if echo "$MIGRATE_OUT" | grep -qiE "customers_email_key|Duplicate entry|Unique constraint failed"; then
-  echo "🔧 Duplicate customer emails detected. Running dedupe recovery..."
-  set +e
-  npx prisma db execute \
-    --file prisma/migrations/20260620000101_fix_customer_email_unique_recovery/migration.sql \
-    --schema prisma/schema.prisma 2>&1
-  RECOVERY_EXIT=$?
-  set -e
-
-  if [ "$RECOVERY_EXIT" -eq 0 ]; then
-    echo "🔵 Retrying migrations after dedupe..."
-    npx prisma migrate deploy
-    exit 0
-  fi
-fi
-
-exit "$MIGRATE_EXIT"
+echo "🔴 Migration recovery exceeded max attempts."
+exit 1
