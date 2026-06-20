@@ -57,7 +57,10 @@ export default function DueReminderTab({
   }, [showError]);
 
   const handleSave = async () => {
-    if (!Number.isFinite(setting.daysAfterDueDate) || setting.daysAfterDueDate < 0) {
+    if (
+      !Number.isFinite(setting.daysAfterDueDate) ||
+      setting.daysAfterDueDate < 0
+    ) {
       showError("Days after due date must be a valid non-negative number");
       return;
     }
@@ -85,7 +88,9 @@ export default function DueReminderTab({
 
       const data = await res.json();
       setSetting({
-        daysAfterDueDate: Number(data?.daysAfterDueDate ?? setting.daysAfterDueDate),
+        daysAfterDueDate: Number(
+          data?.daysAfterDueDate ?? setting.daysAfterDueDate,
+        ),
         daysBetweenReminders: Number(
           data?.daysBetweenReminders ?? setting.daysBetweenReminders,
         ),

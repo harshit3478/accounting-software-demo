@@ -101,9 +101,7 @@ export default function AbandonInvoiceModal({
     ? Math.min(depositFeeTotal, paidAmount)
     : depositFeeTotal;
   const canApplyRestocking =
-    isLayaway &&
-    !!restockingFeeSetting?.isActive &&
-    effectiveRestockingFee > 0;
+    isLayaway && !!restockingFeeSetting?.isActive && effectiveRestockingFee > 0;
   const canApplyDeposit = effectiveDepositFee > 0;
   const canApplyBoth = canApplyRestocking && canApplyDeposit;
   const showFeeHandling = canApplyRestocking || canApplyDeposit;
@@ -156,12 +154,7 @@ export default function AbandonInvoiceModal({
     } else {
       setFeeAction("none");
     }
-  }, [
-    isOpen,
-    showFeeHandling,
-    canApplyRestocking,
-    canApplyDeposit,
-  ]);
+  }, [isOpen, showFeeHandling, canApplyRestocking, canApplyDeposit]);
 
   useEffect(() => {
     if (!canRefund && paymentAction === "refund") {
@@ -366,8 +359,8 @@ export default function AbandonInvoiceModal({
 
         {!hasPayments && !showFeeHandling && (
           <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
-            This invoice has no linked payments and no applicable fees. It will be
-            marked abandoned with a $0 total.
+            This invoice has no linked payments and no applicable fees. It will
+            be marked abandoned with a $0 total.
           </div>
         )}
 
@@ -431,10 +424,12 @@ export default function AbandonInvoiceModal({
                 />
                 Apply both restocking and deposit fees
                 <span className="text-xs text-gray-500">
-                  (restocking ${bothFeeAmounts.restocking.toFixed(2)} + deposit $
-                  {bothFeeAmounts.deposit.toFixed(2)} = $
+                  (restocking ${bothFeeAmounts.restocking.toFixed(2)} + deposit
+                  ${bothFeeAmounts.deposit.toFixed(2)} = $
                   {bothFeeAmounts.total.toFixed(2)}
-                  {hasPayments ? `, capped by $${paidAmount.toFixed(2)} paid` : ""}
+                  {hasPayments
+                    ? `, capped by $${paidAmount.toFixed(2)} paid`
+                    : ""}
                   )
                 </span>
               </label>

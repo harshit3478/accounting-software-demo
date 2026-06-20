@@ -205,7 +205,7 @@ export async function PUT(
                   where: { id: linkedPayment.id },
                   data: {
                     invoiceId: null,
-                    notes:"",
+                    notes: "",
                     isMatched: false,
                     source: "store_credit_excess",
                   },

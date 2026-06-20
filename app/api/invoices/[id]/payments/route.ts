@@ -103,7 +103,10 @@ export async function GET(
 
     // Combine and format payments, preferring the direct row when the same
     // payment is represented in both direct and matched forms.
-    const allPaymentsMap = new Map<number, ReturnType<typeof serializePaymentRow>>();
+    const allPaymentsMap = new Map<
+      number,
+      ReturnType<typeof serializePaymentRow>
+    >();
 
     for (const payment of directPayments) {
       allPaymentsMap.set(

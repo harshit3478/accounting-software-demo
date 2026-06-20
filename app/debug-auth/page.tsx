@@ -1,16 +1,16 @@
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState } from "react";
 
 export default function DebugAuth() {
   const [authStatus, setAuthStatus] = useState<any>(null);
-  const [cookie, setCookie] = useState<string>('');
+  const [cookie, setCookie] = useState<string>("");
 
   useEffect(() => {
-    fetch('/api/auth-check')
-      .then(res => res.json())
-      .then(data => setAuthStatus(data));
-    
+    fetch("/api/auth-check")
+      .then((res) => res.json())
+      .then((data) => setAuthStatus(data));
+
     // Access document.cookie only on client-side
     setCookie(document.cookie);
   }, []);

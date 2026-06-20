@@ -27,7 +27,6 @@ export function canUseMigratedInvoiceEdit(
   setting: MigratedInvoiceEditSettingSnapshot,
 ): boolean {
   return (
-    setting.isActive &&
-    hasPermission(user, "settings.migrated-invoice-edit")
+    setting.isActive && hasPermission(user, "settings.migrated-invoice-edit")
   );
 }

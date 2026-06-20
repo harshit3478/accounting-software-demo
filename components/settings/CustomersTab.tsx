@@ -1,7 +1,15 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Plus, Search, Eye, Edit2, Trash2, Download, Receipt } from "lucide-react";
+import {
+  Plus,
+  Search,
+  Eye,
+  Edit2,
+  Trash2,
+  Download,
+  Receipt,
+} from "lucide-react";
 import ConfirmModal from "../ConfirmModal";
 
 interface CustomerStats {
@@ -981,10 +989,13 @@ export default function CustomersTab({
                                   </td>
                                   <td className="px-3 py-2 text-right">
                                     {tx.type === "credit" &&
-                                      (viewingCustomer.storeCredit || 0) > 0 && (
+                                      (viewingCustomer.storeCredit || 0) >
+                                        0 && (
                                         <button
                                           type="button"
-                                          onClick={() => openProcessingFeeModal(tx)}
+                                          onClick={() =>
+                                            openProcessingFeeModal(tx)
+                                          }
                                           className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-amber-800 bg-amber-100 hover:bg-amber-200 rounded-md transition-colors"
                                           title="Apply this credit as a processing fee on an invoice"
                                         >
@@ -1237,8 +1248,7 @@ export default function CustomersTab({
                   {viewingCustomer.invoices
                     .filter(
                       (inv) =>
-                        inv.status !== "abandoned" &&
-                        inv.status !== "inactive",
+                        inv.status !== "abandoned" && inv.status !== "inactive",
                     )
                     .map((inv) => (
                       <option key={inv.id} value={inv.id}>
@@ -1293,7 +1303,9 @@ export default function CustomersTab({
                 }
                 className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors disabled:opacity-50"
               >
-                {processingFeeSubmitting ? "Applying..." : "Apply Processing Fee"}
+                {processingFeeSubmitting
+                  ? "Applying..."
+                  : "Apply Processing Fee"}
               </button>
             </div>
           </div>

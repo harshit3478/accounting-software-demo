@@ -5,7 +5,7 @@ import { sendChequeStatusNotification } from "@/lib/email";
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const admin = await requireChequeVaultApprove();
@@ -22,7 +22,7 @@ export async function PUT(
     if (!rejectionReason || !rejectionReason.trim()) {
       return NextResponse.json(
         { error: "Rejection reason is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -40,7 +40,7 @@ export async function PUT(
     if (cheque.status === "APPROVED") {
       return NextResponse.json(
         { error: "An approved cheque cannot be rejected" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -71,9 +71,15 @@ export async function PUT(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     if (error.message === "Forbidden") {
-      return NextResponse.json({ error: "Cheque approval permission required" }, { status: 403 });
+      return NextResponse.json(
+        { error: "Cheque approval permission required" },
+        { status: 403 },
+      );
     }
     console.error("[cheque-vault/[id]/reject PUT]", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
   }
 }

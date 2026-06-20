@@ -1,10 +1,18 @@
-import React from 'react';
-import { Folder, File, MoreVertical, Download, Edit, Trash2, Eye } from 'lucide-react';
-import { formatFileSize } from '@/lib/file-utils';
+import React from "react";
+import {
+  Folder,
+  File,
+  MoreVertical,
+  Download,
+  Edit,
+  Trash2,
+  Eye,
+} from "lucide-react";
+import { formatFileSize } from "@/lib/file-utils";
 
 interface Document {
   id: number;
-  type: 'file' | 'folder';
+  type: "file" | "folder";
   name: string;
   fileName?: string | null;
   fileSize?: number | null;
@@ -36,29 +44,29 @@ export default function DocumentsTable({
   onDeleteFolder,
   onDeleteFile,
   onViewFile,
-  onRenameFile
+  onRenameFile,
 }: DocumentsTableProps) {
   const [openMenuId, setOpenMenuId] = React.useState<number | null>(null);
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
+    return date.toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
     });
   };
 
   const handleDownload = async (doc: Document) => {
-    if (doc.type === 'folder' || !doc.fileUrl) return;
+    if (doc.type === "folder" || !doc.fileUrl) return;
 
     try {
       const response = await fetch(doc.fileUrl);
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
+      const a = document.createElement("a");
       a.href = url;
       a.download = doc.name;
       document.body.appendChild(a);
@@ -66,8 +74,8 @@ export default function DocumentsTable({
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
     } catch (error) {
-      console.error('Error downloading file:', error);
-      alert('Failed to download file');
+      console.error("Error downloading file:", error);
+      alert("Failed to download file");
     }
   };
 
@@ -87,7 +95,9 @@ export default function DocumentsTable({
       <div className="text-center py-12">
         <Folder className="w-16 h-16 mx-auto text-gray-300 mb-4" />
         <p className="text-gray-600 mb-2">This folder is empty</p>
-        <p className="text-sm text-gray-500">Upload files or create folders to get started</p>
+        <p className="text-sm text-gray-500">
+          Upload files or create folders to get started
+        </p>
       </div>
     );
   }
@@ -119,24 +129,23 @@ export default function DocumentsTable({
         </thead>
         <tbody className="bg-white divide-y divide-gray-200">
           {documents.map((doc) => (
-            <tr
-              key={doc.id}
-              className="hover:bg-gray-50 transition-colors"
-            >
+            <tr key={doc.id} className="hover:bg-gray-50 transition-colors">
               {/* Name */}
               <td className="px-6 py-4 whitespace-nowrap">
                 <div className="flex items-center gap-3">
-                  {doc.type === 'folder' ? (
+                  {doc.type === "folder" ? (
                     <Folder className="w-5 h-5 text-blue-500 flex-shrink-0" />
                   ) : (
                     <File className="w-5 h-5 text-gray-400 flex-shrink-0" />
                   )}
                   <button
-                    onClick={() => doc.type === 'folder' && onFolderClick(doc.id)}
+                    onClick={() =>
+                      doc.type === "folder" && onFolderClick(doc.id)
+                    }
                     className={`text-sm font-medium truncate max-w-44 ${
-                      doc.type === 'folder'
-                        ? 'text-blue-600 hover:text-blue-800 cursor-pointer'
-                        : 'text-gray-900'
+                      doc.type === "folder"
+                        ? "text-blue-600 hover:text-blue-800 cursor-pointer"
+                        : "text-gray-900"
                     }`}
                     title={doc.name}
                   >
@@ -147,24 +156,31 @@ export default function DocumentsTable({
 
               {/* Type */}
               <td className="px-6 py-4 whitespace-nowrap">
-                <span className="text-sm text-gray-600 truncate max-w-40 block" title={doc.type === 'folder' ? 'Folder' : doc.fileType || 'File'}>
-                  {doc.type === 'folder' ? 'Folder' : doc.fileType || 'File'}
+                <span
+                  className="text-sm text-gray-600 truncate max-w-40 block"
+                  title={
+                    doc.type === "folder" ? "Folder" : doc.fileType || "File"
+                  }
+                >
+                  {doc.type === "folder" ? "Folder" : doc.fileType || "File"}
                 </span>
               </td>
 
               {/* Size */}
               <td className="px-6 py-4 whitespace-nowrap">
                 <span className="text-sm text-gray-600">
-                  {doc.type === 'file' && doc.fileSize
+                  {doc.type === "file" && doc.fileSize
                     ? formatFileSize(doc.fileSize)
-                    : '—'}
+                    : "—"}
                 </span>
               </td>
 
               {/* Uploaded By */}
               <td className="px-6 py-4 whitespace-nowrap">
                 <div className="text-sm text-gray-900">{doc.uploadedBy}</div>
-                <div className="text-xs text-gray-500">{doc.uploadedByEmail}</div>
+                <div className="text-xs text-gray-500">
+                  {doc.uploadedByEmail}
+                </div>
               </td>
 
               {/* Modified */}
@@ -176,7 +192,9 @@ export default function DocumentsTable({
               <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                 <div className="relative inline-block">
                   <button
-                    onClick={() => setOpenMenuId(openMenuId === doc.id ? null : doc.id)}
+                    onClick={() =>
+                      setOpenMenuId(openMenuId === doc.id ? null : doc.id)
+                    }
                     className="text-gray-400 hover:text-gray-600 p-1 rounded hover:bg-gray-100"
                   >
                     <MoreVertical className="w-5 h-5" />
@@ -190,7 +208,7 @@ export default function DocumentsTable({
                         onClick={() => setOpenMenuId(null)}
                       />
                       <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg z-50 border border-gray-200">
-                        {doc.type === 'file' && (
+                        {doc.type === "file" && (
                           <>
                             {onViewFile && (
                               <button
@@ -228,7 +246,7 @@ export default function DocumentsTable({
                             )}
                           </>
                         )}
-                        {doc.type === 'folder' && (
+                        {doc.type === "folder" && (
                           <button
                             onClick={() => {
                               onRenameFolder(doc.id, doc.name);
@@ -242,7 +260,7 @@ export default function DocumentsTable({
                         )}
                         <button
                           onClick={() => {
-                            if (doc.type === 'folder') {
+                            if (doc.type === "folder") {
                               onDeleteFolder(doc.id, doc.name);
                             } else {
                               onDeleteFile(doc.id, doc.name);

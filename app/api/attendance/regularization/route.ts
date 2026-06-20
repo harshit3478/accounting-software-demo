@@ -17,7 +17,7 @@ export async function POST(req: Request) {
     if (!forDate)
       return NextResponse.json(
         { error: "forDate is required" },
-        { status: 400 }
+        { status: 400 },
       );
 
     const allowedTypes = ["checkin", "checkout", "both", "manual"];
@@ -47,7 +47,7 @@ export async function POST(req: Request) {
         {
           error: "Attendance already has check-in and check-out for this date",
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -88,13 +88,13 @@ export async function POST(req: Request) {
     if (requestedCheckIn && parsedCheckIn === null) {
       return NextResponse.json(
         { error: "Invalid requestedCheckIn" },
-        { status: 400 }
+        { status: 400 },
       );
     }
     if (requestedCheckOut && parsedCheckOut === null) {
       return NextResponse.json(
         { error: "Invalid requestedCheckOut" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -113,7 +113,7 @@ export async function POST(req: Request) {
   } catch (err: any) {
     return NextResponse.json(
       { error: err.message || "Unauthorized" },
-      { status: 401 }
+      { status: 401 },
     );
   }
 }

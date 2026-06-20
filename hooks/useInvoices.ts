@@ -557,7 +557,8 @@ export function useInvoices(
       if (typeFilter !== "all") params.set("type", typeFilter);
       if (liveTypeFilter !== "all") params.set("liveType", liveTypeFilter);
       if (shipmentFilter !== "all") params.set("shipment", shipmentFilter);
-      if (abandonFeeFilter !== "all") params.set("abandonFee", abandonFeeFilter);
+      if (abandonFeeFilter !== "all")
+        params.set("abandonFee", abandonFeeFilter);
       if (layawayOverdue) params.set("overdueDates", "2");
       if (debouncedSearchTerm) params.set("search", debouncedSearchTerm);
       if (dateRange) {

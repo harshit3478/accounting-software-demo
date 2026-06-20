@@ -49,8 +49,7 @@ export default function EarlyPaymentDiscountTab({
         setSetting({
           daysWindow: Number(data?.daysWindow ?? 0),
           discountPercent: Number(data?.discountPercent ?? 0),
-          paymentThreshold:
-            data?.paymentThreshold === "half" ? "half" : "full",
+          paymentThreshold: data?.paymentThreshold === "half" ? "half" : "full",
           isActive: !!data?.isActive,
         });
       } catch (error: any) {
@@ -71,7 +70,10 @@ export default function EarlyPaymentDiscountTab({
       return;
     }
 
-    if (!Number.isFinite(setting.discountPercent) || setting.discountPercent < 0) {
+    if (
+      !Number.isFinite(setting.discountPercent) ||
+      setting.discountPercent < 0
+    ) {
       showError("Discount percent must be a valid non-negative number");
       return;
     }
@@ -99,9 +101,10 @@ export default function EarlyPaymentDiscountTab({
       const data = await res.json();
       setSetting({
         daysWindow: Number(data?.daysWindow ?? setting.daysWindow),
-        discountPercent: Number(data?.discountPercent ?? setting.discountPercent),
-        paymentThreshold:
-          data?.paymentThreshold === "half" ? "half" : "full",
+        discountPercent: Number(
+          data?.discountPercent ?? setting.discountPercent,
+        ),
+        paymentThreshold: data?.paymentThreshold === "half" ? "half" : "full",
         isActive: !!data?.isActive,
       });
       showSuccess("Early payment discount setting saved");

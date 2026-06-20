@@ -291,7 +291,9 @@ export function usePayments(): UsePaymentsReturn {
     } else {
       setSortBy(field);
       setSortDirection(
-        field === "id" || field === "date" || field === "amount" ? "desc" : "asc",
+        field === "id" || field === "date" || field === "amount"
+          ? "desc"
+          : "asc",
       );
     }
   };

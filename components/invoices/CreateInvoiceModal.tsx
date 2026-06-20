@@ -1571,16 +1571,15 @@ export default function CreateInvoiceModal({
                             const total = calculateTotal();
                             const previewInstallments =
                               buildLayawayInstallmentSchedule({
-                                invoiceDate: invoiceDate || getTodayDateString(),
+                                invoiceDate:
+                                  invoiceDate || getTodayDateString(),
                                 frequency: layawayFrequency,
                                 months: layawayMonths,
                                 downPayment: layawayDownPayment,
                                 totalAmount: total,
                               });
-                            const visibleInstallments = previewInstallments.slice(
-                              0,
-                              12,
-                            );
+                            const visibleInstallments =
+                              previewInstallments.slice(0, 12);
                             const hiddenCount =
                               previewInstallments.length -
                               visibleInstallments.length;

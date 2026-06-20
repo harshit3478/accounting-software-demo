@@ -175,8 +175,7 @@ export async function PUT(
     if (migratedInvoiceEdit === true && !invoiceIsLayaway) {
       return NextResponse.json(
         {
-          error:
-            "Migrated invoice edit is only available for layaway invoices",
+          error: "Migrated invoice edit is only available for layaway invoices",
         },
         { status: 400 },
       );
@@ -324,8 +323,12 @@ export async function PUT(
 
     const getItemKey = (item: any) =>
       [
-        String(item?.name || "").trim().toLowerCase(),
-        String(item?.unit || "").trim().toLowerCase(),
+        String(item?.name || "")
+          .trim()
+          .toLowerCase(),
+        String(item?.unit || "")
+          .trim()
+          .toLowerCase(),
       ].join("|");
 
     const normalizedItems = Array.isArray(items)
@@ -373,7 +376,10 @@ export async function PUT(
       : [];
     const removedItemDepositFeeAmount = Number(
       removedDepositFeeItems
-        .reduce((sum: number, item: any) => sum + Number(item?.depositFee || 0), 0)
+        .reduce(
+          (sum: number, item: any) => sum + Number(item?.depositFee || 0),
+          0,
+        )
         .toFixed(2),
     );
 
@@ -400,12 +406,11 @@ export async function PUT(
       );
     }
 
-    const appliedRemovedItemDepositFee =
-      isMigratedInvoiceEdit
-        ? 0
-        : normalizedRemovedDepositFeeAction === "apply"
-          ? removedItemDepositFeeAmount
-          : 0;
+    const appliedRemovedItemDepositFee = isMigratedInvoiceEdit
+      ? 0
+      : normalizedRemovedDepositFeeAction === "apply"
+        ? removedItemDepositFeeAmount
+        : 0;
 
     const totalAmount =
       parseFloat(subtotal) +
@@ -1059,7 +1064,8 @@ export async function DELETE(
             },
           );
           const calculatedDepositFee = Number(depositFeeTotal.toFixed(2));
-          const paymentTotal = Math.round((directTotal + matchedTotal) * 100) / 100;
+          const paymentTotal =
+            Math.round((directTotal + matchedTotal) * 100) / 100;
 
           if (normalizedFeeAction === "both") {
             const roundedRestockingFee =
@@ -1068,7 +1074,10 @@ export async function DELETE(
               Math.round(calculatedDepositFee * 100) / 100;
 
             if (paymentTotal > 0) {
-              restockingFeeAmount = Math.min(roundedRestockingFee, paymentTotal);
+              restockingFeeAmount = Math.min(
+                roundedRestockingFee,
+                paymentTotal,
+              );
               const remainingAfterRestocking = Math.max(
                 paymentTotal - restockingFeeAmount,
                 0,
@@ -1282,86 +1291,88 @@ export async function DELETE(
                   });
                 }
               } else {
-              if (!Number.isFinite(targetInvoiceId as number)) {
-                throw new Error("Target invoice is required for transfer.");
-              }
+                if (!Number.isFinite(targetInvoiceId as number)) {
+                  throw new Error("Target invoice is required for transfer.");
+                }
 
-              const target = await tx.invoice.findUnique({
-                where: { id: targetInvoiceId as number },
-                select: { id: true, customerId: true, status: true },
-              });
-
-              if (!target) {
-                throw new Error("Target invoice not found.");
-              }
-              if (target.id === invoiceId) {
-                throw new Error(
-                  "Target invoice must be different from the abandoned invoice.",
-                );
-              }
-              if (
-                !existingInvoice.customerId ||
-                target.customerId !== existingInvoice.customerId
-              ) {
-                throw new Error(
-                  "Target invoice must belong to the same customer.",
-                );
-              }
-              if (
-                target.status === "inactive" ||
-                target.status === "abandoned"
-              ) {
-                throw new Error(
-                  "Target invoice cannot be inactive or abandoned.",
-                );
-              }
-
-              resolvedTargetInvoiceId = target.id;
-
-              if (realDirectPayments.length > 0) {
-                await tx.payment.updateMany({
-                  where: { id: { in: realDirectPayments.map((p) => p.id) } },
-                  data: { invoiceId: target.id, isMatched: true },
+                const target = await tx.invoice.findUnique({
+                  where: { id: targetInvoiceId as number },
+                  select: { id: true, customerId: true, status: true },
                 });
-              }
 
-              for (const match of matchedPayments) {
-                const existingTargetMatch =
-                  await tx.paymentInvoiceMatch.findUnique({
-                    where: {
-                      paymentId_invoiceId: {
-                        paymentId: match.paymentId,
-                        invoiceId: target.id,
-                      },
-                    },
-                  });
+                if (!target) {
+                  throw new Error("Target invoice not found.");
+                }
+                if (target.id === invoiceId) {
+                  throw new Error(
+                    "Target invoice must be different from the abandoned invoice.",
+                  );
+                }
+                if (
+                  !existingInvoice.customerId ||
+                  target.customerId !== existingInvoice.customerId
+                ) {
+                  throw new Error(
+                    "Target invoice must belong to the same customer.",
+                  );
+                }
+                if (
+                  target.status === "inactive" ||
+                  target.status === "abandoned"
+                ) {
+                  throw new Error(
+                    "Target invoice cannot be inactive or abandoned.",
+                  );
+                }
 
-                if (existingTargetMatch) {
-                  await tx.paymentInvoiceMatch.update({
-                    where: { id: existingTargetMatch.id },
-                    data: {
-                      amount: {
-                        increment: match.amount,
-                      },
-                    },
-                  });
-                  await tx.paymentInvoiceMatch.delete({
-                    where: { id: match.id },
-                  });
-                } else {
-                  await tx.paymentInvoiceMatch.update({
-                    where: { id: match.id },
-                    data: { invoiceId: target.id },
+                resolvedTargetInvoiceId = target.id;
+
+                if (realDirectPayments.length > 0) {
+                  await tx.payment.updateMany({
+                    where: { id: { in: realDirectPayments.map((p) => p.id) } },
+                    data: { invoiceId: target.id, isMatched: true },
                   });
                 }
-              }
+
+                for (const match of matchedPayments) {
+                  const existingTargetMatch =
+                    await tx.paymentInvoiceMatch.findUnique({
+                      where: {
+                        paymentId_invoiceId: {
+                          paymentId: match.paymentId,
+                          invoiceId: target.id,
+                        },
+                      },
+                    });
+
+                  if (existingTargetMatch) {
+                    await tx.paymentInvoiceMatch.update({
+                      where: { id: existingTargetMatch.id },
+                      data: {
+                        amount: {
+                          increment: match.amount,
+                        },
+                      },
+                    });
+                    await tx.paymentInvoiceMatch.delete({
+                      where: { id: match.id },
+                    });
+                  } else {
+                    await tx.paymentInvoiceMatch.update({
+                      where: { id: match.id },
+                      data: { invoiceId: target.id },
+                    });
+                  }
+                }
               }
             }
 
             if (normalizedPaymentAction === "refund") {
               const refundReason = `Payments refunded from abandoned invoice ${existingInvoice.invoiceNumber}. ${reason}`;
-              const refundAllocationItems: Array<{ id: number; amount: number }> =
-                [];
+              const refundAllocationItems: Array<{
+                id: number;
+                amount: number;
+              }> = [];
 
               for (const payment of realDirectPayments) {
                 refundAllocationItems.push({
@@ -1503,7 +1514,9 @@ export async function DELETE(
               paymentTotal <= 0.009 &&
               !Number.isFinite(requestedFeeMethodId as number)
             ) {
-              throw new Error("Payment method is required for the fee payment.");
+              throw new Error(
+                "Payment method is required for the fee payment.",
+              );
             }
             if (!sourceMethodId) {
               throw new Error(

@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { X, File, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect } from "react";
+import { X, File, AlertCircle } from "lucide-react";
 
 interface RenameFileModalProps {
   isOpen: boolean;
@@ -14,7 +14,7 @@ export default function RenameFileModal({
   onClose,
   onSuccess,
   fileId,
-  currentName
+  currentName,
 }: RenameFileModalProps) {
   const [name, setName] = useState(currentName);
   const [loading, setLoading] = useState(false);
@@ -31,9 +31,9 @@ export default function RenameFileModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!name.trim()) {
-      setError('File name is required');
+      setError("File name is required");
       return;
     }
 
@@ -47,21 +47,21 @@ export default function RenameFileModal({
       setError(null);
 
       const response = await fetch(`/api/documents/${fileId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name.trim() })
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name.trim() }),
       });
 
       if (!response.ok) {
         const data = await response.json();
-        throw new Error(data.error || 'Failed to rename file');
+        throw new Error(data.error || "Failed to rename file");
       }
 
       onSuccess();
       onClose();
     } catch (err: any) {
-      console.error('Error renaming file:', err);
-      setError(err.message || 'Failed to rename file');
+      console.error("Error renaming file:", err);
+      setError(err.message || "Failed to rename file");
     } finally {
       setLoading(false);
     }
@@ -95,7 +95,10 @@ export default function RenameFileModal({
           )}
 
           <div className="mb-6">
-            <label htmlFor="fileName" className="block text-sm font-medium text-gray-700 mb-2">
+            <label
+              htmlFor="fileName"
+              className="block text-sm font-medium text-gray-700 mb-2"
+            >
               File Name
             </label>
             <input
@@ -129,7 +132,7 @@ export default function RenameFileModal({
               disabled={loading || !name.trim()}
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-blue-300 disabled:cursor-not-allowed"
             >
-              {loading ? 'Renaming...' : 'Rename'}
+              {loading ? "Renaming..." : "Rename"}
             </button>
           </div>
         </form>

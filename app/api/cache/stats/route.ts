@@ -1,10 +1,10 @@
-import { NextResponse } from 'next/server';
-import cache from '@/lib/cache';
-import { requireAdmin } from '@/lib/auth';
+import { NextResponse } from "next/server";
+import cache from "@/lib/cache";
+import { requireAdmin } from "@/lib/auth";
 
 /**
  * Cache Statistics Endpoint
- * 
+ *
  * GET /api/cache/stats - View cache performance metrics
  * DELETE /api/cache/stats - Clear entire cache (admin only)
  */
@@ -23,20 +23,20 @@ export async function GET() {
         hitRateRaw: hitRate,
       },
       health: {
-        status: hitRate > 70 ? 'excellent' : hitRate > 50 ? 'good' : 'poor',
+        status: hitRate > 70 ? "excellent" : hitRate > 50 ? "good" : "poor",
         message:
           hitRate > 70
-            ? 'Cache is performing well'
+            ? "Cache is performing well"
             : hitRate > 50
-            ? 'Cache performance is acceptable'
-            : 'Consider adjusting TTL values or cache strategy',
+              ? "Cache performance is acceptable"
+              : "Consider adjusting TTL values or cache strategy",
       },
       recommendations:
         hitRate < 50
           ? [
-              'Increase cache TTL for stable data',
-              'Review cache invalidation strategy',
-              'Check if data is too volatile for caching',
+              "Increase cache TTL for stable data",
+              "Review cache invalidation strategy",
+              "Check if data is too volatile for caching",
             ]
           : [],
     });
@@ -53,7 +53,7 @@ export async function DELETE() {
 
     return NextResponse.json({
       success: true,
-      message: 'Cache cleared successfully',
+      message: "Cache cleared successfully",
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 403 });

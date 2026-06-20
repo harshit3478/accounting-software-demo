@@ -1,11 +1,11 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import Link from 'next/link';
-import ConfirmModal from '../ConfirmModal';
-import { Plus } from 'lucide-react';
-import { formatUserDisplayName } from '../../lib/user-display';
-import { useAuth } from '../../lib/AuthContext';
+import { useState, useEffect } from "react";
+import Link from "next/link";
+import ConfirmModal from "../ConfirmModal";
+import { Plus } from "lucide-react";
+import { formatUserDisplayName } from "../../lib/user-display";
+import { useAuth } from "../../lib/AuthContext";
 import {
   CHEQUE_VAULT_PERMISSION_LABELS,
   CHEQUE_VAULT_PERMISSIONS,
@@ -14,7 +14,7 @@ import {
   SETTINGS_PERMISSION_LABELS,
   SETTINGS_PERMISSIONS,
   type UserPrivileges,
-} from '../../lib/permissions';
+} from "../../lib/permissions";
 
 interface User {
   id: number;
@@ -30,22 +30,28 @@ interface UserManagementTabProps {
   showError: (msg: string) => void;
 }
 
-export default function UserManagementTab({ showSuccess, showError }: UserManagementTabProps) {
+export default function UserManagementTab({
+  showSuccess,
+  showError,
+}: UserManagementTabProps) {
   const { isSuperAdmin, user: currentUser } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newUser, setNewUser] = useState({
-    email: '',
-    name: '',
-    role: 'accountant',
-    privileges: defaultPrivilegesForRole('accountant'),
+    email: "",
+    name: "",
+    role: "accountant",
+    privileges: defaultPrivilegesForRole("accountant"),
   });
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
-  const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; name: string } | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    id: number;
+    name: string;
+  } | null>(null);
 
   useEffect(() => {
     fetchUsers();
@@ -54,7 +60,7 @@ export default function UserManagementTab({ showSuccess, showError }: UserManage
   const fetchUsers = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/users');
+      const res = await fetch("/api/users");
       if (res.ok) {
         const data = await res.json();
         setUsers(data);
@@ -68,18 +74,18 @@ export default function UserManagementTab({ showSuccess, showError }: UserManage
     e.preventDefault();
     const email = newUser.email.trim().toLowerCase();
     if (!email || !newUser.name.trim()) {
-      showError('Email and name are required');
+      showError("Email and name are required");
       return;
     }
     if (users.some((u) => u.email.toLowerCase() === email)) {
-      showError('A user with this email already exists');
+      showError("A user with this email already exists");
       return;
     }
     setSaving(true);
     try {
-      const res = await fetch('/api/users', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...newUser,
           email,
@@ -87,13 +93,13 @@ export default function UserManagementTab({ showSuccess, showError }: UserManage
         }),
       });
       if (res.ok) {
-        showSuccess('User created successfully');
+        showSuccess("User created successfully");
         setShowCreateModal(false);
         setNewUser({
-          email: '',
-          name: '',
-          role: 'accountant',
-          privileges: defaultPrivilegesForRole('accountant'),
+          email: "",
+          name: "",
+          role: "accountant",
+          privileges: defaultPrivilegesForRole("accountant"),
         });
         fetchUsers();
       } else {
@@ -117,13 +123,13 @@ export default function UserManagementTab({ showSuccess, showError }: UserManage
         role: editingUser.role,
         privileges: editingUser.privileges,
       };
-      const res = await fetch('/api/users', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/users", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updateData),
       });
       if (res.ok) {
-        showSuccess('User updated successfully');
+        showSuccess("User updated successfully");
         setEditingUser(null);
         fetchUsers();
       } else {
@@ -139,13 +145,13 @@ export default function UserManagementTab({ showSuccess, showError }: UserManage
     if (!deleteConfirm) return;
     setDeletingId(deleteConfirm.id);
     try {
-      const res = await fetch('/api/users', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/users", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: deleteConfirm.id }),
       });
       if (res.ok) {
-        showSuccess('User deleted successfully');
+        showSuccess("User deleted successfully");
         setDeleteConfirm(null);
         fetchUsers();
       } else {
@@ -157,7 +163,11 @@ export default function UserManagementTab({ showSuccess, showError }: UserManage
     }
   };
 
-  const renderPermissions = (perm: 'upload' | 'delete' | 'rename', checked: boolean, onChange: (val: boolean) => void) => (
+  const renderPermissions = (
+    perm: "upload" | "delete" | "rename",
+    checked: boolean,
+    onChange: (val: boolean) => void,
+  ) => (
     <label key={perm} className="flex items-center space-x-2 cursor-pointer">
       <input
         type="checkbox"
@@ -182,14 +192,19 @@ export default function UserManagementTab({ showSuccess, showError }: UserManage
     onChange: (next: UserPrivileges) => void,
   ) => (
     <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-      <h3 className="text-sm font-semibold text-gray-700 mb-3">Document Permissions</h3>
+      <h3 className="text-sm font-semibold text-gray-700 mb-3">
+        Document Permissions
+      </h3>
       <div className="flex flex-wrap gap-4">
-        {(['upload', 'delete', 'rename'] as const).map((perm) =>
-          renderPermissions(perm, privileges.documents?.[perm] || false, (val) =>
-            onChange({
-              ...privileges,
-              documents: { ...privileges.documents, [perm]: val },
-            }),
+        {(["upload", "delete", "rename"] as const).map((perm) =>
+          renderPermissions(
+            perm,
+            privileges.documents?.[perm] || false,
+            (val) =>
+              onChange({
+                ...privileges,
+                documents: { ...privileges.documents, [perm]: val },
+              }),
           ),
         )}
       </div>
@@ -216,14 +231,19 @@ export default function UserManagementTab({ showSuccess, showError }: UserManage
     onChange: (next: UserPrivileges) => void,
   ) => (
     <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-      <h3 className="text-sm font-semibold text-gray-700 mb-3">Settings Permissions</h3>
+      <h3 className="text-sm font-semibold text-gray-700 mb-3">
+        Settings Permissions
+      </h3>
       <p className="text-xs text-gray-500 mb-3">
         Migrated Invoice Edit is enabled for admins by default and off for
         staff/accountants unless explicitly granted.
       </p>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto">
         {SETTINGS_PERMISSIONS.map((key) => (
-          <label key={key} className="flex items-center space-x-2 cursor-pointer">
+          <label
+            key={key}
+            className="flex items-center space-x-2 cursor-pointer"
+          >
             <input
               type="checkbox"
               checked={
@@ -241,7 +261,9 @@ export default function UserManagementTab({ showSuccess, showError }: UserManage
               }
               className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
             />
-            <span className="text-sm text-gray-700">{SETTINGS_PERMISSION_LABELS[key]}</span>
+            <span className="text-sm text-gray-700">
+              {SETTINGS_PERMISSION_LABELS[key]}
+            </span>
           </label>
         ))}
       </div>
@@ -253,11 +275,19 @@ export default function UserManagementTab({ showSuccess, showError }: UserManage
     onChange: (next: UserPrivileges) => void,
   ) => (
     <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-      <h3 className="text-sm font-semibold text-gray-700 mb-1">Cheque Vault Permissions</h3>
-      <p className="text-xs text-gray-500 mb-3">Admin only. Staff and accountants can view the vault list but cannot upload or approve.</p>
+      <h3 className="text-sm font-semibold text-gray-700 mb-1">
+        Cheque Vault Permissions
+      </h3>
+      <p className="text-xs text-gray-500 mb-3">
+        Admin only. Staff and accountants can view the vault list but cannot
+        upload or approve.
+      </p>
       <div className="flex flex-wrap gap-4">
         {CHEQUE_VAULT_PERMISSIONS.map((perm) => (
-          <label key={perm} className="flex items-center space-x-2 cursor-pointer">
+          <label
+            key={perm}
+            className="flex items-center space-x-2 cursor-pointer"
+          >
             <input
               type="checkbox"
               checked={privileges.chequeVault?.[perm] ?? false}
@@ -272,7 +302,9 @@ export default function UserManagementTab({ showSuccess, showError }: UserManage
               }
               className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
             />
-            <span className="text-sm text-gray-700">{CHEQUE_VAULT_PERMISSION_LABELS[perm]}</span>
+            <span className="text-sm text-gray-700">
+              {CHEQUE_VAULT_PERMISSION_LABELS[perm]}
+            </span>
           </label>
         ))}
       </div>
@@ -283,7 +315,9 @@ export default function UserManagementTab({ showSuccess, showError }: UserManage
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h2 className="text-xl font-semibold text-gray-900 mb-1">User Management</h2>
+          <h2 className="text-xl font-semibold text-gray-900 mb-1">
+            User Management
+          </h2>
           <p className="text-gray-600 text-sm">
             Manage staff, accountants, and admin accounts. Edit your own account
             under Settings → My Profile.
@@ -310,101 +344,151 @@ export default function UserManagementTab({ showSuccess, showError }: UserManage
             <table className="w-full table-fixed">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-[25%]">Name</th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-[15%]">Role</th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-[18%]">Privileges</th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-[12%]">Created</th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-[30%]">Actions</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-[25%]">
+                    Name
+                  </th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-[15%]">
+                    Role
+                  </th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-[18%]">
+                    Privileges
+                  </th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-[12%]">
+                    Created
+                  </th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-[30%]">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {visibleUsers.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-500">
+                    <td
+                      colSpan={5}
+                      className="px-4 py-8 text-center text-sm text-gray-500"
+                    >
                       No users to manage.
                     </td>
                   </tr>
                 ) : (
-                visibleUsers.map((user, index) => (
-                  <tr key={user.id} className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-blue-50 transition duration-150`}>
-                    <td className="px-4 py-3">
-                      <div className="text-sm font-medium text-gray-900 break-words">
-                        {formatUserDisplayName(user)}
-                      </div>
-                      <div className="text-xs text-gray-500 break-words">{user.email}</div>
-                    </td>
-                    <td className="px-3 py-3">
-                      <span className={`px-2 py-1 text-xs font-semibold rounded-full inline-block ${
-                        user.role === 'admin' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'
-                      }`}>
-                        {user.role}
-                      </span>
-                    </td>
-                    <td className="px-3 py-3 text-sm">
-                      {(user.role === 'accountant' || user.role === 'staff') && user.privileges ? (
-                        <div className="flex flex-wrap gap-1">
-                          {(['upload', 'delete', 'rename'] as const).map((perm) => (
-                            <span key={perm} className={`px-1.5 py-0.5 text-xs rounded ${
-                              user.privileges!.documents?.[perm] ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
-                            }`}>
-                              D:{perm.charAt(0).toUpperCase()}
-                            </span>
-                          ))}
-                          {countEnabledSettings(user.privileges) > 0 && (
-                            <span className="px-1.5 py-0.5 text-xs rounded bg-green-100 text-green-700">
-                              Settings ({countEnabledSettings(user.privileges)})
-                            </span>
-                          )}
+                  visibleUsers.map((user, index) => (
+                    <tr
+                      key={user.id}
+                      className={`${index % 2 === 0 ? "bg-white" : "bg-gray-50"} hover:bg-blue-50 transition duration-150`}
+                    >
+                      <td className="px-4 py-3">
+                        <div className="text-sm font-medium text-gray-900 break-words">
+                          {formatUserDisplayName(user)}
                         </div>
-                      ) : user.role === 'admin' ? (
-                        <div className="flex flex-wrap gap-1">
-                          {user.privileges?.chequeVault?.upload && (
-                            <span className="px-1.5 py-0.5 text-xs rounded bg-green-100 text-green-700">Cheque Upload</span>
-                          )}
-                          {user.privileges?.chequeVault?.approve && (
-                            <span className="px-1.5 py-0.5 text-xs rounded bg-green-100 text-green-700">Cheque Approve</span>
-                          )}
-                          {!user.privileges?.chequeVault?.upload && !user.privileges?.chequeVault?.approve && (
-                            <span className="text-gray-500 text-xs">Settings Access</span>
-                          )}
+                        <div className="text-xs text-gray-500 break-words">
+                          {user.email}
                         </div>
-                      ) : (
-                        <span className="text-gray-500 text-xs">All Access</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-3 text-sm text-gray-500">
-                      {new Date(user.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}
-                    </td>
-                    <td className="px-3 py-3 text-sm font-medium">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <button
-                          onClick={() =>
-                            setEditingUser({
-                              ...user,
-                              privileges: mergePrivileges(user.role, user.privileges),
-                            })
-                          }
-                          className="px-2.5 py-1 bg-blue-600 text-white text-xs font-medium rounded hover:bg-blue-700 transition duration-200"
+                      </td>
+                      <td className="px-3 py-3">
+                        <span
+                          className={`px-2 py-1 text-xs font-semibold rounded-full inline-block ${
+                            user.role === "admin"
+                              ? "bg-purple-100 text-purple-800"
+                              : "bg-blue-100 text-blue-800"
+                          }`}
                         >
-                          Edit
-                        </button>
-                        <Link
-                          href={`/attendance/admin?userId=${user.id}`}
-                          className="px-2.5 py-1 bg-indigo-600 text-white text-xs font-medium rounded hover:bg-indigo-700 transition duration-200"
-                        >
-                          Attendance
-                        </Link>
-                        <button
-                          onClick={() => setDeleteConfirm({ id: user.id, name: user.name })}
-                          disabled={deletingId !== null}
-                          className="px-2.5 py-1 bg-red-600 text-white text-xs font-medium rounded hover:bg-red-700 transition duration-200 disabled:opacity-50"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                          {user.role}
+                        </span>
+                      </td>
+                      <td className="px-3 py-3 text-sm">
+                        {(user.role === "accountant" ||
+                          user.role === "staff") &&
+                        user.privileges ? (
+                          <div className="flex flex-wrap gap-1">
+                            {(["upload", "delete", "rename"] as const).map(
+                              (perm) => (
+                                <span
+                                  key={perm}
+                                  className={`px-1.5 py-0.5 text-xs rounded ${
+                                    user.privileges!.documents?.[perm]
+                                      ? "bg-green-100 text-green-700"
+                                      : "bg-gray-100 text-gray-500"
+                                  }`}
+                                >
+                                  D:{perm.charAt(0).toUpperCase()}
+                                </span>
+                              ),
+                            )}
+                            {countEnabledSettings(user.privileges) > 0 && (
+                              <span className="px-1.5 py-0.5 text-xs rounded bg-green-100 text-green-700">
+                                Settings (
+                                {countEnabledSettings(user.privileges)})
+                              </span>
+                            )}
+                          </div>
+                        ) : user.role === "admin" ? (
+                          <div className="flex flex-wrap gap-1">
+                            {user.privileges?.chequeVault?.upload && (
+                              <span className="px-1.5 py-0.5 text-xs rounded bg-green-100 text-green-700">
+                                Cheque Upload
+                              </span>
+                            )}
+                            {user.privileges?.chequeVault?.approve && (
+                              <span className="px-1.5 py-0.5 text-xs rounded bg-green-100 text-green-700">
+                                Cheque Approve
+                              </span>
+                            )}
+                            {!user.privileges?.chequeVault?.upload &&
+                              !user.privileges?.chequeVault?.approve && (
+                                <span className="text-gray-500 text-xs">
+                                  Settings Access
+                                </span>
+                              )}
+                          </div>
+                        ) : (
+                          <span className="text-gray-500 text-xs">
+                            All Access
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-3 py-3 text-sm text-gray-500">
+                        {new Date(user.createdAt).toLocaleDateString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                          year: "2-digit",
+                        })}
+                      </td>
+                      <td className="px-3 py-3 text-sm font-medium">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <button
+                            onClick={() =>
+                              setEditingUser({
+                                ...user,
+                                privileges: mergePrivileges(
+                                  user.role,
+                                  user.privileges,
+                                ),
+                              })
+                            }
+                            className="px-2.5 py-1 bg-blue-600 text-white text-xs font-medium rounded hover:bg-blue-700 transition duration-200"
+                          >
+                            Edit
+                          </button>
+                          <Link
+                            href={`/attendance/admin?userId=${user.id}`}
+                            className="px-2.5 py-1 bg-indigo-600 text-white text-xs font-medium rounded hover:bg-indigo-700 transition duration-200"
+                          >
+                            Attendance
+                          </Link>
+                          <button
+                            onClick={() =>
+                              setDeleteConfirm({ id: user.id, name: user.name })
+                            }
+                            disabled={deletingId !== null}
+                            className="px-2.5 py-1 bg-red-600 text-white text-xs font-medium rounded hover:bg-red-700 transition duration-200 disabled:opacity-50"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
                 )}
               </tbody>
             </table>
@@ -415,39 +499,59 @@ export default function UserManagementTab({ showSuccess, showError }: UserManage
       {/* Create User Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 flex items-center justify-center z-50 backdrop-blur-sm">
-          <div className="absolute inset-0 bg-black/50" onClick={() => !saving && setShowCreateModal(false)} />
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => !saving && setShowCreateModal(false)}
+          />
           <div className="relative bg-white rounded-lg shadow-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-gray-800">Create New User</h2>
-              <button onClick={() => setShowCreateModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+              <h2 className="text-lg font-semibold text-gray-800">
+                Create New User
+              </h2>
+              <button
+                onClick={() => setShowCreateModal(false)}
+                className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
+              >
+                &times;
+              </button>
             </div>
             <div className="p-6">
               <form onSubmit={handleCreateUser}>
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Email
+                    </label>
                     <input
                       type="email"
                       placeholder="user@example.com"
                       value={newUser.email}
-                      onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+                      onChange={(e) =>
+                        setNewUser({ ...newUser, email: e.target.value })
+                      }
                       required
                       className="w-full border text-gray-900 border-gray-300 p-2.5 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Name
+                    </label>
                     <input
                       type="text"
                       placeholder="Full Name"
                       value={newUser.name}
-                      onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
+                      onChange={(e) =>
+                        setNewUser({ ...newUser, name: e.target.value })
+                      }
                       required
                       className="w-full border text-gray-900 border-gray-300 p-2.5 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Role
+                    </label>
                     <select
                       value={newUser.role}
                       onChange={(e) => {
@@ -455,7 +559,10 @@ export default function UserManagementTab({ showSuccess, showError }: UserManage
                         setNewUser({
                           ...newUser,
                           role,
-                          privileges: updateRolePrivileges(role, newUser.privileges),
+                          privileges: updateRolePrivileges(
+                            role,
+                            newUser.privileges,
+                          ),
                         });
                       }}
                       className="w-full border text-gray-900 border-gray-300 p-2.5 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -466,24 +573,30 @@ export default function UserManagementTab({ showSuccess, showError }: UserManage
                     </select>
                   </div>
 
-                  {(newUser.role === 'accountant' || newUser.role === 'staff') &&
-                    renderStaffAccountantPermissions(newUser.privileges, (privileges) =>
-                      setNewUser({ ...newUser, privileges }),
+                  {(newUser.role === "accountant" ||
+                    newUser.role === "staff") &&
+                    renderStaffAccountantPermissions(
+                      newUser.privileges,
+                      (privileges) => setNewUser({ ...newUser, privileges }),
                     )}
 
-                  {isSuperAdmin && newUser.role === 'admin' && (
+                  {isSuperAdmin && newUser.role === "admin" && (
                     <>
-                      {renderSettingsPermissions(newUser.privileges, (privileges) =>
-                        setNewUser({ ...newUser, privileges })
+                      {renderSettingsPermissions(
+                        newUser.privileges,
+                        (privileges) => setNewUser({ ...newUser, privileges }),
                       )}
-                      {renderChequeVaultPermissions(newUser.privileges, (privileges) =>
-                        setNewUser({ ...newUser, privileges })
+                      {renderChequeVaultPermissions(
+                        newUser.privileges,
+                        (privileges) => setNewUser({ ...newUser, privileges }),
                       )}
                     </>
                   )}
                 </div>
 
-                <p className="text-xs text-gray-500 mt-4">Users will log in via email OTP. No password is required.</p>
+                <p className="text-xs text-gray-500 mt-4">
+                  Users will log in via email OTP. No password is required.
+                </p>
 
                 <div className="flex items-center gap-3 mt-5">
                   <button
@@ -491,7 +604,7 @@ export default function UserManagementTab({ showSuccess, showError }: UserManage
                     disabled={saving}
                     className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-2.5 rounded-lg transition duration-200 disabled:opacity-50"
                   >
-                    {saving ? 'Creating...' : 'Create User'}
+                    {saving ? "Creating..." : "Create User"}
                   </button>
                   <button
                     type="button"
@@ -511,37 +624,58 @@ export default function UserManagementTab({ showSuccess, showError }: UserManage
       {/* Edit User Modal */}
       {editingUser && (
         <div className="fixed inset-0 flex items-center justify-center z-50 backdrop-blur-sm">
-          <div className="absolute inset-0 bg-black/50" onClick={() => !updating && setEditingUser(null)} />
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => !updating && setEditingUser(null)}
+          />
           <div className="relative bg-white rounded-lg shadow-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
               <h2 className="text-lg font-semibold text-gray-800">Edit User</h2>
-              <button onClick={() => setEditingUser(null)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+              <button
+                onClick={() => setEditingUser(null)}
+                className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
+              >
+                &times;
+              </button>
             </div>
             <div className="p-6">
               <form onSubmit={handleEditUser}>
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Email
+                    </label>
                     <input
                       type="email"
                       value={editingUser.email}
-                      onChange={(e) => setEditingUser({ ...editingUser, email: e.target.value })}
+                      onChange={(e) =>
+                        setEditingUser({
+                          ...editingUser,
+                          email: e.target.value,
+                        })
+                      }
                       required
                       className="w-full border text-gray-900 border-gray-300 p-2.5 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Name
+                    </label>
                     <input
                       type="text"
                       value={editingUser.name}
-                      onChange={(e) => setEditingUser({ ...editingUser, name: e.target.value })}
+                      onChange={(e) =>
+                        setEditingUser({ ...editingUser, name: e.target.value })
+                      }
                       required
                       className="w-full border text-gray-900 border-gray-300 p-2.5 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Role
+                    </label>
                     <select
                       value={editingUser.role}
                       onChange={(e) => {
@@ -549,7 +683,10 @@ export default function UserManagementTab({ showSuccess, showError }: UserManage
                         setEditingUser({
                           ...editingUser,
                           role,
-                          privileges: updateRolePrivileges(role, editingUser.privileges),
+                          privileges: updateRolePrivileges(
+                            role,
+                            editingUser.privileges,
+                          ),
                         });
                       }}
                       className="w-full border text-gray-900 border-gray-300 p-2.5 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -560,21 +697,31 @@ export default function UserManagementTab({ showSuccess, showError }: UserManage
                     </select>
                   </div>
 
-                  {(editingUser.role === 'accountant' || editingUser.role === 'staff') &&
+                  {(editingUser.role === "accountant" ||
+                    editingUser.role === "staff") &&
                     renderStaffAccountantPermissions(
                       mergePrivileges(editingUser.role, editingUser.privileges),
-                      (privileges) => setEditingUser({ ...editingUser, privileges }),
+                      (privileges) =>
+                        setEditingUser({ ...editingUser, privileges }),
                     )}
 
-                  {isSuperAdmin && editingUser.role === 'admin' && (
+                  {isSuperAdmin && editingUser.role === "admin" && (
                     <>
                       {renderSettingsPermissions(
-                        mergePrivileges(editingUser.role, editingUser.privileges),
-                        (privileges) => setEditingUser({ ...editingUser, privileges }),
+                        mergePrivileges(
+                          editingUser.role,
+                          editingUser.privileges,
+                        ),
+                        (privileges) =>
+                          setEditingUser({ ...editingUser, privileges }),
                       )}
                       {renderChequeVaultPermissions(
-                        mergePrivileges(editingUser.role, editingUser.privileges),
-                        (privileges) => setEditingUser({ ...editingUser, privileges }),
+                        mergePrivileges(
+                          editingUser.role,
+                          editingUser.privileges,
+                        ),
+                        (privileges) =>
+                          setEditingUser({ ...editingUser, privileges }),
                       )}
                     </>
                   )}
@@ -586,7 +733,7 @@ export default function UserManagementTab({ showSuccess, showError }: UserManage
                     disabled={updating}
                     className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-2.5 rounded-lg transition duration-200 disabled:opacity-50"
                   >
-                    {updating ? 'Updating...' : 'Update User'}
+                    {updating ? "Updating..." : "Update User"}
                   </button>
                   <button
                     type="button"

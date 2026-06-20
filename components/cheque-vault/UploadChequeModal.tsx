@@ -37,9 +37,8 @@ export default function UploadChequeModal({
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
-  const [uploadedCheque, setUploadedCheque] = useState<ChequeVaultRecord | null>(
-    null,
-  );
+  const [uploadedCheque, setUploadedCheque] =
+    useState<ChequeVaultRecord | null>(null);
   const [ocrResult, setOcrResult] = useState<OcrResult | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -301,8 +300,18 @@ export default function UploadChequeModal({
             onClick={handleClose}
             className="text-gray-400 hover:text-gray-600"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
           </button>
         </div>
@@ -345,8 +354,8 @@ export default function UploadChequeModal({
           {step === 1 && (
             <div>
               <p className="text-sm text-gray-600 mb-4">
-                Upload the cheque image and confirm the details. An approver will
-                link invoices before the payment is recorded.
+                Upload the cheque image and confirm the details. An approver
+                will link invoices before the payment is recorded.
               </p>
               <div
                 tabIndex={0}

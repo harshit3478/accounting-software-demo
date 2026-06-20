@@ -66,14 +66,23 @@ export function generatePaymentReceiptPDF(payment: PaymentReceipt) {
 
   doc.text("Receipt #:", 5, y);
   doc.setFont("helvetica", "bold");
-  doc.text(`PAY-${String(payment.id).padStart(5, "0")}`, pageW - 5, y, { align: "right" });
+  doc.text(`PAY-${String(payment.id).padStart(5, "0")}`, pageW - 5, y, {
+    align: "right",
+  });
   y += 6;
 
   doc.setFont("helvetica", "normal");
   doc.text("Date:", 5, y);
-  doc.text(new Date(payment.date).toLocaleDateString("en-US", {
-    year: "numeric", month: "long", day: "numeric"
-  }), pageW - 5, y, { align: "right" });
+  doc.text(
+    new Date(payment.date).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    }),
+    pageW - 5,
+    y,
+    { align: "right" },
+  );
   y += 6;
 
   doc.text("Method:", 5, y);
@@ -96,18 +105,26 @@ export function generatePaymentReceiptPDF(payment: PaymentReceipt) {
     y += 5;
 
     doc.text("Client:", 5, y);
-    const clientName = payment.invoice.clientName.length > 20
-      ? payment.invoice.clientName.substring(0, 18) + "..."
-      : payment.invoice.clientName;
+    const clientName =
+      payment.invoice.clientName.length > 20
+        ? payment.invoice.clientName.substring(0, 18) + "..."
+        : payment.invoice.clientName;
     doc.text(clientName, pageW - 5, y, { align: "right" });
     y += 5;
 
     doc.text("Invoice Total:", 5, y);
-    doc.text(`$${payment.invoice.amount.toFixed(2)}`, pageW - 5, y, { align: "right" });
+    doc.text(`$${payment.invoice.amount.toFixed(2)}`, pageW - 5, y, {
+      align: "right",
+    });
     y += 5;
 
     doc.text("Previously Paid:", 5, y);
-    doc.text(`$${(payment.invoice.paidAmount - payment.amount).toFixed(2)}`, pageW - 5, y, { align: "right" });
+    doc.text(
+      `$${(payment.invoice.paidAmount - payment.amount).toFixed(2)}`,
+      pageW - 5,
+      y,
+      { align: "right" },
+    );
     y += 5;
 
     const remaining = payment.invoice.amount - payment.invoice.paidAmount;
@@ -173,7 +190,9 @@ export function generatePaymentReceiptPDF(payment: PaymentReceipt) {
     doc.text(BUSINESS_CONFIG.website, centerX, y, { align: "center" });
     y += 4;
   }
-  doc.text(`Generated: ${new Date().toLocaleString()}`, centerX, y, { align: "center" });
+  doc.text(`Generated: ${new Date().toLocaleString()}`, centerX, y, {
+    align: "center",
+  });
 
   // Open as print preview
   const blobUrl = doc.output("bloburl");

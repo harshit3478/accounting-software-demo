@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
-import bcrypt from 'bcrypt';
-import prisma from '../../../lib/prisma';
+import { NextRequest, NextResponse } from "next/server";
+import bcrypt from "bcrypt";
+import prisma from "../../../lib/prisma";
 
 export async function POST(request: NextRequest) {
   try {
@@ -8,7 +8,7 @@ export async function POST(request: NextRequest) {
 
     const user = await prisma.user.findFirst({ where: { resetToken: token } });
     if (!user) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 400 });
+      return NextResponse.json({ error: "Invalid token" }, { status: 400 });
     }
 
     const hashedPassword = await bcrypt.hash(newPassword, 10);
@@ -17,8 +17,11 @@ export async function POST(request: NextRequest) {
       data: { passwordHash: hashedPassword, resetToken: null },
     });
 
-    return NextResponse.json({ message: 'Password reset successful' });
+    return NextResponse.json({ message: "Password reset successful" });
   } catch (error) {
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
   }
 }

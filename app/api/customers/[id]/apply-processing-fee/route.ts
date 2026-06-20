@@ -13,7 +13,10 @@ export async function POST(
     const { id: idParam } = await params;
     const customerId = parseInt(idParam, 10);
     if (isNaN(customerId)) {
-      return NextResponse.json({ error: "Invalid customer ID" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Invalid customer ID" },
+        { status: 400 },
+      );
     }
 
     const body = await request.json();
@@ -34,7 +37,10 @@ export async function POST(
         : undefined;
 
     if (isNaN(parsedInvoiceId)) {
-      return NextResponse.json({ error: "Invalid invoice ID" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Invalid invoice ID" },
+        { status: 400 },
+      );
     }
 
     if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {

@@ -663,29 +663,33 @@ export default function InvoiceImageTemplate({
           {[...paymentsToShow]
             .sort(
               (a, b) =>
-                new Date(a.date || a.createdAt || a.paymentDate || "").getTime() -
-                new Date(b.date || b.createdAt || b.paymentDate || "").getTime(),
+                new Date(
+                  a.date || a.createdAt || a.paymentDate || "",
+                ).getTime() -
+                new Date(
+                  b.date || b.createdAt || b.paymentDate || "",
+                ).getTime(),
             )
             .map((p, i) => (
-                <div
-                  key={i}
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    padding: "4px 0",
-                    fontSize: "12px",
-                  }}
+              <div
+                key={i}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  padding: "4px 0",
+                  fontSize: "12px",
+                }}
+              >
+                <span
+                  style={{ color: "#555555", flex: 1, paddingRight: "8px" }}
                 >
-                  <span
-                    style={{ color: "#555555", flex: 1, paddingRight: "8px" }}
-                  >
-                    {getInvoicePdfPaymentLabel(p)}
-                  </span>
-                  <span style={{ color: "#333333", whiteSpace: "nowrap" }}>
-                    {fmt(Number(p.amount || 0))}
-                  </span>
-                </div>
-              ))}
+                  {getInvoicePdfPaymentLabel(p)}
+                </span>
+                <span style={{ color: "#333333", whiteSpace: "nowrap" }}>
+                  {fmt(Number(p.amount || 0))}
+                </span>
+              </div>
+            ))}
 
           {/* Separator */}
           <div

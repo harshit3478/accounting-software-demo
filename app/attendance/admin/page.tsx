@@ -32,7 +32,9 @@ function AttendanceAdminContent() {
   const [exportEndDate, setExportEndDate] = useState("");
   const [exporting, setExporting] = useState(false);
 
-  const WORKING_HOURS = parseFloat(process.env.NEXT_PUBLIC_WORKING_HOURS_PER_DAY || "8");
+  const WORKING_HOURS = parseFloat(
+    process.env.NEXT_PUBLIC_WORKING_HOURS_PER_DAY || "8",
+  );
 
   useEffect(() => {
     if (userId) {
@@ -75,7 +77,7 @@ function AttendanceAdminContent() {
         const data = await res.json();
         // endpoint returns an array of users
         const found = (data || []).find(
-          (u: any) => String(u.id) === String(id)
+          (u: any) => String(u.id) === String(id),
         );
         if (found) {
           setUser(found);
@@ -314,7 +316,7 @@ function AttendanceAdminContent() {
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full">
             <h2 className="text-xl font-bold mb-4">Export Attendance as PDF</h2>
-            
+
             <div className="mb-4">
               <p className="text-sm text-gray-600 mb-3">
                 Select quick range or choose custom dates:
@@ -394,15 +396,17 @@ function AttendanceAdminContent() {
 
 export default function AttendanceAdminPage() {
   return (
-    <Suspense fallback={
-      <div className="bg-gray-50 hero-pattern min-h-screen">
-        <Navigation />
-        <div className="max-w-5xl mx-auto px-4 py-8">
-          <h1 className="text-2xl font-bold mb-4">Attendance (Admin)</h1>
-          <p className="text-sm text-gray-600">Loading...</p>
+    <Suspense
+      fallback={
+        <div className="bg-gray-50 hero-pattern min-h-screen">
+          <Navigation />
+          <div className="max-w-5xl mx-auto px-4 py-8">
+            <h1 className="text-2xl font-bold mb-4">Attendance (Admin)</h1>
+            <p className="text-sm text-gray-600">Loading...</p>
+          </div>
         </div>
-      </div>
-    }>
+      }
+    >
       <AttendanceAdminContent />
     </Suspense>
   );

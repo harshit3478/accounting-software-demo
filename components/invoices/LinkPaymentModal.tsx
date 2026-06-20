@@ -8,6 +8,13 @@ import {
   findOverdueLayawayInstallmentClient,
   isLateFeeConfigured,
 } from "../../lib/late-fee-client";
+import {
+  getEarlyDiscountDisplayAmounts,
+  getEarlyPaymentDiscountEligibility,
+  isEarlyPaymentDiscountConfigured,
+  type EarlyPaymentDiscountSettingSnapshot,
+} from "../../lib/early-payment-discount-client";
+import EarlyPaymentDiscountNotice from "./EarlyPaymentDiscountNotice";
 
 interface Invoice {
   id: number;
@@ -15,6 +22,10 @@ interface Invoice {
   clientName: string;
   amount: number;
   paidAmount: number;
+  invoiceDate?: string;
+  createdAt?: string;
+  earlyPaymentDiscount?: number;
+  status?: string;
   customerId?: number | null;
   isLayaway?: boolean;
   layawayPlan?: {
@@ -66,6 +77,8 @@ export default function LinkPaymentModal({
     amount: 0,
     isActive: false,
   });
+  const [earlyDiscountSetting, setEarlyDiscountSetting] =
+    useState<EarlyPaymentDiscountSettingSnapshot | null>(null);
   const [applyLateFee, setApplyLateFee] = useState<boolean | null>(null);
   const [lateFeeWaivedReason, setLateFeeWaivedReason] = useState("");
 
@@ -80,6 +93,20 @@ export default function LinkPaymentModal({
           if (data) {
             setLateFeeSetting({
               amount: Number(data.amount ?? 0),
+              isActive: !!data.isActive,
+            });
+          }
+        })
+        .catch(() => {});
+      fetch("/api/early-payment-discount")
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data) {
+            setEarlyDiscountSetting({
+              daysWindow: Number(data.daysWindow ?? 0),
+              discountPercent: Number(data.discountPercent ?? 0),
+              paymentThreshold:
+                data.paymentThreshold === "half" ? "half" : "full",
               isActive: !!data.isActive,
             });
           }
@@ -168,10 +195,23 @@ export default function LinkPaymentModal({
     if (!invoice) return;
     setSelectedPaymentId(payment.id);
 
-    // Auto-calculate amount to link: min(invoiceRemaining, paymentAvailable)
     const invoiceRemaining = invoice.amount - invoice.paidAmount;
-    const maxLinkable = Math.min(invoiceRemaining, payment.availableBalance);
-    setLinkAmount(maxLinkable);
+    let dueAmount = invoiceRemaining;
+
+    if (isEarlyPaymentDiscountConfigured(earlyDiscountSetting)) {
+      const eligibility = getEarlyPaymentDiscountEligibility({
+        invoice,
+        paymentDate: payment.paymentDate,
+        additionalPaymentAmount: invoiceRemaining,
+        setting: earlyDiscountSetting,
+      });
+      dueAmount = getEarlyDiscountDisplayAmounts(
+        invoice,
+        eligibility,
+      ).displayRemaining;
+    }
+
+    setLinkAmount(Math.min(dueAmount, payment.availableBalance));
   };
 
   const handleLinkPayment = async () => {
@@ -233,6 +273,11 @@ export default function LinkPaymentModal({
       const data = await res.json();
 
       if (res.ok) {
+        if (data.storeCreditAdded > 0) {
+          alert(
+            `$${Number(data.storeCreditAdded).toFixed(2)} has been saved as Store Credit from the early payment discount.`,
+          );
+        }
         onSuccess();
         onClose();
       } else {
@@ -269,10 +314,37 @@ export default function LinkPaymentModal({
 
   if (!invoice) return null;
 
-  const invoiceRemaining = invoice.amount - invoice.paidAmount;
+  const invoiceForDiscount = currentInvoice ?? invoice;
+  const grossRemaining = invoiceForDiscount.amount - invoiceForDiscount.paidAmount;
   const selectedPayment = processedPayments.find(
     (p) => p.id === selectedPaymentId,
   );
+  const previewPaymentDate =
+    selectedPayment?.paymentDate ?? new Date().toISOString().split("T")[0];
+  const previewLinkAmount =
+    selectedPayment && linkAmount > 0
+      ? linkAmount
+      : Math.max(grossRemaining, 0);
+
+  const earlyDiscountEligibility =
+    previewLinkAmount > 0 &&
+    isEarlyPaymentDiscountConfigured(earlyDiscountSetting)
+      ? getEarlyPaymentDiscountEligibility({
+          invoice: invoiceForDiscount,
+          paymentDate: previewPaymentDate,
+          additionalPaymentAmount: grossRemaining,
+          setting: earlyDiscountSetting,
+        })
+      : null;
+
+  const discountAmounts = getEarlyDiscountDisplayAmounts(
+    invoiceForDiscount,
+    earlyDiscountEligibility,
+  );
+  const displayRemaining = discountAmounts.displayRemaining;
+  const maxLinkAmount = selectedPayment
+    ? Math.min(selectedPayment.availableBalance, displayRemaining)
+    : displayRemaining;
   const overdueInstallment =
     currentInvoice && selectedPayment
       ? findOverdueLayawayInstallmentClient(
@@ -334,13 +406,28 @@ export default function LinkPaymentModal({
             </div>
             <div className="flex flex-col items-end">
               <span className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">
-                Remaining Due
+                {discountAmounts.showDiscount
+                  ? "Due (after early discount)"
+                  : "Remaining Due"}
               </span>
               <span className="text-lg font-bold text-blue-600">
-                ${invoiceRemaining.toFixed(2)}
+                {discountAmounts.showDiscount && (
+                  <span className="text-sm line-through text-gray-400 mr-2 font-normal">
+                    ${grossRemaining.toFixed(2)}
+                  </span>
+                )}
+                ${displayRemaining.toFixed(2)}
               </span>
             </div>
           </div>
+
+          {earlyDiscountEligibility && (
+            <EarlyPaymentDiscountNotice
+              eligibility={earlyDiscountEligibility}
+              displayRemaining={discountAmounts.displayRemaining}
+              grossRemaining={discountAmounts.grossRemaining}
+            />
+          )}
 
           {/* Minimal Search */}
           <div className="relative mb-2">
@@ -511,11 +598,7 @@ export default function LinkPaymentModal({
                   <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">
                     Amount to Link
                     <span className="ml-2 font-normal text-blue-600 normal-case bg-blue-50 px-1.5 py-0.5 rounded">
-                      Max: $
-                      {Math.min(
-                        invoiceRemaining,
-                        selectedPayment.availableBalance,
-                      ).toFixed(2)}
+                      Max: ${maxLinkAmount.toFixed(2)}
                     </span>
                   </label>
                   <div className="relative">
@@ -526,10 +609,7 @@ export default function LinkPaymentModal({
                       type="number"
                       min="0.01"
                       step="0.01"
-                      max={Math.min(
-                        invoiceRemaining,
-                        selectedPayment.availableBalance,
-                      )}
+                      max={maxLinkAmount}
                       value={linkAmount}
                       onChange={(e) =>
                         setLinkAmount(parseFloat(e.target.value))

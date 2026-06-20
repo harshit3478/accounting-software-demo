@@ -145,8 +145,13 @@ export async function removeLateFeeFromInvoice(
     where: { id: input.paymentId },
   });
 
-  const currentAmount = Number(invoice.amount?.toNumber?.() ?? invoice.amount ?? 0);
-  const nextAmount = Math.max(Number((currentAmount - feeAmount).toFixed(2)), 0);
+  const currentAmount = Number(
+    invoice.amount?.toNumber?.() ?? invoice.amount ?? 0,
+  );
+  const nextAmount = Math.max(
+    Number((currentAmount - feeAmount).toFixed(2)),
+    0,
+  );
 
   await tx.invoice.update({
     where: { id: input.invoiceId },

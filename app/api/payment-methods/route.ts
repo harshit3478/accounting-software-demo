@@ -19,7 +19,10 @@ export async function GET(request: NextRequest) {
     if (error.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    return NextResponse.json({ error: "Failed to fetch payment methods" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to fetch payment methods" },
+      { status: 500 },
+    );
   }
 }
 
@@ -35,7 +38,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Get next sort order
-    const maxSort = await prisma.paymentMethodEntry.aggregate({ _max: { sortOrder: true } });
+    const maxSort = await prisma.paymentMethodEntry.aggregate({
+      _max: { sortOrder: true },
+    });
     const nextSort = (maxSort._max.sortOrder || 0) + 1;
 
     const method = await prisma.paymentMethodEntry.create({
@@ -53,12 +58,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     if (error.message === "Forbidden") {
-      return NextResponse.json({ error: "Admin access required" }, { status: 403 });
+      return NextResponse.json(
+        { error: "Admin access required" },
+        { status: 403 },
+      );
     }
     if (error.code === "P2002") {
-      return NextResponse.json({ error: "A payment method with this name already exists" }, { status: 409 });
+      return NextResponse.json(
+        { error: "A payment method with this name already exists" },
+        { status: 409 },
+      );
     }
-    return NextResponse.json({ error: "Failed to create payment method" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to create payment method" },
+      { status: 500 },
+    );
   }
 }
 
@@ -74,15 +88,23 @@ export async function PUT(request: NextRequest) {
     }
 
     // Check if system method — can't rename or delete system methods
-    const existing = await prisma.paymentMethodEntry.findUnique({ where: { id } });
+    const existing = await prisma.paymentMethodEntry.findUnique({
+      where: { id },
+    });
     if (!existing) {
-      return NextResponse.json({ error: "Payment method not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Payment method not found" },
+        { status: 404 },
+      );
     }
 
     const data: any = {};
     if (name !== undefined) {
       if (existing.isSystem && name !== existing.name) {
-        return NextResponse.json({ error: "Cannot rename system payment methods" }, { status: 400 });
+        return NextResponse.json(
+          { error: "Cannot rename system payment methods" },
+          { status: 400 },
+        );
       }
       data.name = name.trim();
     }
@@ -90,7 +112,10 @@ export async function PUT(request: NextRequest) {
     if (color !== undefined) data.color = color;
     if (isActive !== undefined) {
       if (existing.isSystem && !isActive) {
-        return NextResponse.json({ error: "Cannot deactivate system payment methods" }, { status: 400 });
+        return NextResponse.json(
+          { error: "Cannot deactivate system payment methods" },
+          { status: 400 },
+        );
       }
       data.isActive = isActive;
     }
@@ -107,12 +132,21 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     if (error.message === "Forbidden") {
-      return NextResponse.json({ error: "Admin access required" }, { status: 403 });
+      return NextResponse.json(
+        { error: "Admin access required" },
+        { status: 403 },
+      );
     }
     if (error.code === "P2002") {
-      return NextResponse.json({ error: "A payment method with this name already exists" }, { status: 409 });
+      return NextResponse.json(
+        { error: "A payment method with this name already exists" },
+        { status: 409 },
+      );
     }
-    return NextResponse.json({ error: "Failed to update payment method" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to update payment method" },
+      { status: 500 },
+    );
   }
 }
 
@@ -127,20 +161,36 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "ID is required" }, { status: 400 });
     }
 
-    const existing = await prisma.paymentMethodEntry.findUnique({ where: { id } });
+    const existing = await prisma.paymentMethodEntry.findUnique({
+      where: { id },
+    });
     if (!existing) {
-      return NextResponse.json({ error: "Payment method not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Payment method not found" },
+        { status: 404 },
+      );
     }
     if (existing.isSystem) {
-      return NextResponse.json({ error: "Cannot delete system payment methods" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Cannot delete system payment methods" },
+        { status: 400 },
+      );
     }
 
     // Check if any payments use this method
-    const paymentCount = await prisma.payment.count({ where: { methodId: id } });
+    const paymentCount = await prisma.payment.count({
+      where: { methodId: id },
+    });
     if (paymentCount > 0) {
       // Soft delete instead
-      await prisma.paymentMethodEntry.update({ where: { id }, data: { isActive: false } });
-      return NextResponse.json({ message: "Payment method deactivated (has existing payments)", deactivated: true });
+      await prisma.paymentMethodEntry.update({
+        where: { id },
+        data: { isActive: false },
+      });
+      return NextResponse.json({
+        message: "Payment method deactivated (has existing payments)",
+        deactivated: true,
+      });
     }
 
     await prisma.paymentMethodEntry.delete({ where: { id } });
@@ -150,8 +200,14 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     if (error.message === "Forbidden") {
-      return NextResponse.json({ error: "Admin access required" }, { status: 403 });
+      return NextResponse.json(
+        { error: "Admin access required" },
+        { status: 403 },
+      );
     }
-    return NextResponse.json({ error: "Failed to delete payment method" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to delete payment method" },
+      { status: 500 },
+    );
   }
 }

@@ -6,7 +6,9 @@ import Link from "next/link";
 import { generateAttendancePDF } from "../../lib/attendance-pdf-export";
 
 export default function AttendancePage() {
-  const WORKING_HOURS = parseFloat(process.env.NEXT_PUBLIC_WORKING_HOURS_PER_DAY || "8");
+  const WORKING_HOURS = parseFloat(
+    process.env.NEXT_PUBLIC_WORKING_HOURS_PER_DAY || "8",
+  );
   const [status, setStatus] = useState<string | null>(null);
   const [entries, setEntries] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -207,24 +209,27 @@ export default function AttendancePage() {
                     overtime = (numTotal - WORKING_HOURS).toFixed(2);
                   }
                   return (
-                  <tr key={e.id} className="border-t">
-                    <td className="py-2">
-                      {new Date(e.date).toLocaleDateString()}
-                    </td>
-                    <td className="py-2">
-                      {e.checkIn
-                        ? new Date(e.checkIn).toLocaleTimeString()
-                        : "-"}
-                    </td>
-                    <td className="py-2">
-                      {e.checkOut
-                        ? new Date(e.checkOut).toLocaleTimeString()
-                        : "-"}
-                    </td>
-                    <td className="py-2">{e.totalHours ?? "-"}</td>
-                    <td className="py-2 text-orange-600 font-medium">{overtime}</td>
-                  </tr>
-                )})}
+                    <tr key={e.id} className="border-t">
+                      <td className="py-2">
+                        {new Date(e.date).toLocaleDateString()}
+                      </td>
+                      <td className="py-2">
+                        {e.checkIn
+                          ? new Date(e.checkIn).toLocaleTimeString()
+                          : "-"}
+                      </td>
+                      <td className="py-2">
+                        {e.checkOut
+                          ? new Date(e.checkOut).toLocaleTimeString()
+                          : "-"}
+                      </td>
+                      <td className="py-2">{e.totalHours ?? "-"}</td>
+                      <td className="py-2 text-orange-600 font-medium">
+                        {overtime}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}
@@ -259,7 +264,7 @@ export default function AttendancePage() {
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full">
             <h2 className="text-xl font-bold mb-4">Export Attendance as PDF</h2>
-            
+
             <div className="mb-4">
               <p className="text-sm text-gray-600 mb-3">
                 Select quick range or choose custom dates:

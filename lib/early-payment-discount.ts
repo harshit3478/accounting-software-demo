@@ -1,14 +1,29 @@
 import prisma from "./prisma";
 import { Prisma } from "@prisma/client";
+import { stampPaymentCode } from "./payment-code";
+import {
+  calculateEarlyPaymentDiscountAmount,
+  checkEarlyPaymentDiscountEligibility,
+  daysBetween,
+  EarlyPaymentDiscountSettingSnapshot,
+  EarlyPaymentThreshold,
+  isEarlyPaymentDiscountConfigured,
+  roundMoney,
+} from "./early-payment-discount-shared";
 
-export type EarlyPaymentThreshold = "full" | "half";
+export type {
+  EarlyPaymentDiscountSettingSnapshot,
+  EarlyPaymentEligibilityInput,
+  EarlyPaymentEligibilityResult,
+  EarlyPaymentThreshold,
+} from "./early-payment-discount-shared";
 
-export interface EarlyPaymentDiscountSettingSnapshot {
-  daysWindow: number;
-  discountPercent: number;
-  paymentThreshold: EarlyPaymentThreshold;
-  isActive: boolean;
-}
+export {
+  calculateEarlyPaymentDiscountAmount,
+  checkEarlyPaymentDiscountEligibility,
+  isEarlyPaymentDiscountConfigured,
+  roundMoney,
+};
 
 const DEFAULT_SETTING: EarlyPaymentDiscountSettingSnapshot = {
   daysWindow: 0,
@@ -16,13 +31,6 @@ const DEFAULT_SETTING: EarlyPaymentDiscountSettingSnapshot = {
   paymentThreshold: "full",
   isActive: false,
 };
-
-export function isEarlyPaymentDiscountConfigured(
-  setting?: EarlyPaymentDiscountSettingSnapshot | null,
-): boolean {
-  if (!setting?.isActive) return false;
-  return setting.daysWindow > 0 && setting.discountPercent > 0;
-}
 
 export async function getEarlyPaymentDiscountSettingSnapshot(): Promise<EarlyPaymentDiscountSettingSnapshot> {
   const model = (prisma as any)?.earlyPaymentDiscountSetting;
@@ -36,7 +44,9 @@ export async function getEarlyPaymentDiscountSettingSnapshot(): Promise<EarlyPay
   }
 
   const threshold =
-    row.paymentThreshold === "half" ? "half" : ("full" as EarlyPaymentThreshold);
+    row.paymentThreshold === "half"
+      ? "half"
+      : ("full" as EarlyPaymentThreshold);
 
   return {
     daysWindow: Number(row.daysWindow ?? 0),
@@ -44,20 +54,6 @@ export async function getEarlyPaymentDiscountSettingSnapshot(): Promise<EarlyPay
     paymentThreshold: threshold,
     isActive: !!row.isActive,
   };
-}
-
-function roundMoney(value: number): number {
-  return Math.round(value * 100) / 100;
-}
-
-function daysBetween(start: Date, end: Date): number {
-  const startUtc = Date.UTC(
-    start.getFullYear(),
-    start.getMonth(),
-    start.getDate(),
-  );
-  const endUtc = Date.UTC(end.getFullYear(), end.getMonth(), end.getDate());
-  return Math.floor((endUtc - startUtc) / (1000 * 60 * 60 * 24));
 }
 
 function getLatestPaymentDate(invoice: {
@@ -84,6 +80,60 @@ function getLatestPaymentDate(invoice: {
   );
 }
 
+export async function creditEarlyDiscountOverpaymentAsStoreCredit(input: {
+  customerId: number;
+  invoiceId: number;
+  invoiceNumber: string;
+  amount: number;
+  methodId: number;
+  userId: number;
+}): Promise<number> {
+  const safeAmount = roundMoney(input.amount);
+  if (safeAmount <= 0.01) {
+    return 0;
+  }
+
+  await prisma.$transaction(async (tx) => {
+    const creditPayment = await tx.payment.create({
+      data: {
+        invoiceId: null,
+        amount: safeAmount,
+        paymentDate: new Date(),
+        methodId: input.methodId,
+        notes: `Store credit from early payment discount on ${input.invoiceNumber}`,
+        userId: input.userId,
+        isMatched: false,
+        source: "store_credit_excess",
+      },
+    });
+
+    await stampPaymentCode(tx, creditPayment.id);
+
+    await tx.customer.update({
+      where: { id: input.customerId },
+      data: {
+        storeCredit: {
+          increment: safeAmount,
+        },
+      },
+    });
+
+    await (tx as any).customerCreditTransaction.create({
+      data: {
+        customerId: input.customerId,
+        amount: safeAmount,
+        type: "credit",
+        reason: `Early payment discount overpayment on ${input.invoiceNumber}`,
+        paymentId: creditPayment.id,
+        invoiceId: input.invoiceId,
+        createdById: null,
+      },
+    });
+  });
+
+  return safeAmount;
+}
+
 export async function maybeApplyEarlyPaymentDiscount(
   tx: any,
   input: {
@@ -94,6 +144,7 @@ export async function maybeApplyEarlyPaymentDiscount(
       paidAmount: Prisma.Decimal | number;
       earlyPaymentDiscount: Prisma.Decimal | number;
       status: string;
+      isLayaway?: boolean;
       invoiceDate: Date;
       createdAt: Date;
       payments: Array<{ paymentDate: Date; source?: string | null }>;
@@ -111,6 +162,10 @@ export async function maybeApplyEarlyPaymentDiscount(
   }
 
   const invoice = input.invoice;
+  if (invoice.isLayaway) {
+    return null;
+  }
+
   if (invoice.status === "abandoned" || invoice.status === "inactive") {
     return null;
   }
@@ -131,10 +186,18 @@ export async function maybeApplyEarlyPaymentDiscount(
     return null;
   }
 
+  const discountAmount = calculateEarlyPaymentDiscountAmount(
+    invoiceAmount,
+    setting.discountPercent,
+  );
+  if (discountAmount <= 0) {
+    return null;
+  }
+
   const thresholdAmount =
     setting.paymentThreshold === "half"
       ? roundMoney(invoiceAmount / 2)
-      : invoiceAmount;
+      : roundMoney(Math.max(invoiceAmount - discountAmount, 0));
 
   if (input.totalPaid + 0.01 < thresholdAmount) {
     return null;
@@ -147,13 +210,6 @@ export async function maybeApplyEarlyPaymentDiscount(
   }
 
   if (daysBetween(invoiceStartDate, latestPaymentDate) > setting.daysWindow) {
-    return null;
-  }
-
-  const discountAmount = roundMoney(
-    (invoiceAmount * setting.discountPercent) / 100,
-  );
-  if (discountAmount <= 0) {
     return null;
   }
 

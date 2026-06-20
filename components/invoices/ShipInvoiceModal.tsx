@@ -31,14 +31,16 @@ export default function ShipInvoiceModal({
   const [postalCode, setPostalCode] = useState("");
   const [country, setCountry] = useState("US");
   const [phone, setPhone] = useState("");
-  
+
   // Package details
   const [weight, setWeight] = useState("1");
   const [length, setLength] = useState("10");
   const [width, setWidth] = useState("10");
   const [height, setHeight] = useState("10");
-  
-  const [loadingAction, setLoadingAction] = useState<"create" | "update" | "cancel" | null>(null);
+
+  const [loadingAction, setLoadingAction] = useState<
+    "create" | "update" | "cancel" | null
+  >(null);
   const [isFetching, setIsFetching] = useState(false);
 
   // Mapbox address autocomplete
@@ -103,11 +105,11 @@ export default function ShipInvoiceModal({
           setCountry(dest.country || "US");
           setPhone(dest.phone || "");
         }
-        
+
         // XPS items/packages structure can be complex.
         // If we want to prefill package, we look at 'packages' array if available
         // The curl response didn't show "packages" explicitly in the order object, just "items".
-        // Often shipping info is in a separate field or implicit. 
+        // Often shipping info is in a separate field or implicit.
         // We will leave package defaults or try to parse if available.
       }
     } catch (e) {
@@ -120,7 +122,10 @@ export default function ShipInvoiceModal({
   // Close autocomplete dropdown on outside click
   useEffect(() => {
     const handleOutsideClick = (e: MouseEvent) => {
-      if (autocompleteRef.current && !autocompleteRef.current.contains(e.target as Node)) {
+      if (
+        autocompleteRef.current &&
+        !autocompleteRef.current.contains(e.target as Node)
+      ) {
         setShowDropdown(false);
       }
     };
@@ -145,7 +150,7 @@ export default function ShipInvoiceModal({
       if (!token) return;
       try {
         const res = await fetch(
-          `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?types=address&limit=5&access_token=${token}`
+          `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?types=address&limit=5&access_token=${token}`,
         );
         if (!res.ok) return;
         const data: { features: MapboxFeature[] } = await res.json();
@@ -159,11 +164,16 @@ export default function ShipInvoiceModal({
 
   const selectSuggestion = (feature: MapboxFeature) => {
     const streetPart = feature.place_name.split(",")[0];
-    const postcode = feature.context?.find((c) => c.id.startsWith("postcode"))?.text ?? "";
-    const city = feature.context?.find((c) => c.id.startsWith("place"))?.text ?? "";
-    const region = feature.context?.find((c) => c.id.startsWith("region"))?.text ?? "";
+    const postcode =
+      feature.context?.find((c) => c.id.startsWith("postcode"))?.text ?? "";
+    const city =
+      feature.context?.find((c) => c.id.startsWith("place"))?.text ?? "";
+    const region =
+      feature.context?.find((c) => c.id.startsWith("region"))?.text ?? "";
     const countryShort =
-      feature.context?.find((c) => c.id.startsWith("country"))?.short_code?.toUpperCase() ?? "US";
+      feature.context
+        ?.find((c) => c.id.startsWith("country"))
+        ?.short_code?.toUpperCase() ?? "US";
 
     setAddressQuery(streetPart);
     setStreet(streetPart);
@@ -188,12 +198,14 @@ export default function ShipInvoiceModal({
         body: JSON.stringify({
           invoiceId: invoice.id,
           address: { name, street, city, state, postalCode, country, phone },
-          packages: [{
-            weight,
-            length,
-            width,
-            height
-          }]
+          packages: [
+            {
+              weight,
+              length,
+              width,
+              height,
+            },
+          ],
         }),
       });
 
@@ -224,12 +236,14 @@ export default function ShipInvoiceModal({
           shipmentId: invoice.shipmentId,
           invoiceId: invoice.id,
           address: { name, street, city, state, postalCode, country, phone },
-          packages: [{
-            weight,
-            length,
-            width,
-            height
-          }]
+          packages: [
+            {
+              weight,
+              length,
+              width,
+              height,
+            },
+          ],
         }),
       });
 
@@ -293,11 +307,28 @@ export default function ShipInvoiceModal({
         {isFetching && (
           <div className="absolute inset-0 bg-white/80 z-10 flex items-center justify-center backdrop-blur-sm">
             <div className="flex flex-col items-center">
-              <svg className="animate-spin h-8 w-8 text-sky-600 mb-2" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              <svg
+                className="animate-spin h-8 w-8 text-sky-600 mb-2"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                ></circle>
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                ></path>
               </svg>
-              <p className="text-sm font-medium text-gray-600">Loading shipment details...</p>
+              <p className="text-sm font-medium text-gray-600">
+                Loading shipment details...
+              </p>
             </div>
           </div>
         )}
@@ -346,7 +377,9 @@ export default function ShipInvoiceModal({
                 className="block text-sm font-medium text-gray-700 mb-1"
               >
                 Street address
-                <span className="ml-1 text-xs text-sky-600 font-normal">(type to search verified addresses)</span>
+                <span className="ml-1 text-xs text-sky-600 font-normal">
+                  (type to search verified addresses)
+                </span>
               </label>
               <div ref={autocompleteRef} style={{ position: "relative" }}>
                 <input
@@ -386,10 +419,18 @@ export default function ShipInvoiceModal({
                           fontSize: "13px",
                           color: "#374151",
                           cursor: "pointer",
-                          borderBottom: i < suggestions.length - 1 ? "1px solid #f3f4f6" : "none",
+                          borderBottom:
+                            i < suggestions.length - 1
+                              ? "1px solid #f3f4f6"
+                              : "none",
                         }}
-                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#f0f9ff")}
-                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                        onMouseEnter={(e) =>
+                          (e.currentTarget.style.backgroundColor = "#f0f9ff")
+                        }
+                        onMouseLeave={(e) =>
+                          (e.currentTarget.style.backgroundColor =
+                            "transparent")
+                        }
                       >
                         {s.place_name}
                       </li>
@@ -464,10 +505,14 @@ export default function ShipInvoiceModal({
             </div>
 
             <div className="md:col-span-2 border-t pt-4 mt-2">
-              <h4 className="text-lg font-medium text-gray-900 mb-4">Package Details</h4>
+              <h4 className="text-lg font-medium text-gray-900 mb-4">
+                Package Details
+              </h4>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Weight (lb)</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Weight (lb)
+                  </label>
                   <input
                     type="number"
                     className="input h-10 px-3 text-sm w-full border border-gray-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500"
@@ -476,7 +521,9 @@ export default function ShipInvoiceModal({
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Length (in)</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Length (in)
+                  </label>
                   <input
                     type="number"
                     className="input h-10 px-3 text-sm w-full border border-gray-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500"
@@ -485,7 +532,9 @@ export default function ShipInvoiceModal({
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Width (in)</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Width (in)
+                  </label>
                   <input
                     type="number"
                     className="input h-10 px-3 text-sm w-full border border-gray-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500"
@@ -494,7 +543,9 @@ export default function ShipInvoiceModal({
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Height (in)</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Height (in)
+                  </label>
                   <input
                     type="number"
                     className="input h-10 px-3 text-sm w-full border border-gray-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500"

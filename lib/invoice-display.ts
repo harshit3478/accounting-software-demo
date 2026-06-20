@@ -215,7 +215,9 @@ export function getAbandonedRetainedFeeDisplay(invoice: {
   );
 
   const abandonEntry = (invoice.editHistory || []).find(
-    (entry) => (entry.changes as { status?: { to?: string } })?.status?.to === "abandoned",
+    (entry) =>
+      (entry.changes as { status?: { to?: string } })?.status?.to ===
+      "abandoned",
   );
   const changes = abandonEntry?.changes as
     | {
@@ -380,8 +382,7 @@ export function isRefundPayment(payment: {
   refundProofUrl?: string | null;
 }): boolean {
   return (
-    !!payment.isRefund ||
-    !!(payment.isAbandoned && payment.refundProofUrl)
+    !!payment.isRefund || !!(payment.isAbandoned && payment.refundProofUrl)
   );
 }
 
@@ -410,8 +411,7 @@ export function getInvoicePaymentsForPdf(invoice: {
 
   const feePayments = payments.filter(
     (payment) =>
-      payment.source === "deposit_fee" ||
-      payment.source === "restocking_fee",
+      payment.source === "deposit_fee" || payment.source === "restocking_fee",
   );
 
   const refunds =

@@ -1,27 +1,31 @@
-import { NextRequest, NextResponse } from 'next/server';
-import prisma from '../../../../lib/prisma';
-import { requireAuth } from '../../../../lib/auth';
+import { NextRequest, NextResponse } from "next/server";
+import prisma from "../../../../lib/prisma";
+import { requireAuth } from "../../../../lib/auth";
 
 interface DateRange {
   start: Date;
   end: Date;
 }
 
-function getDateRange(period: string, customStart?: string, customEnd?: string): DateRange {
+function getDateRange(
+  period: string,
+  customStart?: string,
+  customEnd?: string,
+): DateRange {
   const end = new Date();
   let start = new Date();
 
   switch (period) {
-    case '7':
+    case "7":
       start.setDate(end.getDate() - 7);
       break;
-    case '30':
+    case "30":
       start.setDate(end.getDate() - 30);
       break;
-    case '90':
+    case "90":
       start.setDate(end.getDate() - 90);
       break;
-    case 'custom':
+    case "custom":
       if (customStart && customEnd) {
         start = new Date(customStart);
         end.setTime(new Date(customEnd).getTime());
@@ -38,7 +42,7 @@ function getDateRange(period: string, customStart?: string, customEnd?: string):
 }
 
 function formatDate(date: Date): string {
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
 function getDatesInRange(start: Date, end: Date): Date[] {
@@ -58,89 +62,97 @@ export async function GET(request: NextRequest) {
     await requireAuth();
 
     const { searchParams } = new URL(request.url);
-    const period = searchParams.get('period') || '30';
-    const customStart = searchParams.get('start');
-    const customEnd = searchParams.get('end');
+    const period = searchParams.get("period") || "30";
+    const customStart = searchParams.get("start");
+    const customEnd = searchParams.get("end");
 
-    const { start, end } = getDateRange(period, customStart || undefined, customEnd || undefined);
+    const { start, end } = getDateRange(
+      period,
+      customStart || undefined,
+      customEnd || undefined,
+    );
 
     // Fetch invoices within date range
     const invoices = await prisma.invoice.findMany({
       where: {
         createdAt: {
           gte: start,
-          lte: end
-        }
+          lte: end,
+        },
       },
       select: {
         id: true,
         amount: true,
-        createdAt: true
-      }
+        createdAt: true,
+      },
     });
 
     // Fetch payment methods
-    const allMethods = await prisma.paymentMethodEntry.findMany({ where: { isActive: true }, orderBy: { sortOrder: 'asc' } });
+    const allMethods = await prisma.paymentMethodEntry.findMany({
+      where: { isActive: true },
+      orderBy: { sortOrder: "asc" },
+    });
 
     // Fetch payments within date range
     const payments = await prisma.payment.findMany({
       where: {
         paymentDate: {
           gte: start,
-          lte: end
-        }
+          lte: end,
+        },
       },
       select: {
         id: true,
         amount: true,
         methodId: true,
-        paymentDate: true
-      }
+        paymentDate: true,
+      },
     });
 
     // Generate revenue chart data (invoices by day)
     const dates = getDatesInRange(start, end);
     const revenueData: { [key: string]: number } = {};
-    
-    dates.forEach(date => {
-      const dateStr = date.toISOString().split('T')[0];
+
+    dates.forEach((date) => {
+      const dateStr = date.toISOString().split("T")[0];
       revenueData[dateStr] = 0;
     });
 
-    invoices.forEach(invoice => {
-      const dateStr = invoice.createdAt.toISOString().split('T')[0];
+    invoices.forEach((invoice) => {
+      const dateStr = invoice.createdAt.toISOString().split("T")[0];
       if (revenueData[dateStr] !== undefined) {
         revenueData[dateStr] += invoice.amount.toNumber();
       }
     });
 
     const revenueChartData = {
-      dates: dates.map(d => formatDate(d)),
-      values: Object.values(revenueData)
+      dates: dates.map((d) => formatDate(d)),
+      values: Object.values(revenueData),
     };
 
     // Generate payment methods breakdown over time (dynamic)
-    const paymentMethodData: { [methodId: number]: { [date: string]: number } } = {};
+    const paymentMethodData: {
+      [methodId: number]: { [date: string]: number };
+    } = {};
 
     for (const m of allMethods) {
       paymentMethodData[m.id] = {};
-      dates.forEach(date => {
-        paymentMethodData[m.id][date.toISOString().split('T')[0]] = 0;
+      dates.forEach((date) => {
+        paymentMethodData[m.id][date.toISOString().split("T")[0]] = 0;
       });
     }
 
-    payments.forEach(payment => {
-      const dateStr = payment.paymentDate.toISOString().split('T')[0];
+    payments.forEach((payment) => {
+      const dateStr = payment.paymentDate.toISOString().split("T")[0];
       if (paymentMethodData[payment.methodId]?.[dateStr] !== undefined) {
-        paymentMethodData[payment.methodId][dateStr] += payment.amount.toNumber();
+        paymentMethodData[payment.methodId][dateStr] +=
+          payment.amount.toNumber();
       }
     });
 
-    const dateKeys = dates.map((d) => d.toISOString().split('T')[0]);
+    const dateKeys = dates.map((d) => d.toISOString().split("T")[0]);
     const enrichedMethods = allMethods.map((m) => {
-      const values = dateKeys.map(
-        (ds) => paymentMethodData[m.id]?.[ds] ?? 0,
-      );
+      const values = dateKeys.map((ds) => paymentMethodData[m.id]?.[ds] ?? 0);
       const total = values.reduce((s, v) => s + v, 0);
       return {
         id: m.id,
@@ -185,12 +197,18 @@ export async function GET(request: NextRequest) {
     };
 
     // Calculate totals for summary
-    const totalRevenue = invoices.reduce((sum, inv) => sum + inv.amount.toNumber(), 0);
-    const totalPayments = payments.reduce((sum, pay) => sum + pay.amount.toNumber(), 0);
+    const totalRevenue = invoices.reduce(
+      (sum, inv) => sum + inv.amount.toNumber(),
+      0,
+    );
+    const totalPayments = payments.reduce(
+      (sum, pay) => sum + pay.amount.toNumber(),
+      0,
+    );
     const paymentsByMethod: Record<string, number> = {};
     for (const m of allMethods) {
       paymentsByMethod[m.name.toLowerCase()] = payments
-        .filter(p => p.methodId === m.id)
+        .filter((p) => p.methodId === m.id)
         .reduce((sum, p) => sum + p.amount.toNumber(), 0);
     }
 
@@ -204,12 +222,12 @@ export async function GET(request: NextRequest) {
         period: {
           start: start.toISOString(),
           end: end.toISOString(),
-          days: dates.length
-        }
-      }
+          days: dates.length,
+        },
+      },
     });
   } catch (error: any) {
-    console.error('Chart data error:', error);
+    console.error("Chart data error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

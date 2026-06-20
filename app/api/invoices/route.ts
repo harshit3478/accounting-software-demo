@@ -234,8 +234,7 @@ export async function GET(request: NextRequest) {
     // Abandoned invoice fee filter (retained deposit/restocking fee vs none)
     if (abandonFee === "with_fee" || abandonFee === "without_fee") {
       where.status = "abandoned";
-      where.paidAmount =
-        abandonFee === "with_fee" ? { gt: 0 } : { lte: 0 };
+      where.paidAmount = abandonFee === "with_fee" ? { gt: 0 } : { lte: 0 };
     }
 
     // Overdue Dates Logic (Layaway specific) — uses LayawayInstallment table

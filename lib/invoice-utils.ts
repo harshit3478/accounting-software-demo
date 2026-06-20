@@ -1,7 +1,9 @@
 import prisma from "./prisma";
 import {
+  creditEarlyDiscountOverpaymentAsStoreCredit,
   getEarlyPaymentDiscountSettingSnapshot,
   maybeApplyEarlyPaymentDiscount,
+  roundMoney,
 } from "./early-payment-discount";
 import { resetDueReminderTracking } from "./due-reminders";
 
@@ -86,9 +88,11 @@ export function calculateInvoiceStatus(
  * 4. Handles overpayment scenarios (logs warning for future credit note implementation)
  *
  * @param invoiceId - The ID of the invoice to update
- * @returns Promise<void>
+ * @returns Promise with optional store credit added from early discount overpayment
  */
-export async function updateInvoiceAfterPayment(invoiceId: number) {
+export async function updateInvoiceAfterPayment(
+  invoiceId: number,
+): Promise<{ earlyDiscountStoreCredit: number }> {
   const invoice = await prisma.invoice.findUnique({
     where: { id: invoiceId },
     include: {
@@ -107,7 +111,7 @@ export async function updateInvoiceAfterPayment(invoiceId: number) {
 
   if (!invoice) {
     console.warn(`updateInvoiceAfterPayment: Invoice ${invoiceId} not found`);
-    return;
+    return { earlyDiscountStoreCredit: 0 };
   }
 
   // Calculate total paid amount from direct payments and payment matches.
@@ -186,6 +190,8 @@ export async function updateInvoiceAfterPayment(invoiceId: number) {
   );
 
   let finalInvoiceAmount = invoiceAmount;
+  let earlyDiscountStoreCredit = 0;
+
   if (discountApplied) {
     finalInvoiceAmount = Math.max(invoiceAmount - discountApplied, 0);
     const adjustedStatus = calculateInvoiceStatus(
@@ -204,14 +210,59 @@ export async function updateInvoiceAfterPayment(invoiceId: number) {
     console.log(
       `Applied early payment discount of $${discountApplied.toFixed(2)} on invoice ${invoice.invoiceNumber}`,
     );
+
+    const overpaymentAfterDiscount = roundMoney(totalPaid - finalInvoiceAmount);
+    if (overpaymentAfterDiscount > 0.01 && invoice.customerId) {
+      const latestPayment = [...invoice.payments]
+        .filter((payment) => payment.source !== "store_credit_applied")
+        .sort(
+          (left, right) =>
+            new Date(right.paymentDate).getTime() -
+            new Date(left.paymentDate).getTime(),
+        )[0];
+
+      let methodId = latestPayment?.methodId;
+      if (!methodId) {
+        const fallbackMethod = await prisma.paymentMethodEntry.findFirst({
+          where: { isActive: true },
+          orderBy: { sortOrder: "asc" },
+        });
+        methodId = fallbackMethod?.id;
+      }
+
+      if (methodId) {
+        const creditUserId = latestPayment?.userId;
+        if (!creditUserId) {
+          console.warn(
+            `Early discount overpayment on ${invoice.invoiceNumber} could not be credited: no user available for audit trail`,
+          );
+        } else {
+          earlyDiscountStoreCredit =
+            await creditEarlyDiscountOverpaymentAsStoreCredit({
+              customerId: invoice.customerId,
+              invoiceId: invoice.id,
+              invoiceNumber: invoice.invoiceNumber,
+              amount: overpaymentAfterDiscount,
+              methodId,
+              userId: creditUserId,
+            });
+
+          if (earlyDiscountStoreCredit > 0) {
+            console.log(
+              `Credited $${earlyDiscountStoreCredit.toFixed(2)} store credit from early payment discount on invoice ${invoice.invoiceNumber}`,
+            );
+          }
+        }
+      } else {
+        console.warn(
+          `Early discount overpayment on ${invoice.invoiceNumber} could not be credited: no payment method available`,
+        );
+      }
+    }
   }
 
   const finalStatus = discountApplied
-    ? calculateInvoiceStatus(
-        finalInvoiceAmount,
-        totalPaid,
-        invoice.dueDate,
-      )
+    ? calculateInvoiceStatus(finalInvoiceAmount, totalPaid, invoice.dueDate)
     : newStatus;
 
   if (finalStatus === "paid") {
@@ -222,6 +273,8 @@ export async function updateInvoiceAfterPayment(invoiceId: number) {
   if (invoice.isLayaway) {
     await syncLayawayInstallments(invoiceId, totalPaid);
   }
+
+  return { earlyDiscountStoreCredit };
 }
 
 /**

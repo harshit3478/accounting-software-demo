@@ -19,6 +19,8 @@ export async function GET() {
         amount: true,
         paidAmount: true,
         dueDate: true,
+        invoiceDate: true,
+        earlyPaymentDiscount: true,
         status: true,
         customerId: true,
         isLayaway: true,
@@ -47,7 +49,15 @@ export async function GET() {
       },
     });
 
-    return NextResponse.json(unpaidInvoices);
+    const serializedInvoices = unpaidInvoices.map((invoice) => ({
+      ...invoice,
+      amount: invoice.amount.toNumber(),
+      paidAmount: invoice.paidAmount.toNumber(),
+      earlyPaymentDiscount: invoice.earlyPaymentDiscount.toNumber(),
+      invoiceDate: invoice.invoiceDate.toISOString(),
+    }));
+
+    return NextResponse.json(serializedInvoices);
   } catch (error) {
     console.error("Error fetching unpaid invoices:", error);
     return NextResponse.json(

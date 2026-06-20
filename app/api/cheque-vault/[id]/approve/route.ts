@@ -8,7 +8,7 @@ import { sendChequeStatusNotification } from "@/lib/email";
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const admin = await requireChequeVaultApprove();
@@ -25,7 +25,14 @@ export async function PUT(
         uploadedBy: { select: { id: true, name: true, email: true } },
         invoiceAllocations: {
           include: {
-            invoice: { select: { id: true, amount: true, paidAmount: true, invoiceNumber: true } },
+            invoice: {
+              select: {
+                id: true,
+                amount: true,
+                paidAmount: true,
+                invoiceNumber: true,
+              },
+            },
           },
         },
       },
@@ -38,14 +45,14 @@ export async function PUT(
     if (cheque.status !== "PENDING" && cheque.status !== "NEEDS_CORRECTION") {
       return NextResponse.json(
         { error: "Only pending or needs-correction cheques can be approved" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     if (!cheque.invoiceAllocations.length) {
       return NextResponse.json(
         { error: "Link at least one invoice before approving" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -55,11 +62,12 @@ export async function PUT(
 
     // Check for overpayment per invoice
     for (const alloc of cheque.invoiceAllocations) {
-      const invoiceBalance = Number(alloc.invoice.amount) - Number(alloc.invoice.paidAmount);
+      const invoiceBalance =
+        Number(alloc.invoice.amount) - Number(alloc.invoice.paidAmount);
       const allocated = Number(alloc.allocatedAmount);
       if (allocated > invoiceBalance + 0.01) {
         warnings.push(
-          `Cheque allocation ($${allocated.toFixed(2)}) exceeds remaining balance on ${alloc.invoice.invoiceNumber} ($${invoiceBalance.toFixed(2)})`
+          `Cheque allocation ($${allocated.toFixed(2)}) exceeds remaining balance on ${alloc.invoice.invoiceNumber} ($${invoiceBalance.toFixed(2)})`,
         );
       }
     }
@@ -146,9 +154,15 @@ export async function PUT(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     if (error.message === "Forbidden") {
-      return NextResponse.json({ error: "Cheque approval permission required" }, { status: 403 });
+      return NextResponse.json(
+        { error: "Cheque approval permission required" },
+        { status: 403 },
+      );
     }
     console.error("[cheque-vault/[id]/approve PUT]", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
   }
 }

@@ -17,15 +17,15 @@ export async function GET(req: Request) {
       ? entry.checkOut
         ? "Checked-Out"
         : entry.checkIn
-        ? "Checked-In"
-        : "No Action"
+          ? "Checked-In"
+          : "No Action"
       : "No Action";
 
     return NextResponse.json({ ok: true, status, entry });
   } catch (err: any) {
     return NextResponse.json(
       { error: err.message || "Unauthorized" },
-      { status: 401 }
+      { status: 401 },
     );
   }
 }

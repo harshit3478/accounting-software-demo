@@ -148,7 +148,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return user?.canApproveCheques ?? false;
       default:
         if (permission.startsWith("settings.")) {
-          const setting = permission.replace("settings.", "") as SettingsPermission;
+          const setting = permission.replace(
+            "settings.",
+            "",
+          ) as SettingsPermission;
           return user?.settingsPermissions?.[setting] ?? false;
         }
         return false;

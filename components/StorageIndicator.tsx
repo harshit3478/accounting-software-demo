@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
-import { FiHardDrive } from 'react-icons/fi';
-import { formatFileSize, getStorageStatusColor } from '@/lib/file-utils';
+import { useEffect, useState } from "react";
+import { FiHardDrive } from "react-icons/fi";
+import { formatFileSize, getStorageStatusColor } from "@/lib/file-utils";
 
 interface StorageStats {
   used: number;
@@ -21,13 +21,13 @@ export default function StorageIndicator() {
 
   const fetchStats = async () => {
     try {
-      const response = await fetch('/api/documents/storage-stats');
+      const response = await fetch("/api/documents/storage-stats");
       if (response.ok) {
         const data = await response.json();
         setStats(data);
       }
     } catch (error) {
-      console.error('Error fetching storage stats:', error);
+      console.error("Error fetching storage stats:", error);
     } finally {
       setLoading(false);
     }
@@ -54,9 +54,9 @@ export default function StorageIndicator() {
 
   const statusColor = getStorageStatusColor(stats.percentage);
   const colorClasses: Record<string, string> = {
-    green: 'bg-green-500',
-    yellow: 'bg-yellow-500',
-    red: 'bg-red-500',
+    green: "bg-green-500",
+    yellow: "bg-yellow-500",
+    red: "bg-red-500",
   };
 
   return (
@@ -67,7 +67,7 @@ export default function StorageIndicator() {
           <h3 className="text-lg font-semibold text-gray-900">Storage Usage</h3>
         </div>
         <span className="text-sm text-gray-600">
-          {stats.fileCount} file{stats.fileCount !== 1 ? 's' : ''}
+          {stats.fileCount} file{stats.fileCount !== 1 ? "s" : ""}
         </span>
       </div>
 
@@ -84,13 +84,19 @@ export default function StorageIndicator() {
       {/* Stats */}
       <div className="flex justify-between items-center text-sm">
         <span className="text-gray-600">
-          <span className="font-medium text-gray-900">{stats.usedFormatted}</span> used
+          <span className="font-medium text-gray-900">
+            {stats.usedFormatted}
+          </span>{" "}
+          used
         </span>
         <span className="text-gray-600">
           <span className="font-medium text-gray-900">{stats.percentage}%</span>
         </span>
         <span className="text-gray-600">
-          <span className="font-medium text-gray-900">{stats.availableFormatted}</span> free
+          <span className="font-medium text-gray-900">
+            {stats.availableFormatted}
+          </span>{" "}
+          free
         </span>
       </div>
 
@@ -103,7 +109,8 @@ export default function StorageIndicator() {
       {stats.percentage >= 90 && (
         <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
           <p className="text-xs text-red-800 font-medium">
-            ⚠️ Storage is almost full! Please delete unused files or contact support.
+            ⚠️ Storage is almost full! Please delete unused files or contact
+            support.
           </p>
         </div>
       )}

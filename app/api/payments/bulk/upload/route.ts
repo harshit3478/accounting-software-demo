@@ -151,9 +151,13 @@ export async function POST(request: NextRequest) {
         payments.push(payment);
       }
 
-      const matchedInvoiceIds = [...new Set(
-        payments.filter((p) => p.invoiceId != null).map((p) => p.invoiceId as number)
-      )];
+      const matchedInvoiceIds = [
+        ...new Set(
+          payments
+            .filter((p) => p.invoiceId != null)
+            .map((p) => p.invoiceId as number),
+        ),
+      ];
       return { payments, matchedCount, unmatchedCount, matchedInvoiceIds };
     });
 

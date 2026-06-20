@@ -62,8 +62,9 @@ export default function ViewPaymentModal({
   if (!payment) return null;
 
   const handleDownloadPDF = async () => {
-    const { generatePaymentReceiptPDF } =
-      await import("../../lib/payment-receipt");
+    const { generatePaymentReceiptPDF } = await import(
+      "../../lib/payment-receipt"
+    );
     generatePaymentReceiptPDF({
       id: payment.id,
       amount: payment.amount,
@@ -255,7 +256,9 @@ export default function ViewPaymentModal({
                 <div className="flex justify-between">
                   <span
                     className={
-                      payment.refundProofUrl ? "text-orange-600" : "text-red-600"
+                      payment.refundProofUrl
+                        ? "text-orange-600"
+                        : "text-red-600"
                     }
                   >
                     Status:

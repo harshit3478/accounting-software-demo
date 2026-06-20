@@ -113,7 +113,11 @@ export function shouldSendDueReminder(
     return { send: false, reminderNumber: null };
   }
 
-  if (invoice.status === "paid" || invoice.status === "abandoned" || invoice.status === "inactive") {
+  if (
+    invoice.status === "paid" ||
+    invoice.status === "abandoned" ||
+    invoice.status === "inactive"
+  ) {
     return { send: false, reminderNumber: null };
   }
 

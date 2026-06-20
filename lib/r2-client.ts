@@ -1,9 +1,14 @@
-import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
-import { Upload } from '@aws-sdk/lib-storage';
+import {
+  S3Client,
+  PutObjectCommand,
+  DeleteObjectCommand,
+  GetObjectCommand,
+} from "@aws-sdk/client-s3";
+import { Upload } from "@aws-sdk/lib-storage";
 
 // Initialize S3 Client for Cloudflare R2
 const r2Client = new S3Client({
-  region: 'auto',
+  region: "auto",
   endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
   credentials: {
     accessKeyId: process.env.R2_ACCESS_KEY_ID!,
@@ -24,7 +29,7 @@ export const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL!;
 export async function uploadToR2(
   fileBuffer: Buffer,
   fileName: string,
-  contentType: string
+  contentType: string,
 ): Promise<string> {
   try {
     const upload = new Upload({
@@ -38,12 +43,12 @@ export async function uploadToR2(
     });
 
     await upload.done();
-    
+
     // Return the public URL
     return `${R2_PUBLIC_URL}/${fileName}`;
   } catch (error) {
-    console.error('Error uploading to R2:', error);
-    throw new Error('Failed to upload file to storage');
+    console.error("Error uploading to R2:", error);
+    throw new Error("Failed to upload file to storage");
   }
 }
 
@@ -60,8 +65,8 @@ export async function deleteFromR2(fileName: string): Promise<void> {
 
     await r2Client.send(command);
   } catch (error) {
-    console.error('Error deleting from R2:', error);
-    throw new Error('Failed to delete file from storage');
+    console.error("Error deleting from R2:", error);
+    throw new Error("Failed to delete file from storage");
   }
 }
 
@@ -80,8 +85,8 @@ export async function getFromR2(fileName: string) {
     const response = await r2Client.send(command);
     return response;
   } catch (error) {
-    console.error('Error getting file from R2:', error);
-    throw new Error('Failed to retrieve file from storage');
+    console.error("Error getting file from R2:", error);
+    throw new Error("Failed to retrieve file from storage");
   }
 }
 
@@ -100,5 +105,5 @@ export function getPublicUrl(fileName: string): string {
  * @returns The filename
  */
 export function extractFileNameFromUrl(url: string): string {
-  return url.replace(`${R2_PUBLIC_URL}/`, '');
+  return url.replace(`${R2_PUBLIC_URL}/`, "");
 }

@@ -15,7 +15,10 @@ export async function POST(
     const invoiceId = parseInt(id, 10);
 
     if (!Number.isFinite(invoiceId)) {
-      return NextResponse.json({ error: "Invalid invoice id" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Invalid invoice id" },
+        { status: 400 },
+      );
     }
 
     const { paymentId, reason } = await request.json();
@@ -23,7 +26,10 @@ export async function POST(
     const trimmedReason = typeof reason === "string" ? reason.trim() : "";
 
     if (!Number.isFinite(parsedPaymentId)) {
-      return NextResponse.json({ error: "Valid payment id is required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Valid payment id is required" },
+        { status: 400 },
+      );
     }
 
     if (!trimmedReason) {
@@ -103,11 +109,13 @@ export async function POST(
           ? {
               ...updatedInvoice.layawayPlan,
               downPayment: updatedInvoice.layawayPlan.downPayment.toNumber(),
-              installments: updatedInvoice.layawayPlan.installments.map((inst) => ({
-                ...inst,
-                amount: inst.amount.toNumber(),
-                paidAmount: inst.paidAmount?.toNumber?.() ?? null,
-              })),
+              installments: updatedInvoice.layawayPlan.installments.map(
+                (inst) => ({
+                  ...inst,
+                  amount: inst.amount.toNumber(),
+                  paidAmount: inst.paidAmount?.toNumber?.() ?? null,
+                }),
+              ),
             }
           : null,
       },

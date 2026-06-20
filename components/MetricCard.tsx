@@ -2,7 +2,7 @@ interface MetricCardProps {
   title: string;
   value: string;
   change?: string;
-  changeType?: 'positive' | 'negative' | 'neutral';
+  changeType?: "positive" | "negative" | "neutral";
   icon: React.ReactNode;
   iconBgColor: string;
   iconColor: string;
@@ -12,15 +12,15 @@ export default function MetricCard({
   title,
   value,
   change,
-  changeType = 'neutral',
+  changeType = "neutral",
   icon,
   iconBgColor,
   iconColor,
 }: MetricCardProps) {
   const changeColorClass = {
-    positive: 'text-green-600',
-    negative: 'text-red-600',
-    neutral: 'text-gray-600',
+    positive: "text-green-600",
+    negative: "text-red-600",
+    neutral: "text-gray-600",
   }[changeType];
 
   return (

@@ -69,7 +69,8 @@ export default function LayawaySettingsTab({
   const [settings, setSettings] = useState<LayawayDefaults>(DEFAULT_SETTINGS);
   const [hasChanges, setHasChanges] = useState(false);
   const [units, setUnits] = useState<InvoiceUnit[]>([]);
-  const [feeRates, setFeeRates] = useState<LayawayFeeRate[]>(FALLBACK_FEE_RATES);
+  const [feeRates, setFeeRates] =
+    useState<LayawayFeeRate[]>(FALLBACK_FEE_RATES);
   const [feeRatesLoading, setFeeRatesLoading] = useState(true);
   const [feeRatesSaving, setFeeRatesSaving] = useState(false);
   const [feeRatesChanged, setFeeRatesChanged] = useState(false);
@@ -133,7 +134,9 @@ export default function LayawaySettingsTab({
                 isActive: rate.isActive ?? true,
                 sortOrder: Number(rate.sortOrder ?? rate.months),
               }))
-              .filter((rate) => Number.isFinite(rate.months) && rate.months > 0),
+              .filter(
+                (rate) => Number.isFinite(rate.months) && rate.months > 0,
+              ),
           );
         } else {
           setFeeRates(FALLBACK_FEE_RATES);
@@ -193,9 +196,12 @@ export default function LayawaySettingsTab({
         body: JSON.stringify({
           rates: flattenLayawayFeeConfigs(groupLayawayFeeRatesByUnit(feeRates))
             .sort((left, right) => {
-              const unitCompare =
-                String(left.unitName || "").localeCompare(String(right.unitName || ""));
-              return unitCompare !== 0 ? unitCompare : left.months - right.months;
+              const unitCompare = String(left.unitName || "").localeCompare(
+                String(right.unitName || ""),
+              );
+              return unitCompare !== 0
+                ? unitCompare
+                : left.months - right.months;
             })
             .map((rate, index) => ({
               unitName: rate.unitName || "grams",
@@ -227,7 +233,9 @@ export default function LayawaySettingsTab({
               const unitCompare = String(left.unitName || "").localeCompare(
                 String(right.unitName || ""),
               );
-              return unitCompare !== 0 ? unitCompare : left.months - right.months;
+              return unitCompare !== 0
+                ? unitCompare
+                : left.months - right.months;
             }),
         );
       }
@@ -245,17 +253,22 @@ export default function LayawaySettingsTab({
   const activeUnits = units.filter((unit) => unit.isActive);
   const unitOptions = activeUnits.length > 0 ? activeUnits : units;
   const feeConfigs = groupLayawayFeeRatesByUnit(feeRates);
-  const defaultMonthRows = DEFAULT_LAYAWAY_FEE_CONFIGS[0]?.rates || FALLBACK_FEE_RATES;
+  const defaultMonthRows =
+    DEFAULT_LAYAWAY_FEE_CONFIGS[0]?.rates || FALLBACK_FEE_RATES;
 
   const normalizeName = (value: string) => value.trim().toLowerCase();
 
   const isUnitInUse = (unitName: string, ignoreUnitName?: string) => {
     const normalizedUnitName = normalizeName(unitName);
-    const normalizedIgnore = ignoreUnitName ? normalizeName(ignoreUnitName) : "";
+    const normalizedIgnore = ignoreUnitName
+      ? normalizeName(ignoreUnitName)
+      : "";
 
     return feeConfigs.some((config) => {
       const currentUnit = normalizeName(config.unitName);
-      return currentUnit === normalizedUnitName && currentUnit !== normalizedIgnore;
+      return (
+        currentUnit === normalizedUnitName && currentUnit !== normalizedIgnore
+      );
     });
   };
 
@@ -283,7 +296,10 @@ export default function LayawaySettingsTab({
     setFeeRatesChanged(true);
   };
 
-  const updateConfigUnitName = (currentUnitName: string, nextUnitName: string) => {
+  const updateConfigUnitName = (
+    currentUnitName: string,
+    nextUnitName: string,
+  ) => {
     if (isUnitInUse(nextUnitName, currentUnitName)) {
       showError(`A layaway config already exists for ${nextUnitName}`);
       return;
@@ -291,7 +307,8 @@ export default function LayawaySettingsTab({
 
     setFeeRates((prev) =>
       prev.map((rate) =>
-        normalizeName(rate.unitName || "grams") === normalizeName(currentUnitName)
+        normalizeName(rate.unitName || "grams") ===
+        normalizeName(currentUnitName)
           ? { ...rate, unitName: nextUnitName }
           : rate,
       ),
@@ -299,11 +316,7 @@ export default function LayawaySettingsTab({
     setFeeRatesChanged(true);
   };
 
-  const updateFeeRate = (
-    unitName: string,
-    months: number,
-    value: string,
-  ) => {
+  const updateFeeRate = (unitName: string, months: number, value: string) => {
     const parsed = Number(value);
     setFeeRates((prev) =>
       prev.map((rate) =>
@@ -327,16 +340,20 @@ export default function LayawaySettingsTab({
 
     setFeeRates((prev) =>
       prev.filter(
-        (rate) => normalizeName(rate.unitName || "grams") !== normalizeName(unitName),
+        (rate) =>
+          normalizeName(rate.unitName || "grams") !== normalizeName(unitName),
       ),
     );
     setFeeRatesChanged(true);
   };
 
   const getSampleFee = (config: LayawayUnitConfig) => {
-    const sampleRates = config.rates.length > 0 ? config.rates : defaultMonthRows;
+    const sampleRates =
+      config.rates.length > 0 ? config.rates : defaultMonthRows;
     return sampleRates[0]
-      ? Number((sampleWeight * Number(sampleRates[0].ratePerGram || 0)).toFixed(2))
+      ? Number(
+          (sampleWeight * Number(sampleRates[0].ratePerGram || 0)).toFixed(2),
+        )
       : 0;
   };
 
@@ -434,7 +451,6 @@ export default function LayawaySettingsTab({
               Percentage of invoice total used as default down payment
             </p>
           </div>
-
         </div>
       </div>
 
@@ -589,7 +605,9 @@ export default function LayawaySettingsTab({
                               </td>
                               <td className="px-4 py-3">
                                 <div className="flex items-center gap-2 max-w-xs">
-                                  <span className="text-xs text-gray-500">$</span>
+                                  <span className="text-xs text-gray-500">
+                                    $
+                                  </span>
                                   <input
                                     type="number"
                                     min="0"
@@ -610,7 +628,10 @@ export default function LayawaySettingsTab({
                                 </div>
                               </td>
                               <td className="px-4 py-3 text-right text-sm font-medium text-gray-900">
-                                ${(sampleWeight * Number(row.ratePerGram || 0)).toFixed(2)}
+                                $
+                                {(
+                                  sampleWeight * Number(row.ratePerGram || 0)
+                                ).toFixed(2)}
                               </td>
                             </tr>
                           );

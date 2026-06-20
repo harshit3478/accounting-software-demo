@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
-import { requirePermission } from '@/lib/auth';
-import { uploadToR2, deleteFromR2 } from '@/lib/r2-client';
-import { DocumentType } from '@prisma/client';
+import { NextRequest, NextResponse } from "next/server";
+import prisma from "@/lib/prisma";
+import { requirePermission } from "@/lib/auth";
+import { uploadToR2, deleteFromR2 } from "@/lib/r2-client";
+import { DocumentType } from "@prisma/client";
 import {
   MAX_FILE_SIZE,
   MAX_TOTAL_STORAGE,
@@ -10,47 +10,44 @@ import {
   isValidFileSize,
   generateUniqueFileName,
   formatFileSize,
-} from '@/lib/file-utils';
+} from "@/lib/file-utils";
 
 export async function POST(request: NextRequest) {
   try {
     // Check if user has upload permission
-    const user = await requirePermission('documents.upload');
+    const user = await requirePermission("documents.upload");
 
     // Parse the form data
     const formData = await request.formData();
-    const files = formData.getAll('files') as File[];
-    const folderIdParam = formData.get('folderId') as string | null;
+    const files = formData.getAll("files") as File[];
+    const folderIdParam = formData.get("folderId") as string | null;
     const folderId = folderIdParam ? parseInt(folderIdParam) : null;
 
     if (!files || files.length === 0) {
-      return NextResponse.json(
-        { error: 'No files provided' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "No files provided" }, { status: 400 });
     }
-    
+
     // Validate folder if specified (SHARED STORAGE - no user filter!)
     if (folderId !== null && folderId !== 0) {
       if (isNaN(folderId)) {
         return NextResponse.json(
-          { error: 'Invalid folder ID' },
-          { status: 400 }
+          { error: "Invalid folder ID" },
+          { status: 400 },
         );
       }
-      
+
       const folder = await prisma.document.findFirst({
         where: {
           id: folderId,
-          type: DocumentType.folder
+          type: DocumentType.folder,
           // NO userId filter - shared storage!
-        }
+        },
       });
-      
+
       if (!folder) {
         return NextResponse.json(
-          { error: 'Folder not found' },
-          { status: 404 }
+          { error: "Folder not found" },
+          { status: 404 },
         );
       }
     }
@@ -71,10 +68,10 @@ export async function POST(request: NextRequest) {
     if (totalUsed + newFilesSize > MAX_TOTAL_STORAGE) {
       return NextResponse.json(
         {
-          error: 'Storage limit exceeded',
+          error: "Storage limit exceeded",
           message: `Upload would exceed 100GB limit. Current usage: ${formatFileSize(totalUsed)}, Attempting to add: ${formatFileSize(newFilesSize)}`,
         },
-        { status: 413 }
+        { status: 413 },
       );
     }
 
@@ -96,25 +93,25 @@ export async function POST(request: NextRequest) {
       if (!isValidFileType(file.type)) {
         errors.push({
           fileName: file.name,
-          error: 'File type not supported',
+          error: "File type not supported",
         });
         continue;
       }
-      
+
       // Check for duplicate name in target folder (SHARED storage)
       const existing = await prisma.document.findFirst({
         where: {
           name: file.name,
           parentId: folderId === 0 ? null : folderId,
-          type: DocumentType.file
+          type: DocumentType.file,
           // NO userId filter - shared storage!
-        }
+        },
       });
-      
+
       if (existing) {
         errors.push({
           fileName: file.name,
-          error: 'A file with this name already exists in this folder',
+          error: "A file with this name already exists in this folder",
         });
         continue;
       }
@@ -135,11 +132,11 @@ export async function POST(request: NextRequest) {
         // Save metadata to database (userId for audit trail)
         const document = await prisma.document.create({
           data: {
-            userId: user.id,      // Who uploaded (audit trail)
+            userId: user.id, // Who uploaded (audit trail)
             type: DocumentType.file,
-            name: file.name,      // Display name
+            name: file.name, // Display name
             parentId: folderId === 0 ? null : folderId,
-            fileName: uniqueFileName,  // R2 filename
+            fileName: uniqueFileName, // R2 filename
             fileSize: BigInt(file.size),
             fileType: file.type,
             fileUrl: fileUrl,
@@ -167,20 +164,23 @@ export async function POST(request: NextRequest) {
         });
       } catch (error) {
         console.error(`Error uploading file ${file.name}:`, error);
-        
+
         // Cleanup R2 if database save failed but R2 upload succeeded
         if (uploadedToR2) {
           try {
             await deleteFromR2(uniqueFileName);
             console.log(`Cleaned up orphaned file from R2: ${uniqueFileName}`);
           } catch (cleanupError) {
-            console.error(`Failed to cleanup orphaned file from R2: ${uniqueFileName}`, cleanupError);
+            console.error(
+              `Failed to cleanup orphaned file from R2: ${uniqueFileName}`,
+              cleanupError,
+            );
           }
         }
 
         errors.push({
           fileName: file.name,
-          error: 'Failed to upload file',
+          error: "Failed to upload file",
         });
       }
     }
@@ -193,25 +193,22 @@ export async function POST(request: NextRequest) {
       message: `Successfully uploaded ${uploadResults.length} of ${files.length} files`,
     });
   } catch (error: any) {
-    console.error('Upload error:', error);
+    console.error("Upload error:", error);
 
-    if (error.message === 'Forbidden') {
+    if (error.message === "Forbidden") {
       return NextResponse.json(
-        { error: 'Only admins can upload files' },
-        { status: 403 }
+        { error: "Only admins can upload files" },
+        { status: 403 },
       );
     }
 
-    if (error.message === 'Unauthorized') {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+    if (error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
+      { error: "Internal server error" },
+      { status: 500 },
     );
   }
 }

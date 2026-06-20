@@ -60,7 +60,11 @@ const ADMIN_TABS = [
   { id: "due-date-reasons", label: "Due Date Reasons", icon: CalendarClock },
   { id: "layaway", label: "Layaway", icon: Layers },
   { id: "late-fee", label: "Late Fee", icon: CalendarClock },
-  { id: "early-payment-discount", label: "Early Payment Discount", icon: CalendarClock },
+  {
+    id: "early-payment-discount",
+    label: "Early Payment Discount",
+    icon: CalendarClock,
+  },
   { id: "due-reminders", label: "Due Reminders", icon: CalendarClock },
   { id: "deposit-fees", label: "Deposit Fees", icon: Shield },
   { id: "restocking-fee", label: "Restocking Fee", icon: Shield },
@@ -73,9 +77,7 @@ const ADMIN_TABS = [
   { id: "quickbooks", label: "QuickBooks", icon: Link2 },
 ] as const;
 
-type TabId =
-  | typeof PROFILE_TAB.id
-  | (typeof ADMIN_TABS)[number]["id"];
+type TabId = typeof PROFILE_TAB.id | (typeof ADMIN_TABS)[number]["id"];
 
 function SettingsContent() {
   const searchParams = useSearchParams();

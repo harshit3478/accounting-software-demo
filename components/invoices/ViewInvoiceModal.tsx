@@ -258,8 +258,7 @@ export default function ViewInvoiceModal({
 
   const buildPDFInvoice = () => ({
     ...invoice!,
-    amount:
-      invoice!.status === "abandoned" ? 0 : localInvoiceAmount,
+    amount: invoice!.status === "abandoned" ? 0 : localInvoiceAmount,
     paidAmount: localPaidAmount,
     payments: getInvoicePaymentsForPdf({
       status: invoice!.status,
@@ -549,9 +548,7 @@ export default function ViewInvoiceModal({
             notes: paymentNotes || null,
             lateFeeAmount,
             lateFeeReason:
-              shouldPromptLateFee &&
-              applyLateFee === true &&
-              overdueInstallment
+              shouldPromptLateFee && applyLateFee === true && overdueInstallment
                 ? buildLateFeeReason(overdueInstallment)
                 : "",
             lateFeeWaivedReason:
@@ -612,9 +609,7 @@ export default function ViewInvoiceModal({
             amount: linkAmount,
             lateFeeAmount,
             lateFeeReason:
-              shouldPromptLateFee &&
-              applyLateFee === true &&
-              overdueInstallment
+              shouldPromptLateFee && applyLateFee === true && overdueInstallment
                 ? buildLateFeeReason(overdueInstallment)
                 : "",
             lateFeeWaivedReason:
@@ -752,7 +747,9 @@ export default function ViewInvoiceModal({
     if (!invoice || !lateFeeToRemove) return;
 
     if (!removeLateFeeReason.trim()) {
-      setRemoveLateFeeError("Please provide a reason for removing this late fee");
+      setRemoveLateFeeError(
+        "Please provide a reason for removing this late fee",
+      );
       return;
     }
 
@@ -875,9 +872,8 @@ export default function ViewInvoiceModal({
   const earlyPaymentDiscount = Number(invoice.earlyPaymentDiscount || 0);
   const layawayFee = getVisibleLayawayFee(invoice);
   const depositFeeNotInTotal = getCurrentItemDepositFeeTotal(invoice.items);
-  const appliedRemovedItemDepositFeeTotal = getAppliedRemovedItemDepositFeeTotal(
-    invoice.editHistory || [],
-  );
+  const appliedRemovedItemDepositFeeTotal =
+    getAppliedRemovedItemDepositFeeTotal(invoice.editHistory || []);
   const removedItemDepositFeeEntries = getRemovedItemDepositFeeDisplayEntries(
     invoice.editHistory || [],
   );
@@ -925,7 +921,8 @@ export default function ViewInvoiceModal({
       reason: entry.reason,
       proofUrl: entry.changes?.refundProof?.url as string | undefined,
       proofFileName: entry.changes?.refundProof?.fileName as string | undefined,
-      refundPaymentCodes: (entry.changes?.refundPaymentCodes?.to as string[]) || [],
+      refundPaymentCodes:
+        (entry.changes?.refundPaymentCodes?.to as string[]) || [],
     }))
     .filter((entry) => !!entry.proofUrl);
 
@@ -1061,7 +1058,9 @@ export default function ViewInvoiceModal({
           method: {
             id: 0,
             name:
-              historyFeeType === "restocking" ? "Restocking Fee" : "Deposit Fee",
+              historyFeeType === "restocking"
+                ? "Restocking Fee"
+                : "Deposit Fee",
             icon: null,
             color: "#7C3AED",
           },
@@ -1127,8 +1126,9 @@ export default function ViewInvoiceModal({
       );
     }
     if (feeType === "both") {
-      const restockingFeeCode = entry.changes?.restockingFeePaymentCode
-        ?.to as string | undefined;
+      const restockingFeeCode = entry.changes?.restockingFeePaymentCode?.to as
+        | string
+        | undefined;
       const depositFeeCode = entry.changes?.depositFeePaymentCode?.to as
         | string
         | undefined;
@@ -1310,7 +1310,9 @@ export default function ViewInvoiceModal({
 
           {showOverdueLateFeeNotice && overdueInstallmentToday && (
             <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-              <p className="font-semibold">Late fee applies to this overdue invoice</p>
+              <p className="font-semibold">
+                Late fee applies to this overdue invoice
+              </p>
               <p className="mt-1 text-amber-800">
                 {overdueInstallmentToday.label} was due on{" "}
                 {new Date(overdueInstallmentToday.dueDate).toLocaleDateString()}
@@ -2199,7 +2201,8 @@ export default function ViewInvoiceModal({
                 </div>
               </div>
             )}
-            {(localEditHistory.length > 0 || (invoice.editHistory?.length ?? 0) > 0) ? (
+            {localEditHistory.length > 0 ||
+            (invoice.editHistory?.length ?? 0) > 0 ? (
               <div className="space-y-3">
                 {(localEditHistory.length > 0
                   ? localEditHistory
@@ -2651,8 +2654,7 @@ export default function ViewInvoiceModal({
           <InvoiceImageTemplate
             invoice={{
               ...invoice,
-              amount:
-                invoice.status === "abandoned" ? 0 : localInvoiceAmount,
+              amount: invoice.status === "abandoned" ? 0 : localInvoiceAmount,
               paidAmount: localPaidAmount,
             }}
             payments={payments}

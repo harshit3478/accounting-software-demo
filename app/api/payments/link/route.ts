@@ -322,11 +322,19 @@ export async function POST(request: NextRequest) {
     }
 
     // 5. Update Invoice Status (outside transactions)
-    await updateInvoiceAfterPayment(invoiceId);
+    const invoiceUpdateResult = await updateInvoiceAfterPayment(invoiceId);
 
     // Normalize response shape: return match
     const match = (result as any).match;
-    return NextResponse.json({ success: true, match });
+    return NextResponse.json({
+      success: true,
+      match,
+      storeCreditAdded: invoiceUpdateResult.earlyDiscountStoreCredit,
+      message:
+        invoiceUpdateResult.earlyDiscountStoreCredit > 0
+          ? `Payment linked. $${invoiceUpdateResult.earlyDiscountStoreCredit.toFixed(2)} saved as store credit from early payment discount.`
+          : undefined,
+    });
   } catch (error: any) {
     console.error("Error linking payment:", error);
     return NextResponse.json(

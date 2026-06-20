@@ -31,7 +31,9 @@ export function canLinkInvoicesOnCheque(
   options?: { isSuperAdmin?: boolean; canApprove?: boolean },
 ): boolean {
   if (isChequeRequestReadOnly(cheque)) return false;
-  if (!UPLOADER_EDITABLE_STATUSES.includes(cheque.status as ChequeVaultStatus)) {
+  if (
+    !UPLOADER_EDITABLE_STATUSES.includes(cheque.status as ChequeVaultStatus)
+  ) {
     return false;
   }
   return !!(options?.isSuperAdmin || options?.canApprove);
