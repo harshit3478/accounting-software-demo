@@ -4,14 +4,7 @@ set -euo pipefail
 
 cd /var/www/accounting
 
-if [ -f .env ]; then
-  set -a
-  # shellcheck disable=SC1091
-  source .env
-  set +a
-fi
-
-echo "🔵 Running migrations..."
+# Prisma loads .env internally — do NOT `source .env` (values with commas/spaces break bash).
 
 set +e
 MIGRATE_OUT=$(npx prisma migrate deploy 2>&1)
@@ -58,7 +51,7 @@ if echo "$MIGRATE_OUT" | grep -q "P3009"; then
 
   set +e
   npx prisma migrate diff \
-    --from-url "$DATABASE_URL" \
+    --from-schema-datasource prisma/schema.prisma \
     --to-schema-datamodel prisma/schema.prisma \
     --exit-code > /dev/null 2>&1
   DIFF_EXIT=$?
