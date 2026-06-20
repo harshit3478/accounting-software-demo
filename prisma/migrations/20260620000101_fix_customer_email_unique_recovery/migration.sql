@@ -1,7 +1,8 @@
--- Normalize customer emails before adding unique constraint
+-- Recovery migration for production if 20260620000100 failed mid-way.
+-- Safe to run: dedupes emails and ensures the unique index exists.
+
 UPDATE `customers` SET `email` = NULL WHERE `email` IS NOT NULL AND TRIM(`email`) = '';
 
--- Clear case-insensitive duplicates before lowercasing (keep oldest id)
 UPDATE `customers` AS c
 INNER JOIN (
   SELECT LOWER(TRIM(`email`)) AS normalized_email, MIN(`id`) AS keep_id
@@ -14,7 +15,6 @@ SET c.`email` = NULL;
 
 UPDATE `customers` SET `email` = LOWER(TRIM(`email`)) WHERE `email` IS NOT NULL;
 
--- Clear any exact duplicates after normalization (keep oldest id)
 UPDATE `customers` AS c
 INNER JOIN (
   SELECT `email`, MIN(`id`) AS keep_id
@@ -25,7 +25,6 @@ INNER JOIN (
 ) AS d ON c.`email` = d.`email` AND c.`id` <> d.`keep_id`
 SET c.`email` = NULL;
 
--- CreateIndex (idempotent for interrupted migration recovery)
 SET @idx_exists := (
   SELECT COUNT(1)
   FROM INFORMATION_SCHEMA.STATISTICS
