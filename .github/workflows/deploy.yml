@@ -49,4 +49,26 @@ jobs:
             pm2 restart ecosystem.config.js --env production
             pm2 save
 
+            # 8. One-time backfill: correct invoice statuses left stale by edits
+            #    that changed the amount without recalculating status.
+            #    - Guarded by a marker file (outside the repo) so it runs ONCE.
+            #    - Wrapped in set +e so a failure here NEVER aborts the deploy.
+            BACKFILL_MARKER="/var/www/accounting-backfills/invoice-status.done"
+            if [ -f "$BACKFILL_MARKER" ]; then
+              echo "ℹ️  Invoice status backfill already completed — skipping."
+            else
+              echo "🔵 Running one-time invoice status backfill..."
+              set +e
+              npx tsx scripts/backfill-invoice-status.ts --apply
+              BACKFILL_EXIT=$?
+              set -e
+              if [ "$BACKFILL_EXIT" -eq 0 ]; then
+                mkdir -p "$(dirname "$BACKFILL_MARKER")"
+                date > "$BACKFILL_MARKER"
+                echo "✅ Invoice status backfill completed (marker written)."
+              else
+                echo "⚠️  Invoice status backfill failed (exit $BACKFILL_EXIT). Deploy continues; will retry on next deploy."
+              fi
+            fi
+
             echo "✅ Deployment Successful!"

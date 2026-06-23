@@ -343,7 +343,7 @@ export async function PUT(
             return {
               ...item,
               depositFee: Number(
-                matchedExisting?.depositFee ?? item.depositFee ?? 0,
+                (matchedExisting as any)?.depositFee ?? item.depositFee ?? 0,
               ),
             };
           }
@@ -653,7 +653,7 @@ export async function PUT(
       nextData.customerId || null,
     );
 
-    const invoice = await prisma.$transaction(
+    let invoice = await prisma.$transaction(
       async (tx) => {
         let updated = await tx.invoice.update({
           where: { id: invoiceId },
@@ -824,6 +824,26 @@ export async function PUT(
         maxWait: 5000,
       },
     );
+
+    // Editing an invoice can change its amount (discount, items, fees, etc.),
+    // which may make the already-recorded paidAmount fully cover the new total.
+    // Status is otherwise only recomputed on payment changes, so recalculate it
+    // here to avoid leaving the invoice stuck in a stale status (e.g. "partial"
+    // when it is actually fully paid). Inactive/abandoned states are preserved.
+    if (invoice.status !== "inactive" && invoice.status !== "abandoned") {
+      const recalculatedStatus = calculateInvoiceStatus(
+        invoice.amount.toNumber(),
+        invoice.paidAmount.toNumber(),
+        invoice.dueDate,
+      );
+
+      if (recalculatedStatus !== invoice.status) {
+        invoice = await prisma.invoice.update({
+          where: { id: invoiceId },
+          data: { status: recalculatedStatus },
+        });
+      }
+    }
 
     const historyChanges: Record<string, any> = { ...changes };
     if (isMigratedInvoiceEdit) {
@@ -1497,7 +1517,7 @@ export async function DELETE(
                 invoiceId,
                 amount: new Prisma.Decimal(amount),
                 paymentDate: new Date(),
-                methodId: sourceMethodId,
+                methodId: sourceMethodId!,
                 notes: `${label} retained from abandoned invoice ${existingInvoice.invoiceNumber}${reason ? ` | ${reason}` : ""}`,
                 userId: user.id,
                 isMatched: true,
