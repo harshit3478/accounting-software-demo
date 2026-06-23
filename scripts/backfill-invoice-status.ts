@@ -1,5 +1,4 @@
 import { type InvoiceStatus, PrismaClient } from "@prisma/client";
-import { calculateInvoiceStatus } from "../lib/invoice-utils";
 
 const prisma = new PrismaClient();
 
@@ -13,6 +12,11 @@ const prisma = new PrismaClient();
  *
  * Run with: npx tsx scripts/backfill-invoice-status.ts
  * Add --apply to write changes; otherwise it runs as a dry run.
+ *
+ * NOTE: the status logic below is intentionally inlined (kept in sync with
+ * lib/invoice-utils.ts:calculateInvoiceStatus) so this standalone script only
+ * depends on @prisma/client and does not pull in the app's runtime module
+ * graph (email/nodemailer/etc.), which can fail to load outside Next.js.
  */
 const RECALCULABLE_STATUSES: InvoiceStatus[] = [
   "paid",
@@ -20,6 +24,26 @@ const RECALCULABLE_STATUSES: InvoiceStatus[] = [
   "overdue",
   "partial",
 ];
+
+function calculateInvoiceStatus(
+  amount: number,
+  paidAmount: number,
+  dueDate: Date,
+): InvoiceStatus {
+  const EPSILON = 0.01;
+  const remaining = amount - paidAmount;
+
+  if (remaining <= EPSILON) {
+    return "paid";
+  }
+  if (paidAmount > EPSILON && remaining > EPSILON) {
+    return "partial";
+  }
+  if (paidAmount < EPSILON && dueDate < new Date()) {
+    return "overdue";
+  }
+  return "pending";
+}
 
 async function main() {
   const apply = process.argv.includes("--apply");
