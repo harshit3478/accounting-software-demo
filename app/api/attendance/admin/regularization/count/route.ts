@@ -12,9 +12,8 @@ export async function GET() {
     });
     return NextResponse.json({ ok: true, count });
   } catch (err: any) {
-    return NextResponse.json(
-      { error: err.message || "Unauthorized" },
-      { status: 401 },
-    );
+    const message = err.message || "Unauthorized";
+    const status = message === "Unauthorized" ? 401 : 403;
+    return NextResponse.json({ error: message }, { status });
   }
 }

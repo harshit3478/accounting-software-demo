@@ -5,6 +5,7 @@ const AUTH_API_SKIP_PATHS = [
   "/api/auth/send-sensitive-otp",
   "/api/auth/verify-otp",
   "/api/auth/logout",
+  "/api/auth-check",
   "/api/login",
 ];
 

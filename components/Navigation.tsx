@@ -9,7 +9,8 @@ import { formatUserDisplayName } from "../lib/user-display";
 
 export default function Navigation() {
   const pathname = usePathname();
-  const { logout, isAdmin, user, isSuperAdmin } = useAuth();
+  const { logout, isAdmin, user, isSuperAdmin, hasSettingPermission } =
+    useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -55,13 +56,15 @@ export default function Navigation() {
     logout();
   };
 
+  const canViewRegularizationCount = hasSettingPermission("regularizations");
+
   const [pendingCount, setPendingCount] = useState<number>(0);
 
   useEffect(() => {
     let mounted = true;
     async function fetchCount() {
       try {
-        if (!hasSettingsAccess) return;
+        if (!canViewRegularizationCount) return;
         const res = await fetch("/api/attendance/admin/regularization/count");
         if (!res.ok) return;
         const data = await res.json();
@@ -74,7 +77,7 @@ export default function Navigation() {
     return () => {
       mounted = false;
     };
-  }, [hasSettingsAccess]);
+  }, [canViewRegularizationCount]);
 
   useEffect(() => {
     if (!menuOpen) return;
