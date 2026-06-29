@@ -29,6 +29,48 @@ function filterVisibleUsers(
   });
 }
 
+function buildManageableUsersWhere(
+  currentUser: { id: number; email: string; role: string },
+  filters: { email?: string; role?: string },
+) {
+  const superAdminId = parseInt(process.env.SUPERADMIN_ID || "1");
+  const superAdminEmail = process.env.SUPERADMIN_EMAIL;
+  const superAdminMatch: Array<{ email: string } | { id: number }> = [
+    { id: superAdminId },
+  ];
+  if (superAdminEmail) {
+    superAdminMatch.push({ email: superAdminEmail });
+  }
+
+  const AND: Record<string, unknown>[] = [
+    { NOT: { id: currentUser.id } },
+    { NOT: { OR: superAdminMatch } },
+  ];
+
+  if (!isSuperAdmin(currentUser)) {
+    AND.push({ role: { not: "admin" } });
+  }
+
+  if (filters.email) {
+    AND.push({ email: { contains: filters.email } });
+  }
+
+  if (filters.role) {
+    AND.push({ role: filters.role });
+  }
+
+  return { AND };
+}
+
+const userListSelect = {
+  id: true,
+  email: true,
+  name: true,
+  role: true,
+  privileges: true,
+  createdAt: true,
+} as const;
+
 function formatUserWriteError(error: unknown): {
   message: string;
   status: number;
@@ -56,31 +98,62 @@ function formatUserWriteError(error: unknown): {
   };
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const currentUser = await requireSettingPermission("users");
+    const { searchParams } = new URL(request.url);
+    const pageParam = searchParams.get("page");
 
-    const cacheKey = CACHE_KEYS.ALL_USERS;
-    const cached = cache.get(cacheKey);
-    if (cached && Array.isArray(cached)) {
-      return NextResponse.json(filterVisibleUsers(cached, currentUser));
+    if (pageParam === null) {
+      const cacheKey = CACHE_KEYS.ALL_USERS;
+      const cached = cache.get(cacheKey);
+      if (cached && Array.isArray(cached)) {
+        return NextResponse.json(filterVisibleUsers(cached, currentUser));
+      }
+
+      const users = await prisma.user.findMany({
+        select: userListSelect,
+      });
+
+      const manageableUsers = users.filter((user) => !isSuperAdmin(user));
+      cache.set(cacheKey, manageableUsers, CACHE_TTL.LONG);
+
+      return NextResponse.json(filterVisibleUsers(manageableUsers, currentUser));
     }
 
-    const users = await prisma.user.findMany({
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        privileges: true,
-        createdAt: true,
-      },
+    const page = Math.max(1, parseInt(pageParam || "1", 10));
+    const limit = Math.min(
+      100,
+      Math.max(1, parseInt(searchParams.get("limit") || "10", 10)),
+    );
+    const email = normalizeEmail(searchParams.get("email") || "");
+    const role = searchParams.get("role")?.trim() || "";
+
+    const where = buildManageableUsersWhere(currentUser, {
+      email: email || undefined,
+      role: role || undefined,
     });
 
-    const manageableUsers = users.filter((user) => !isSuperAdmin(user));
-    cache.set(cacheKey, manageableUsers, CACHE_TTL.LONG);
+    const [total, users] = await Promise.all([
+      prisma.user.count({ where }),
+      prisma.user.findMany({
+        where,
+        skip: (page - 1) * limit,
+        take: limit,
+        orderBy: { createdAt: "desc" },
+        select: userListSelect,
+      }),
+    ]);
 
-    return NextResponse.json(filterVisibleUsers(manageableUsers, currentUser));
+    return NextResponse.json({
+      users,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
+      },
+    });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 403 });
   }
