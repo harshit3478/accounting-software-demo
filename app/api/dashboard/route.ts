@@ -45,6 +45,7 @@ export async function GET() {
 
     return NextResponse.json(metrics);
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 403 });
+    const status = error.message === "Unauthorized" ? 401 : 403;
+    return NextResponse.json({ error: error.message }, { status });
   }
 }

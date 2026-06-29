@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import ConfirmModal from "../ConfirmModal";
+import SensitiveActionOtpModal from "../SensitiveActionOtpModal";
 import { Plus } from "lucide-react";
 import { formatUserDisplayName } from "../../lib/user-display";
 import { useAuth } from "../../lib/AuthContext";
@@ -52,6 +53,28 @@ export default function UserManagementTab({
     id: number;
     name: string;
   } | null>(null);
+  const [otpModal, setOtpModal] = useState<{
+    title: string;
+    message: string;
+    confirmText: string;
+    action: (otp: string) => Promise<void>;
+  } | null>(null);
+  const [otpLoading, setOtpLoading] = useState(false);
+
+  const runSensitiveUserAction = (
+    config: {
+      title: string;
+      message: string;
+      confirmText: string;
+    },
+    action: (otp: string) => Promise<void>,
+  ) => {
+    if (isSuperAdmin) {
+      void action("");
+      return;
+    }
+    setOtpModal({ ...config, action });
+  };
 
   useEffect(() => {
     fetchUsers();
@@ -81,86 +104,122 @@ export default function UserManagementTab({
       showError("A user with this email already exists");
       return;
     }
-    setSaving(true);
-    try {
-      const res = await fetch("/api/users", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...newUser,
-          email,
-          name: newUser.name.trim(),
-        }),
-      });
-      if (res.ok) {
-        showSuccess("User created successfully");
-        setShowCreateModal(false);
-        setNewUser({
-          email: "",
-          name: "",
-          role: "accountant",
-          privileges: defaultPrivilegesForRole("accountant"),
-        });
-        fetchUsers();
-      } else {
-        const data = await res.json();
-        showError(data.error);
-      }
-    } finally {
-      setSaving(false);
-    }
+
+    runSensitiveUserAction(
+      {
+        title: "Verify User Creation",
+        message:
+          "Enter the verification code sent to your email to create this user.",
+        confirmText: "Verify & Create",
+      },
+      async (otp) => {
+        setSaving(true);
+        try {
+          const res = await fetch("/api/users", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              ...newUser,
+              email,
+              name: newUser.name.trim(),
+              otp,
+            }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            throw new Error(data.error || "Failed to create user");
+          }
+          setOtpModal(null);
+          showSuccess("User created successfully");
+          setShowCreateModal(false);
+          setNewUser({
+            email: "",
+            name: "",
+            role: "accountant",
+            privileges: defaultPrivilegesForRole("accountant"),
+          });
+          fetchUsers();
+        } finally {
+          setSaving(false);
+        }
+      },
+    );
   };
 
   const handleEditUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingUser) return;
-    setUpdating(true);
-    try {
-      const updateData: any = {
-        id: editingUser.id,
-        email: editingUser.email,
-        name: editingUser.name,
-        role: editingUser.role,
-        privileges: editingUser.privileges,
-      };
-      const res = await fetch("/api/users", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updateData),
-      });
-      if (res.ok) {
-        showSuccess("User updated successfully");
-        setEditingUser(null);
-        fetchUsers();
-      } else {
-        const data = await res.json();
-        showError(data.error);
-      }
-    } finally {
-      setUpdating(false);
-    }
+
+    runSensitiveUserAction(
+      {
+        title: "Verify User Update",
+        message:
+          "Enter the verification code sent to your email to update this user.",
+        confirmText: "Verify & Update",
+      },
+      async (otp) => {
+        setUpdating(true);
+        try {
+          const updateData = {
+            id: editingUser.id,
+            email: editingUser.email,
+            name: editingUser.name,
+            role: editingUser.role,
+            privileges: editingUser.privileges,
+            otp,
+          };
+          const res = await fetch("/api/users", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(updateData),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            throw new Error(data.error || "Failed to update user");
+          }
+          setOtpModal(null);
+          showSuccess("User updated successfully");
+          setEditingUser(null);
+          fetchUsers();
+        } finally {
+          setUpdating(false);
+        }
+      },
+    );
   };
 
   const confirmDelete = async () => {
     if (!deleteConfirm) return;
-    setDeletingId(deleteConfirm.id);
-    try {
-      const res = await fetch("/api/users", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: deleteConfirm.id }),
-      });
-      if (res.ok) {
-        showSuccess("User deleted successfully");
-        setDeleteConfirm(null);
-        fetchUsers();
-      } else {
-        const data = await res.json();
-        showError(data.error);
-      }
-    } finally {
-      setDeletingId(null);
-    }
+
+    const target = deleteConfirm;
+    setDeleteConfirm(null);
+
+    runSensitiveUserAction(
+      {
+        title: "Verify User Deletion",
+        message: `Enter the verification code sent to your email to delete user "${target.name}".`,
+        confirmText: "Verify & Delete",
+      },
+      async (otp) => {
+        setDeletingId(target.id);
+        try {
+          const res = await fetch("/api/users", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: target.id, otp }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            throw new Error(data.error || "Failed to delete user");
+          }
+          setOtpModal(null);
+          showSuccess("User deleted successfully");
+          fetchUsers();
+        } finally {
+          setDeletingId(null);
+        }
+      },
+    );
   };
 
   const renderPermissions = (
@@ -754,12 +813,34 @@ export default function UserManagementTab({
         isOpen={!!deleteConfirm}
         title="Delete User"
         message={`Are you sure you want to delete user "${deleteConfirm?.name}"? This action cannot be undone.`}
-        confirmText="Delete"
+        confirmText="Continue"
         cancelText="Cancel"
         onConfirm={confirmDelete}
         onCancel={() => setDeleteConfirm(null)}
         isLoading={deletingId === deleteConfirm?.id}
         danger={true}
+      />
+
+      <SensitiveActionOtpModal
+        isOpen={!!otpModal}
+        title={otpModal?.title ?? ""}
+        message={otpModal?.message ?? ""}
+        confirmText={otpModal?.confirmText}
+        onCancel={() => {
+          if (!otpLoading) {
+            setOtpModal(null);
+          }
+        }}
+        onConfirm={async (otp) => {
+          if (!otpModal) return;
+          setOtpLoading(true);
+          try {
+            await otpModal.action(otp);
+          } finally {
+            setOtpLoading(false);
+          }
+        }}
+        isLoading={otpLoading || saving || updating || deletingId !== null}
       />
     </div>
   );

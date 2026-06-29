@@ -6,6 +6,7 @@ import {
   clearClientAuthSession,
   forceLogoutAndRedirect,
   installApiAuthInterceptor,
+  syncAuthCookie,
 } from "./auth-session";
 
 interface User {
@@ -76,9 +77,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setToken(storedToken);
 
     if (storedToken) {
-      document.cookie = `token=${storedToken}; path=/; max-age=${
-        60 * 60 * 24 * 7
-      }; samesite=lax`;
+      syncAuthCookie(storedToken);
     }
 
     if (isAuthPage(window.location.pathname)) {
@@ -94,10 +93,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .then((result) => {
         if (result.ok && result.data?.authenticated && result.data.user) {
           setUser(result.data.user);
+          const storedToken = localStorage.getItem("token");
+          if (storedToken) {
+            syncAuthCookie(storedToken);
+          }
           return;
         }
 
-        if (result.status === 401 || result.status === 403) {
+        if (result.status === 401) {
           forceLogoutAndRedirect();
           return;
         }

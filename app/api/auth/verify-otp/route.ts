@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import jwt from "jsonwebtoken";
+import { signAuthToken, setAuthTokenCookie } from "@/lib/auth-config";
 import prisma from "../../../../lib/prisma";
 
 export async function POST(request: NextRequest) {
@@ -40,18 +40,13 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Generate Token (Same as login route)
-    const token = jwt.sign(
-      {
-        userId: user.id,
-        email: user.email,
-        role: user.role,
-        name: user.name,
-        privileges: user.privileges,
-      },
-      process.env.JWT_SECRET!,
-      { expiresIn: "7d" },
-    );
+    const token = signAuthToken({
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+      name: user.name,
+      privileges: user.privileges,
+    });
 
     const response = NextResponse.json({
       message: "Login successful",
@@ -64,13 +59,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    response.cookies.set("token", token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 60 * 60 * 24 * 7, // 7 days
-      path: "/",
-    });
+    setAuthTokenCookie(response, token);
 
     return response;
   } catch (error) {

@@ -39,6 +39,38 @@ export async function sendLoginOtp(email: string, otp: string) {
   }
 }
 
+export async function sendSensitiveActionOtpEmail(email: string, otp: string) {
+  try {
+    const { data, error } = await resend.emails.send({
+      from: process.env.EMAIL_FROM || "onboarding@resend.dev",
+      to: email,
+      subject: "Verification code for sensitive action",
+      text: `Your verification code is: ${otp}\n\nThis code will expire in 10 minutes.\n\nUse it to confirm a QuickBooks or user management change.`,
+      html: `
+        <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
+          <h2 style="color: #2563eb;">Action Verification Required</h2>
+          <p>You requested to perform a sensitive action (QuickBooks configuration or user management).</p>
+          <div style="background: #f3f4f6; padding: 15px; border-radius: 8px; text-align: center; margin: 20px 0;">
+            <span style="font-size: 24px; font-weight: bold; letter-spacing: 5px; color: #1f2937;">${otp}</span>
+          </div>
+          <p>This code will expire in 10 minutes.</p>
+          <p style="color: #6b7280; font-size: 14px;">If you didn't request this, contact your administrator immediately.</p>
+        </div>
+      `,
+    });
+
+    if (error) {
+      console.error("Resend Error:", error);
+      return { success: false, error };
+    }
+
+    return { success: true, data };
+  } catch (error) {
+    console.error("Error sending sensitive action OTP email:", error);
+    return { success: false, error };
+  }
+}
+
 export async function sendPaymentConfirmation(
   payment: { id: number; amount: number; paymentDate: Date | string },
   invoice: { invoiceNumber: string; amount: number; newRemaining: number },

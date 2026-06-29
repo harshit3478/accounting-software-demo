@@ -1,15 +1,21 @@
-import { NextResponse } from "next/server";
-import { requireAuth, requireSettingPermission } from "../../../../lib/auth";
+import { NextRequest, NextResponse } from "next/server";
+import { requireSettingPermission } from "../../../../lib/auth";
+import {
+  formatSensitiveActionOtpError,
+  requireSensitiveActionOtp,
+} from "../../../../lib/sensitive-action-otp";
 import {
   getQuickBooksAuthUri,
   getQuickBooksConfig,
 } from "../../../../lib/quickbooks";
 
-export async function GET() {
+export async function POST(request: NextRequest) {
   try {
-    await requireSettingPermission("quickbooks");
+    const user = await requireSettingPermission("quickbooks");
+    const { otp } = await request.json().catch(() => ({}));
 
-    // Log configuration for debugging
+    await requireSensitiveActionOtp(user, otp);
+
     const config = getQuickBooksConfig();
     console.log("QuickBooks Auth Init:", {
       environment: config.environment,
@@ -17,12 +23,23 @@ export async function GET() {
       redirectUri: config.redirectUri,
     });
 
-    // Generate authorization URL
     const authUri = getQuickBooksAuthUri();
 
     return NextResponse.json({ authUri });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const otpError = formatSensitiveActionOtpError(error);
+    if (otpError) {
+      return NextResponse.json({ error: otpError.message }, { status: otpError.status });
+    }
+
+    const message = error instanceof Error ? error.message : "Request failed";
+    const status =
+      message === "Unauthorized"
+        ? 401
+        : message === "Forbidden"
+          ? 403
+          : 500;
     console.error("QuickBooks auth init error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: message }, { status });
   }
 }

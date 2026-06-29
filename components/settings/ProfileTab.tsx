@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "../../lib/AuthContext";
 import UserAvatar from "../UserAvatar";
+import { syncAuthCookie } from "@/lib/auth-session";
 
 interface ProfileTabProps {
   showSuccess: (msg: string) => void;
@@ -130,9 +131,7 @@ export default function ProfileTab({
 
       const token = localStorage.getItem("token");
       if (token) {
-        document.cookie = `token=${token}; path=/; max-age=${
-          60 * 60 * 24 * 7
-        }; samesite=lax`;
+        syncAuthCookie(token);
       }
 
       setProfile(data);

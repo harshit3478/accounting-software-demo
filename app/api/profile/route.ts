@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import jwt from "jsonwebtoken";
+import { signAuthToken, setAuthTokenCookie } from "@/lib/auth-config";
 import prisma from "../../../lib/prisma";
 import { isSuperAdmin, requireAuth } from "../../../lib/auth";
 import { formatUserDisplayName } from "../../../lib/user-display";
@@ -45,17 +45,13 @@ export async function PATCH(request: NextRequest) {
     });
 
     const privileges = user.privileges as Record<string, unknown> | null;
-    const token = jwt.sign(
-      {
-        userId: user.id,
-        email: user.email,
-        role: user.role,
-        name: user.name,
-        privileges,
-      },
-      process.env.JWT_SECRET!,
-      { expiresIn: "7d" },
-    );
+    const token = signAuthToken({
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+      name: user.name,
+      privileges,
+    });
 
     const response = NextResponse.json({
       id: user.id,
@@ -67,13 +63,7 @@ export async function PATCH(request: NextRequest) {
       isSuperAdmin: isSuperAdmin(user),
     });
 
-    response.cookies.set("token", token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 60 * 60 * 24 * 7,
-      path: "/",
-    });
+    setAuthTokenCookie(response, token);
 
     return response;
   } catch (error: unknown) {

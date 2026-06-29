@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { syncAuthCookie } from "@/lib/auth-session";
 
 export default function LoginPage() {
   const [step, setStep] = useState<"email" | "otp">("email");
@@ -54,12 +55,11 @@ export default function LoginPage() {
       const data = await res.json();
 
       if (res.ok) {
-        // Store token in localStorage (if used by client-side calls)
         if (data.token) {
           localStorage.setItem("token", data.token);
+          syncAuthCookie(data.token);
         }
 
-        // Hard redirect to ensure fresh state/middleware check
         window.location.replace("/");
       } else {
         setError(data.error || "Invalid OTP");

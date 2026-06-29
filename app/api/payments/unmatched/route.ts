@@ -120,6 +120,7 @@ export async function GET(request: NextRequest) {
     });
   } catch (error: any) {
     console.error("Fetch unmatched payments error:", error);
-    return NextResponse.json({ error: error.message }, { status: 403 });
+    const status = error.message === "Unauthorized" ? 401 : 403;
+    return NextResponse.json({ error: error.message }, { status });
   }
 }

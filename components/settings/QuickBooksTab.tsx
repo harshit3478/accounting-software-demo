@@ -4,6 +4,8 @@ import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FiCheck, FiRefreshCw } from "react-icons/fi";
 import ConfirmModal from "../ConfirmModal";
+import SensitiveActionOtpModal from "../SensitiveActionOtpModal";
+import { useAuth } from "@/lib/AuthContext";
 
 interface QuickBooksConnection {
   connected: boolean;
@@ -29,6 +31,7 @@ export default function QuickBooksTab({
 }: QuickBooksTabProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { isSuperAdmin } = useAuth();
 
   const [qbConnection, setQbConnection] = useState<QuickBooksConnection | null>(
     null,
@@ -38,6 +41,28 @@ export default function QuickBooksTab({
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
+  const [otpModal, setOtpModal] = useState<{
+    title: string;
+    message: string;
+    confirmText: string;
+    action: (otp: string) => Promise<void>;
+  } | null>(null);
+  const [otpLoading, setOtpLoading] = useState(false);
+
+  const runSensitiveQuickBooksAction = (
+    config: {
+      title: string;
+      message: string;
+      confirmText: string;
+    },
+    action: (otp: string) => Promise<void>,
+  ) => {
+    if (isSuperAdmin) {
+      void action("");
+      return;
+    }
+    setOtpModal({ ...config, action });
+  };
 
   useEffect(() => {
     fetchConnectionStatus();
@@ -71,68 +96,104 @@ export default function QuickBooksTab({
   };
 
   const handleConnect = async () => {
-    setIsConnecting(true);
-    try {
-      const res = await fetch("/api/quickbooks/auth");
-      if (res.ok) {
-        const data = await res.json();
-        window.location.href = data.authUri;
-      } else {
-        showError("Failed to initiate QuickBooks connection");
-        setIsConnecting(false);
-      }
-    } catch (error) {
-      console.error("Connection error:", error);
-      showError("Failed to connect to QuickBooks");
-      setIsConnecting(false);
-    }
+    runSensitiveQuickBooksAction(
+      {
+        title: "Verify QuickBooks Connection",
+        message:
+          "Enter the verification code sent to your email to connect or reconnect QuickBooks.",
+        confirmText: "Verify & Connect",
+      },
+      async (otp) => {
+        setIsConnecting(true);
+        try {
+          const res = await fetch("/api/quickbooks/auth", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ otp }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            throw new Error(data.error || "Failed to initiate QuickBooks connection");
+          }
+          setOtpModal(null);
+          window.location.href = data.authUri;
+        } catch (error) {
+          console.error("Connection error:", error);
+          throw error;
+        } finally {
+          setIsConnecting(false);
+        }
+      },
+    );
   };
 
   const handleSync = async () => {
-    setIsSyncing(true);
-    try {
-      const res = await fetch("/api/quickbooks/sync", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ daysBack: 30 }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        showSuccess(
-          `Sync completed: ${data.created} created, ${data.updated} updated, ${data.skipped} skipped`,
-        );
-        fetchConnectionStatus();
-      } else {
-        const error = await res.json();
-        showError(`Sync failed: ${error.error || "Unknown error"}`);
-      }
-    } catch (error) {
-      console.error("Sync error:", error);
-      showError("Failed to sync with QuickBooks");
-    } finally {
-      setIsSyncing(false);
-    }
+    runSensitiveQuickBooksAction(
+      {
+        title: "Verify QuickBooks Sync",
+        message:
+          "Enter the verification code sent to your email to sync payments from QuickBooks.",
+        confirmText: "Verify & Sync",
+      },
+      async (otp) => {
+        setIsSyncing(true);
+        try {
+          const res = await fetch("/api/quickbooks/sync", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ daysBack: 30, otp }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            throw new Error(data.error || "Sync failed");
+          }
+          setOtpModal(null);
+          showSuccess(
+            `Sync completed: ${data.created} created, ${data.updated} updated, ${data.skipped} skipped`,
+          );
+          fetchConnectionStatus();
+        } catch (error) {
+          console.error("Sync error:", error);
+          throw error;
+        } finally {
+          setIsSyncing(false);
+        }
+      },
+    );
   };
 
   const confirmDisconnect = async () => {
-    setIsDisconnecting(true);
-    try {
-      const res = await fetch("/api/quickbooks/connection", {
-        method: "DELETE",
-      });
-      if (res.ok) {
-        showSuccess("Successfully disconnected from QuickBooks");
-        setShowDisconnectConfirm(false);
-        fetchConnectionStatus();
-      } else {
-        showError("Failed to disconnect from QuickBooks");
-      }
-    } catch (error) {
-      console.error("Disconnect error:", error);
-      showError("Failed to disconnect from QuickBooks");
-    } finally {
-      setIsDisconnecting(false);
-    }
+    runSensitiveQuickBooksAction(
+      {
+        title: "Verify QuickBooks Disconnect",
+        message:
+          "Enter the verification code sent to your email to disconnect QuickBooks.",
+        confirmText: "Verify & Disconnect",
+      },
+      async (otp) => {
+        setIsDisconnecting(true);
+        try {
+          const res = await fetch("/api/quickbooks/connection", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ otp }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            throw new Error(data.error || "Failed to disconnect from QuickBooks");
+          }
+          setOtpModal(null);
+          setShowDisconnectConfirm(false);
+          showSuccess("Successfully disconnected from QuickBooks");
+          fetchConnectionStatus();
+        } catch (error) {
+          console.error("Disconnect error:", error);
+          throw error;
+        } finally {
+          setIsDisconnecting(false);
+        }
+      },
+    );
   };
 
   return (
@@ -280,12 +341,34 @@ export default function QuickBooksTab({
         isOpen={showDisconnectConfirm}
         title="Disconnect QuickBooks"
         message="Are you sure you want to disconnect QuickBooks? This will stop automatic payment syncing."
-        confirmText="Disconnect"
+        confirmText="Continue"
         cancelText="Cancel"
         onConfirm={confirmDisconnect}
         onCancel={() => setShowDisconnectConfirm(false)}
         isLoading={isDisconnecting}
         danger={true}
+      />
+
+      <SensitiveActionOtpModal
+        isOpen={!!otpModal}
+        title={otpModal?.title ?? ""}
+        message={otpModal?.message ?? ""}
+        confirmText={otpModal?.confirmText}
+        onCancel={() => {
+          if (!otpLoading) {
+            setOtpModal(null);
+          }
+        }}
+        onConfirm={async (otp) => {
+          if (!otpModal) return;
+          setOtpLoading(true);
+          try {
+            await otpModal.action(otp);
+          } finally {
+            setOtpLoading(false);
+          }
+        }}
+        isLoading={otpLoading || isConnecting || isSyncing || isDisconnecting}
       />
     </div>
   );

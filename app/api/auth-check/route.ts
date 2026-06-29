@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { setAuthTokenCookie } from "@/lib/auth-config";
 import { getUserFromToken, isSuperAdmin } from "@/lib/auth";
 import { buildPermissionsPayload } from "@/lib/permissions";
 import { formatUserDisplayName } from "@/lib/user-display";
@@ -40,10 +41,15 @@ export async function GET(request: NextRequest) {
       isSuperAdmin: isSuperAdmin(dbUser),
     };
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       authenticated: true,
       user,
     });
+
+    // Refresh cookie so active users stay signed in (keep-me-logged-in default).
+    setAuthTokenCookie(response, token);
+
+    return response;
   } catch (error: any) {
     return NextResponse.json(
       {

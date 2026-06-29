@@ -8,6 +8,10 @@ import {
 } from "../../../lib/permissions";
 import cache, { CACHE_KEYS, CACHE_TTL } from "../../../lib/cache";
 import { invalidateUsers } from "../../../lib/cache-helpers";
+import {
+  formatSensitiveActionOtpError,
+  requireSensitiveActionOtp,
+} from "../../../lib/sensitive-action-otp";
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
@@ -41,6 +45,10 @@ function formatUserWriteError(error: unknown): {
   }
   if (err.message === "Forbidden") {
     return { message: "Admin access required", status: 403 };
+  }
+  const otpError = formatSensitiveActionOtpError(error);
+  if (otpError) {
+    return otpError;
   }
   return {
     message: err.message || "Request failed",
@@ -81,7 +89,10 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const currentUser = await requireSettingPermission("users");
-    const { email, password, name, role, privileges } = await request.json();
+    const { email, password, name, role, privileges, otp } =
+      await request.json();
+
+    await requireSensitiveActionOtp(currentUser, otp);
 
     if (!email?.trim() || !name?.trim()) {
       return NextResponse.json(
@@ -152,8 +163,10 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const currentUser = await requireSettingPermission("users");
-    const { id, email, name, role, privileges, password } =
+    const { id, email, name, role, privileges, password, otp } =
       await request.json();
+
+    await requireSensitiveActionOtp(currentUser, otp);
 
     if (!id) {
       return NextResponse.json(
@@ -269,7 +282,9 @@ export async function PUT(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     const currentUser = await requireSettingPermission("users");
-    const { id } = await request.json();
+    const { id, otp } = await request.json();
+
+    await requireSensitiveActionOtp(currentUser, otp);
 
     const targetUser = await prisma.user.findUnique({
       where: { id },

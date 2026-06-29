@@ -7,10 +7,17 @@ import {
   refreshQuickBooksToken,
 } from "../../../../lib/quickbooks";
 import { stampPaymentCode } from "../../../../lib/payment-code";
+import {
+  formatSensitiveActionOtpError,
+  requireSensitiveActionOtp,
+} from "../../../../lib/sensitive-action-otp";
 
 export async function POST(request: NextRequest) {
   try {
     const user = await requireSettingPermission("quickbooks");
+
+    const body = await request.json().catch(() => ({}));
+    await requireSensitiveActionOtp(user, body.otp);
 
     // Find user's QuickBooks connection
     const connection = await prisma.quickBooksConnection.findUnique({
@@ -25,7 +32,6 @@ export async function POST(request: NextRequest) {
     }
 
     // Get request options
-    const body = await request.json().catch(() => ({}));
     const daysBack = body.daysBack || 30; // Default to last 30 days
 
     // Create QuickBooks client
@@ -213,12 +219,15 @@ export async function POST(request: NextRequest) {
       ...results,
       message: `Synced ${results.total} payments: ${results.created} created, ${results.updated} updated, ${results.skipped} skipped`,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const otpError = formatSensitiveActionOtpError(error);
+    if (otpError) {
+      return NextResponse.json({ error: otpError.message }, { status: otpError.status });
+    }
+
+    const message = error instanceof Error ? error.message : "Failed to sync payments";
     console.error("Sync error:", error);
-    return NextResponse.json(
-      { error: error.message || "Failed to sync payments" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 

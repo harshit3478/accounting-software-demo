@@ -1,5 +1,8 @@
+import { AUTH_COOKIE_MAX_AGE_SECONDS } from "./auth-config";
+
 const AUTH_API_SKIP_PATHS = [
   "/api/auth/send-otp",
+  "/api/auth/send-sensitive-otp",
   "/api/auth/verify-otp",
   "/api/auth/logout",
   "/api/login",
@@ -17,6 +20,15 @@ function getRequestUrl(input: RequestInfo | URL): string {
 function shouldHandleAuthFailure(url: string): boolean {
   if (!url.includes("/api/")) return false;
   return !AUTH_API_SKIP_PATHS.some((path) => url.includes(path));
+}
+
+export function syncAuthCookie(token: string) {
+  if (typeof window === "undefined") return;
+
+  const maxAge = AUTH_COOKIE_MAX_AGE_SECONDS;
+  const secure =
+    window.location.protocol === "https:" ? "; secure" : "";
+  document.cookie = `token=${token}; path=/; max-age=${maxAge}; samesite=lax${secure}`;
 }
 
 export function clearClientAuthSession() {
@@ -47,7 +59,9 @@ export function forceLogoutAndRedirect() {
 }
 
 export function handleUnauthorizedApiResponse(status: number, url: string) {
-  if (status !== 401 && status !== 403) return;
+  // Only 401 means the session is invalid. 403 is permission denied — the user
+  // is still authenticated and must not be logged out.
+  if (status !== 401) return;
   if (!shouldHandleAuthFailure(url)) return;
 
   forceLogoutAndRedirect();

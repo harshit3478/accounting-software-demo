@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "../../../../lib/prisma";
 import { requireAuth, requireSettingPermission } from "../../../../lib/auth";
+import {
+  formatSensitiveActionOtpError,
+  requireSensitiveActionOtp,
+} from "../../../../lib/sensitive-action-otp";
 
 export async function GET() {
   try {
@@ -34,9 +38,12 @@ export async function GET() {
   }
 }
 
-export async function DELETE() {
+export async function DELETE(request: NextRequest) {
   try {
     const user = await requireSettingPermission("quickbooks");
+    const { otp } = await request.json().catch(() => ({}));
+
+    await requireSensitiveActionOtp(user, otp);
 
     await prisma.quickBooksConnection.update({
       where: { userId: user.id },
@@ -44,8 +51,14 @@ export async function DELETE() {
     });
 
     return NextResponse.json({ success: true });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const otpError = formatSensitiveActionOtpError(error);
+    if (otpError) {
+      return NextResponse.json({ error: otpError.message }, { status: otpError.status });
+    }
+
+    const message = error instanceof Error ? error.message : "Request failed";
     console.error("QuickBooks disconnect error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
