@@ -14,6 +14,10 @@ import {
   isEarlyPaymentDiscountConfigured,
   type EarlyPaymentDiscountSettingSnapshot,
 } from "../../lib/early-payment-discount-client";
+import {
+  formatBusinessDate,
+  getBusinessTodayString,
+} from "../../lib/business-date";
 import EarlyPaymentDiscountNotice from "./EarlyPaymentDiscountNotice";
 
 interface Invoice {
@@ -320,7 +324,7 @@ export default function LinkPaymentModal({
     (p) => p.id === selectedPaymentId,
   );
   const previewPaymentDate =
-    selectedPayment?.paymentDate ?? new Date().toISOString().split("T")[0];
+    selectedPayment?.paymentDate ?? getBusinessTodayString();
   const previewLinkAmount =
     selectedPayment && linkAmount > 0
       ? linkAmount
@@ -461,7 +465,7 @@ export default function LinkPaymentModal({
                 </p>
                 <p className="text-xs text-amber-800 mt-1">
                   {overdueInstallment.label} was due on{" "}
-                  {new Date(overdueInstallment.dueDate).toLocaleDateString()}.
+                  {formatBusinessDate(overdueInstallment.dueDate)}.
                   Apply late fee to this invoice? Admin late fee: $
                   {lateFeeSetting.amount.toFixed(2)}
                 </p>
@@ -568,10 +572,11 @@ export default function LinkPaymentModal({
                       </div>
                       <div className="flex items-center gap-2 text-xs text-gray-500">
                         <span className="whitespace-nowrap">
-                          {new Date(payment.paymentDate).toLocaleDateString(
-                            undefined,
-                            { month: "short", day: "numeric", year: "2-digit" },
-                          )}
+                          {formatBusinessDate(payment.paymentDate, {
+                            month: "short",
+                            day: "numeric",
+                            year: "2-digit",
+                          })}
                         </span>
                         <span className="w-1 h-1 rounded-full bg-gray-300"></span>
                         <span className="truncate max-w-[140px] opacity-80">

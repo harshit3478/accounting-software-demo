@@ -13,6 +13,7 @@ import {
   type EarlyPaymentDiscountSettingSnapshot,
 } from "../../lib/early-payment-discount-client";
 import EarlyPaymentDiscountNotice from "../invoices/EarlyPaymentDiscountNotice";
+import { formatBusinessDate } from "../../lib/business-date";
 
 interface Payment {
   id: number;
@@ -333,7 +334,7 @@ export default function LinkInvoiceModal({
               Payment Date
             </span>
             <span className="text-sm font-medium text-gray-900">
-              {new Date(payment.paymentDate).toLocaleDateString()}
+              {formatBusinessDate(payment.paymentDate)}
             </span>
           </div>
           <div className="flex flex-col items-end">
@@ -386,7 +387,7 @@ export default function LinkInvoiceModal({
               </p>
               <p className="text-xs text-amber-800 mt-1">
                 {overdueInstallment.label} was due on{" "}
-                {new Date(overdueInstallment.dueDate).toLocaleDateString()}.
+                {formatBusinessDate(overdueInstallment.dueDate)}.
                 Admin late fee: ${lateFeeSetting.amount.toFixed(2)}
               </p>
             </div>

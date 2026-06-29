@@ -25,6 +25,12 @@ import {
 import { invalidateDashboard } from "../../../lib/cache-helpers";
 import { serializeInvoiceEditHistoryEntry } from "../../../lib/user-display";
 import { applyAvailableStoreCreditToInvoice } from "../../../lib/store-credit-apply";
+import {
+  endOfBusinessDay,
+  isBeforeBusinessToday,
+  isFutureBusinessDate,
+  startOfBusinessDay,
+} from "../../../lib/business-date";
 
 async function getConfiguredInsuranceBands(): Promise<InsuranceBand[]> {
   const ruleModel = (prisma as any)?.insuranceRule;
@@ -253,7 +259,7 @@ export async function GET(request: NextRequest) {
         installments: {
           some: {
             isPaid: false,
-            dueDate: { lt: new Date() },
+            dueDate: { lt: startOfBusinessDay(new Date()) },
           },
         },
       };
@@ -262,8 +268,8 @@ export async function GET(request: NextRequest) {
     // Date range filter
     if (startDate && endDate) {
       where.createdAt = {
-        gte: new Date(startDate),
-        lte: new Date(new Date(endDate).setHours(23, 59, 59, 999)),
+        gte: startOfBusinessDay(startDate),
+        lte: endOfBusinessDay(endDate),
       };
     }
 
@@ -586,7 +592,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const invoiceDateValue = invoiceDate ? new Date(invoiceDate) : new Date();
+    const invoiceDateValue = invoiceDate
+      ? startOfBusinessDay(invoiceDate)
+      : startOfBusinessDay(new Date());
     if (Number.isNaN(invoiceDateValue.getTime())) {
       return NextResponse.json(
         { error: "Invalid invoice date" },
@@ -594,28 +602,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const normalizedInvoiceDate = new Date(invoiceDateValue);
-    normalizedInvoiceDate.setHours(0, 0, 0, 0);
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    if (normalizedInvoiceDate > today) {
+    if (isFutureBusinessDate(invoiceDateValue)) {
       return NextResponse.json(
         { error: "Invoice date cannot be in the future" },
         { status: 400 },
       );
     }
 
-    const dueDateValue = new Date(dueDate);
-    if (Number.isNaN(dueDateValue.getTime())) {
+    let dueDateValue: Date;
+    try {
+      dueDateValue = startOfBusinessDay(dueDate);
+    } catch {
       return NextResponse.json({ error: "Invalid due date" }, { status: 400 });
     }
 
-    const selectedDueDate = new Date(dueDateValue);
-    selectedDueDate.setHours(0, 0, 0, 0);
-
-    const requiresDueDateReason = selectedDueDate < today;
+    const requiresDueDateReason = isBeforeBusinessToday(dueDateValue);
     const normalizedDueDateReason =
       typeof dueDateReason === "string" ? dueDateReason.trim() : "";
 

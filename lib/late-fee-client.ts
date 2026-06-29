@@ -1,3 +1,8 @@
+import {
+  formatBusinessDate,
+  startOfBusinessDay,
+} from "./business-date";
+
 export interface LateFeeInstallmentInfo {
   id: number;
   label: string;
@@ -16,14 +21,11 @@ export function isLateFeeConfigured(setting?: LateFeeSettingLike | null) {
 }
 
 export function startOfCalendarDay(date: Date | string) {
-  const parsed = new Date(date);
-  if (Number.isNaN(parsed.getTime())) {
+  try {
+    return startOfBusinessDay(date);
+  } catch {
     return null;
   }
-
-  const normalized = new Date(parsed);
-  normalized.setHours(0, 0, 0, 0);
-  return normalized;
 }
 
 export function isLayawayInstallmentOverdue(
@@ -124,7 +126,7 @@ export function findOverdueLayawayInstallmentClient(
 export function buildLateFeeReason(
   installment: LateFeeInstallmentInfo,
 ): string {
-  return `${installment.label} due date passed (${new Date(
+  return `${installment.label} due date passed (${formatBusinessDate(
     installment.dueDate,
-  ).toLocaleDateString()})`;
+  )})`;
 }

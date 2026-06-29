@@ -11,6 +11,7 @@ import {
   findOverdueLayawayInstallmentClient,
   isLateFeeConfigured,
 } from "../../../lib/late-fee-client";
+import { formatBusinessDate } from "../../../lib/business-date";
 
 interface Payment {
   id: number;
@@ -260,13 +261,7 @@ function PaymentMatchingPageContent() {
     }
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
-  };
+  const formatDate = (dateString: string) => formatBusinessDate(dateString);
 
   const getMethodBadgeStyle = (method: Payment["method"]) => {
     const color = method?.color || "#6B7280";
@@ -699,9 +694,7 @@ function PaymentMatchingPageContent() {
                     </p>
                     <p className="text-xs text-amber-800 mt-1">
                       {overdueInstallment.label} was due on{" "}
-                      {new Date(
-                        overdueInstallment.dueDate,
-                      ).toLocaleDateString()}
+                      {formatBusinessDate(overdueInstallment.dueDate)}
                       . Admin late fee: ${lateFeeSetting.amount.toFixed(2)}
                     </p>
                   </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { formatBusinessDate } from "../../lib/business-date";
 
 interface RequestItem {
   id: number;
@@ -139,7 +140,7 @@ export default function RegularizationsTab({
                       </div>
                     </td>
                     <td className="px-3 py-3 text-gray-900 text-xs">
-                      {new Date(it.forDate).toLocaleDateString("en-US", {
+                      {formatBusinessDate(it.forDate, {
                         month: "short",
                         day: "numeric",
                         year: "2-digit",

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "../../../../lib/prisma";
 import { requireAuth } from "../../../../lib/auth";
+import { toBusinessDateString } from "../../../../lib/business-date";
 
 export async function GET(request: NextRequest) {
   try {
@@ -105,8 +106,8 @@ export async function GET(request: NextRequest) {
         remaining,
         status: invoice.status,
         isHold: !!(invoice as any).isHold,
-        dueDate: invoice.dueDate.toISOString().split("T")[0],
-        createdAt: invoice.createdAt.toISOString().split("T")[0],
+        dueDate: toBusinessDateString(invoice.dueDate),
+        createdAt: toBusinessDateString(invoice.createdAt),
         description: invoice.description,
         isLayaway: invoice.isLayaway,
         layawayPlan: invoice.layawayPlan

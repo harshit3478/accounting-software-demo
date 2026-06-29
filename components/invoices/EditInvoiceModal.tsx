@@ -16,6 +16,10 @@ import InvoiceSummary from "./InvoiceSummary";
 import Modal from "./Modal";
 import { InvoiceItem } from "./types";
 import { useAuth } from "../../lib/AuthContext";
+import {
+  isBeforeBusinessToday,
+  isFutureBusinessDate,
+} from "../../lib/business-date";
 
 interface CustomerOption {
   id: number;
@@ -189,37 +193,7 @@ export default function EditInvoiceModal({
     migratedInvoiceEditEnabled &&
     hasSettingPermission("migrated-invoice-edit");
 
-  const isBackDate = (selectedDate: string) => {
-    if (!selectedDate) return false;
-
-    const parsed = new Date(selectedDate);
-    if (Number.isNaN(parsed.getTime())) return false;
-
-    const selected = new Date(parsed);
-    selected.setHours(0, 0, 0, 0);
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    return selected < today;
-  };
-
-  const isFutureDate = (selectedDate: string) => {
-    if (!selectedDate) return false;
-
-    const parsed = new Date(selectedDate);
-    if (Number.isNaN(parsed.getTime())) return false;
-
-    const selected = new Date(parsed);
-    selected.setHours(0, 0, 0, 0);
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    return selected > today;
-  };
-
-  const requiresDueDateReason = isBackDate(dueDate);
+  const requiresDueDateReason = isBeforeBusinessToday(dueDate);
 
   // Fetch customers for autocomplete
   useEffect(() => {
@@ -511,7 +485,6 @@ export default function EditInvoiceModal({
     recalculationFeeSetting.amount > 0;
 
   const buildLayawayInstallments = () => {
-    const remainingBalance = calculateRemainingBalance();
     const baseDate = invoiceDate ? new Date(invoiceDate) : new Date();
     if (Number.isNaN(baseDate.getTime())) {
       return [];
@@ -522,7 +495,7 @@ export default function EditInvoiceModal({
       frequency: layawayFrequency,
       months: layawayMonths,
       downPayment: layawayDownPayment,
-      totalAmount: remainingBalance,
+      totalAmount: calculateTotal(),
     }).map((installment) => ({
       dueDate: installment.dueDate.toISOString(),
       amount: installment.amount,
@@ -551,7 +524,7 @@ export default function EditInvoiceModal({
       setInvoiceDateError("Invoice date is required");
       return false;
     }
-    if (isFutureDate(selectedDate)) {
+    if (isFutureBusinessDate(selectedDate)) {
       setInvoiceDateError("Invoice date cannot be in the future");
       return false;
     }
@@ -1380,13 +1353,6 @@ export default function EditInvoiceModal({
                 total={calculateTotal()}
               />
 
-              {paidAmount > 0 && (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-                  This invoice already has payments applied. Layaway
-                  calculations and the schedule preview use the remaining
-                  balance, not the full invoice total.
-                </div>
-              )}
             </div>
           </div>
 

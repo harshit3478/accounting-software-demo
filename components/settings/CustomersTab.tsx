@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { formatBusinessDate } from "../../lib/business-date";
 import {
   Plus,
   Search,
@@ -349,7 +350,7 @@ export default function CustomersTab({
       lines.push(`Address,${escapeCsv(customer.address || "")}`);
       lines.push(`Notes,${escapeCsv(customer.notes || "")}`);
       lines.push(
-        `Client Since,${escapeCsv(new Date(customer.createdAt).toLocaleDateString())}`,
+        `Client Since,${escapeCsv(formatBusinessDate(customer.createdAt))}`,
       );
       lines.push("");
 
@@ -369,7 +370,7 @@ export default function CustomersTab({
       );
       lines.push(`Invoice Count,${escapeCsv(customer.stats.invoiceCount)}`);
       lines.push(
-        `Last Activity,${escapeCsv(customer.stats.lastActivityDate ? new Date(customer.stats.lastActivityDate).toLocaleDateString() : "")}`,
+        `Last Activity,${escapeCsv(customer.stats.lastActivityDate ? formatBusinessDate(customer.stats.lastActivityDate) : "")}`,
       );
       lines.push("");
 
@@ -396,8 +397,8 @@ export default function CustomersTab({
         lines.push(
           [
             escapeCsv(inv.invoiceNumber),
-            escapeCsv(new Date(inv.createdAt).toLocaleDateString()),
-            escapeCsv(new Date(inv.dueDate).toLocaleDateString()),
+            escapeCsv(formatBusinessDate(inv.createdAt)),
+            escapeCsv(formatBusinessDate(inv.dueDate)),
             escapeCsv(Number(inv.amount).toFixed(2)),
             escapeCsv(Number(inv.paidAmount).toFixed(2)),
             escapeCsv(inv.status),
@@ -411,7 +412,7 @@ export default function CustomersTab({
       for (const tx of customer.creditTransactions) {
         lines.push(
           [
-            escapeCsv(new Date(tx.createdAt).toLocaleDateString()),
+            escapeCsv(formatBusinessDate(tx.createdAt)),
             escapeCsv(tx.type),
             escapeCsv(Number(tx.amount).toFixed(2)),
             escapeCsv(tx.reason || ""),
@@ -607,9 +608,7 @@ export default function CustomersTab({
                     </td>
                     <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
                       {c.stats.lastActivityDate
-                        ? new Date(
-                            c.stats.lastActivityDate,
-                          ).toLocaleDateString()
+                        ? formatBusinessDate(c.stats.lastActivityDate)
                         : "-"}
                     </td>
                     <td className="px-4 py-3">
@@ -970,9 +969,7 @@ export default function CustomersTab({
                               {viewingCustomer.creditTransactions.map((tx) => (
                                 <tr key={tx.id} className="hover:bg-gray-50">
                                   <td className="px-3 py-2 text-gray-600 whitespace-nowrap">
-                                    {new Date(
-                                      tx.createdAt,
-                                    ).toLocaleDateString()}
+                                    {formatBusinessDate(tx.createdAt)}
                                   </td>
                                   <td className="px-3 py-2">
                                     <span
@@ -1146,9 +1143,7 @@ export default function CustomersTab({
                                     {inv.invoiceNumber}
                                   </td>
                                   <td className="px-3 py-2 text-gray-600 whitespace-nowrap">
-                                    {new Date(
-                                      inv.createdAt,
-                                    ).toLocaleDateString()}
+                                    {formatBusinessDate(inv.createdAt)}
                                   </td>
                                   <td className="px-3 py-2 text-right text-gray-900">
                                     {formatCurrency(Number(inv.amount))}
@@ -1183,13 +1178,11 @@ export default function CustomersTab({
                     {viewingCustomer.stats.lastActivityDate && (
                       <p className="text-xs text-gray-400 mt-4">
                         Last activity:{" "}
-                        {new Date(
+                        {formatBusinessDate(
                           viewingCustomer.stats.lastActivityDate,
-                        ).toLocaleDateString()}
+                        )}
                         {" · "}Client since:{" "}
-                        {new Date(
-                          viewingCustomer.createdAt,
-                        ).toLocaleDateString()}
+                        {formatBusinessDate(viewingCustomer.createdAt)}
                       </p>
                     )}
                   </div>

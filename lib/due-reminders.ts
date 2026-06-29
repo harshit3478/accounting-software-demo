@@ -1,5 +1,6 @@
 import prisma from "./prisma";
 import { sendDuePaymentReminderEmail } from "./email";
+import { daysBetweenBusiness } from "./business-date";
 
 export interface DueReminderSettingSnapshot {
   daysAfterDueDate: number;
@@ -20,13 +21,7 @@ const DEFAULT_SETTING: DueReminderSettingSnapshot = {
 };
 
 function daysBetween(start: Date, end: Date): number {
-  const startUtc = Date.UTC(
-    start.getFullYear(),
-    start.getMonth(),
-    start.getDate(),
-  );
-  const endUtc = Date.UTC(end.getFullYear(), end.getMonth(), end.getDate());
-  return Math.floor((endUtc - startUtc) / (1000 * 60 * 60 * 24));
+  return daysBetweenBusiness(start, end);
 }
 
 export async function getDueReminderSettingSnapshot(): Promise<DueReminderSettingSnapshot> {

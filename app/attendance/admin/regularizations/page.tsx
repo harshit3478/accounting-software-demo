@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Navigation from "../../../../components/Navigation";
+import { formatBusinessDate } from "@/lib/business-date";
 
 interface RequestItem {
   id: number;
@@ -107,7 +108,7 @@ export default function RegularizationsAdminPage() {
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      {new Date(it.forDate).toLocaleDateString()}
+                      {formatBusinessDate(it.forDate)}
                     </td>
                     <td className="px-4 py-3 capitalize">{it.type}</td>
                     <td className="px-4 py-3">

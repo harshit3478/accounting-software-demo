@@ -13,6 +13,12 @@ import {
   invalidateCachePattern,
 } from "../hooks/useClientCache";
 import Footer from "@/components/Footer";
+import {
+  formatBusinessDate,
+  getBusinessTodayString,
+  isBeforeBusinessToday,
+  toBusinessDateString,
+} from "@/lib/business-date";
 
 function DashboardContent() {
   const router = useRouter();
@@ -101,9 +107,9 @@ function DashboardContent() {
     }
 
     if (invoicesData) {
-      const today = new Date();
       const overdue = invoicesData.filter(
-        (inv: any) => inv.status !== "paid" && new Date(inv.dueDate) < today,
+        (inv: any) =>
+          inv.status !== "paid" && isBeforeBusinessToday(inv.dueDate),
       );
 
       const overdueAmount = overdue.reduce(
@@ -124,10 +130,10 @@ function DashboardContent() {
     }
 
     if (paymentsData) {
-      const todayStr = new Date().toISOString().split("T")[0];
+      const todayStr = getBusinessTodayString();
       const todayPayments = paymentsData.filter((p: any) => {
         const paymentDate = p.paymentDate
-          ? new Date(p.paymentDate).toISOString().split("T")[0]
+          ? toBusinessDateString(new Date(p.paymentDate))
           : null;
         return paymentDate === todayStr;
       });
@@ -431,7 +437,7 @@ function DashboardContent() {
               </h2>
               <p className="text-sm text-gray-500 mt-1">
                 Key metrics for{" "}
-                {new Date().toLocaleDateString("en-US", {
+                {formatBusinessDate(new Date(), {
                   weekday: "long",
                   year: "numeric",
                   month: "long",
@@ -808,7 +814,7 @@ function DashboardContent() {
                   if (diffMins < 60) return `${diffMins} minutes ago`;
                   if (diffHours < 24) return `${diffHours} hours ago`;
                   if (diffDays < 7) return `${diffDays} days ago`;
-                  return paymentDate.toLocaleDateString();
+                  return formatBusinessDate(paymentDate);
                 })();
 
                 return (

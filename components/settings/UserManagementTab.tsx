@@ -7,6 +7,7 @@ import SensitiveActionOtpModal from "../SensitiveActionOtpModal";
 import { Plus } from "lucide-react";
 import { formatUserDisplayName } from "../../lib/user-display";
 import { useAuth } from "../../lib/AuthContext";
+import { formatBusinessDate } from "../../lib/business-date";
 import {
   CHEQUE_VAULT_PERMISSION_LABELS,
   CHEQUE_VAULT_PERMISSIONS,
@@ -507,7 +508,7 @@ export default function UserManagementTab({
                         )}
                       </td>
                       <td className="px-3 py-3 text-sm text-gray-500">
-                        {new Date(user.createdAt).toLocaleDateString("en-US", {
+                        {formatBusinessDate(user.createdAt, {
                           month: "short",
                           day: "numeric",
                           year: "2-digit",

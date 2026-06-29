@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import prisma from "../../../../../../lib/prisma";
 import { requireAdmin } from "../../../../../../lib/auth";
+import {
+  endOfBusinessDay,
+  startOfBusinessDay,
+} from "../../../../../../lib/business-date";
 
 export async function GET(req: Request, { params }: any) {
   try {
@@ -18,14 +22,9 @@ export async function GET(req: Request, { params }: any) {
 
     // Apply date filtering if provided
     if (startDate && endDate) {
-      const start = new Date(startDate);
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(endDate);
-      end.setHours(23, 59, 59, 999);
-
       whereClause.date = {
-        gte: start,
-        lte: end,
+        gte: startOfBusinessDay(startDate),
+        lte: endOfBusinessDay(endDate),
       };
     }
 

@@ -17,6 +17,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Button } from "../ui/button";
 import type { Invoice } from "../../hooks/useInvoices";
+import { formatBusinessDate } from "../../lib/business-date";
 
 interface InvoiceTableRowProps {
   invoice: Invoice;
@@ -51,13 +52,7 @@ export default function InvoiceTableRow({
 }: InvoiceTableRowProps) {
   const [showActionsMenu, setShowActionsMenu] = useState(false);
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
-  };
+  const formatDate = (dateString: string) => formatBusinessDate(dateString);
 
   const getStatusBadge = (status: string) => {
     const classes = {

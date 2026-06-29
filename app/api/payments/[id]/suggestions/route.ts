@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "../../../../../lib/prisma";
 import { requireAuth } from "../../../../../lib/auth";
+import {
+  daysBetweenBusiness,
+  startOfBusinessDay,
+  toBusinessDateString,
+} from "../../../../../lib/business-date";
 
 interface Suggestion {
   invoice: {
@@ -133,8 +138,7 @@ export async function GET(
       // Rule 5: Date proximity bonus
       else {
         const daysDiff = Math.abs(
-          (paymentDate.getTime() - invoice.createdAt.getTime()) /
-            (1000 * 60 * 60 * 24),
+          daysBetweenBusiness(invoice.createdAt, paymentDate),
         );
         if (daysDiff <= 7) {
           confidence = 60;
@@ -158,7 +162,7 @@ export async function GET(
             paidAmount: totalPaid,
             remaining,
             status: invoice.status,
-            dueDate: invoice.dueDate.toISOString().split("T")[0],
+            dueDate: toBusinessDateString(invoice.dueDate),
             isLayaway: invoice.isLayaway,
             layawayPlan: invoice.layawayPlan
               ? {
@@ -189,8 +193,8 @@ export async function GET(
         return b.confidence - a.confidence;
       }
       return (
-        new Date(b.invoice.dueDate).getTime() -
-        new Date(a.invoice.dueDate).getTime()
+        startOfBusinessDay(b.invoice.dueDate).getTime() -
+        startOfBusinessDay(a.invoice.dueDate).getTime()
       );
     });
 

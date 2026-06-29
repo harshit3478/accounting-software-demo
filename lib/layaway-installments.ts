@@ -1,3 +1,8 @@
+import {
+  formatBusinessDate,
+  normalizeBusinessCalendarDate,
+} from "./business-date";
+
 export type LayawayPaymentFrequency = "monthly" | "bi-weekly" | "weekly";
 
 const SKIP_THRESHOLDS: Record<LayawayPaymentFrequency, number> = {
@@ -13,9 +18,7 @@ export interface LayawayInstallmentDraft {
 }
 
 function startOfDay(date: Date) {
-  const normalized = new Date(date);
-  normalized.setHours(12, 0, 0, 0);
-  return normalized;
+  return normalizeBusinessCalendarDate(date);
 }
 
 function daysBetween(from: Date, to: Date) {
@@ -155,6 +158,27 @@ export function getLayawayInstallmentCount(
   return months;
 }
 
+export function calculateLayawayInstallmentAmount(options: {
+  totalAmount: number;
+  downPayment: number;
+  months: number;
+  frequency: LayawayPaymentFrequency;
+}): number {
+  const numInstallments = getLayawayInstallmentCount(
+    options.months,
+    options.frequency,
+  );
+  const effectiveDownPayment = Math.min(
+    Math.max(0, options.downPayment),
+    options.totalAmount,
+  );
+  const installmentBase = Math.max(
+    options.totalAmount - effectiveDownPayment,
+    0,
+  );
+  return numInstallments > 0 ? installmentBase / numInstallments : 0;
+}
+
 export function buildLayawayInstallmentSchedule(options: {
   invoiceDate: Date | string;
   frequency: LayawayPaymentFrequency;
@@ -162,6 +186,8 @@ export function buildLayawayInstallmentSchedule(options: {
   downPayment: number;
   totalAmount: number;
   includeDownPayment?: boolean;
+  /** Skip this many regular (non-down) installments that are already paid. */
+  paidRegularInstallmentCount?: number;
 }): LayawayInstallmentDraft[] {
   const {
     invoiceDate,
@@ -170,15 +196,21 @@ export function buildLayawayInstallmentSchedule(options: {
     downPayment,
     totalAmount,
     includeDownPayment = true,
+    paidRegularInstallmentCount = 0,
   } = options;
 
   const numInstallments = getLayawayInstallmentCount(months, frequency);
-  const safeDownPayment = includeDownPayment
-    ? Math.min(Math.max(0, downPayment), totalAmount)
-    : 0;
-  const remaining = Math.max(totalAmount - safeDownPayment, 0);
-  const installmentAmount =
-    numInstallments > 0 ? remaining / numInstallments : 0;
+  const effectiveDownPayment = Math.min(
+    Math.max(0, downPayment),
+    totalAmount,
+  );
+  const safeDownPayment = includeDownPayment ? effectiveDownPayment : 0;
+  const installmentAmount = calculateLayawayInstallmentAmount({
+    totalAmount,
+    downPayment: effectiveDownPayment,
+    months,
+    frequency,
+  });
   const installments: LayawayInstallmentDraft[] = [];
   const invoiceBaseDate = startOfDay(new Date(invoiceDate));
 
@@ -198,6 +230,10 @@ export function buildLayawayInstallmentSchedule(options: {
 
   dueDates.forEach((dueDate, index) => {
     const installmentNumber = index + 1;
+    if (installmentNumber <= paidRegularInstallmentCount) {
+      return;
+    }
+
     installments.push({
       dueDate,
       amount: installmentAmount,
@@ -209,12 +245,5 @@ export function buildLayawayInstallmentSchedule(options: {
 }
 
 export function formatLayawayInstallmentDate(date: Date | string) {
-  const parsed = startOfDay(new Date(date));
-  if (Number.isNaN(parsed.getTime())) return "";
-
-  return parsed.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+  return formatBusinessDate(date);
 }

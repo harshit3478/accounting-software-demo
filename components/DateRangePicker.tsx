@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { toBusinessDateString, getBusinessTodayString } from "@/lib/business-date";
 
 export interface DateRange {
   startDate: string;
@@ -32,10 +33,10 @@ export default function DateRangePicker({
         startDate.setDate(1);
         return {
           preset,
-          startDate: startDate.toISOString().split("T")[0],
-          endDate: new Date(today.getFullYear(), today.getMonth(), 0)
-            .toISOString()
-            .split("T")[0],
+          startDate: toBusinessDateString(startDate),
+          endDate: toBusinessDateString(
+            new Date(today.getFullYear(), today.getMonth(), 0),
+          ),
         };
       case "this-quarter":
         const quarter = Math.floor(today.getMonth() / 3);
@@ -58,8 +59,8 @@ export default function DateRangePicker({
 
     return {
       preset,
-      startDate: startDate.toISOString().split("T")[0],
-      endDate: today.toISOString().split("T")[0],
+      startDate: toBusinessDateString(startDate),
+      endDate: getBusinessTodayString(),
     };
   };
 

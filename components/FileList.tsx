@@ -9,6 +9,7 @@ import {
 } from "@/lib/file-utils";
 import FilePreview from "./FilePreview";
 import ConfirmModal from "./ConfirmModal";
+import { formatBusinessDate } from "@/lib/business-date";
 
 interface Document {
   id: number;
@@ -129,16 +130,14 @@ export default function FileList({
     }
   };
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString("en-US", {
+  const formatDate = (dateString: string) =>
+    formatBusinessDate(dateString, {
       year: "numeric",
       month: "short",
       day: "numeric",
       hour: "2-digit",
       minute: "2-digit",
     });
-  };
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">

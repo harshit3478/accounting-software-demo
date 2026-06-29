@@ -7,6 +7,10 @@ import {
   findOverdueLayawayInstallmentClient,
   isLateFeeConfigured,
 } from "../../lib/late-fee-client";
+import {
+  getBusinessTodayString,
+  formatBusinessDate,
+} from "../../lib/business-date";
 
 interface PaymentMethodType {
   id: number;
@@ -49,7 +53,7 @@ export default function RecordPaymentModal({
   const [payment, setPayment] = useState({
     amount: "",
     methodId: "" as string,
-    paymentDate: new Date().toISOString().split("T")[0],
+    paymentDate: getBusinessTodayString(),
     notes: "",
     invoiceId: "",
   });
@@ -81,7 +85,7 @@ export default function RecordPaymentModal({
       setPayment({
         amount: "",
         methodId: "",
-        paymentDate: new Date().toISOString().split("T")[0],
+        paymentDate: getBusinessTodayString(),
         notes: "",
         invoiceId: "",
       });
@@ -381,7 +385,7 @@ export default function RecordPaymentModal({
             onChange={(e) =>
               setPayment({ ...payment, paymentDate: e.target.value })
             }
-            max={new Date().toISOString().split("T")[0]}
+            max={getBusinessTodayString()}
             className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             required
           />
@@ -395,7 +399,7 @@ export default function RecordPaymentModal({
               </p>
               <p className="text-xs text-amber-800 mt-1">
                 {overdueInstallment.label} was due on{" "}
-                {new Date(overdueInstallment.dueDate).toLocaleDateString()}.
+                {formatBusinessDate(overdueInstallment.dueDate)}.
                 Admin late fee: ${lateFeeSetting.amount.toFixed(2)}
               </p>
             </div>

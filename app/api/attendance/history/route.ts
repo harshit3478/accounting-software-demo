@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import prisma from "../../../../lib/prisma";
 import { requireAuth } from "../../../../lib/auth";
+import { startOfBusinessDay } from "../../../../lib/business-date";
 
 export async function GET(req: Request) {
   try {
@@ -20,7 +21,7 @@ export async function GET(req: Request) {
       start.setMonth(now.getMonth() - months);
     }
 
-    start.setHours(0, 0, 0, 0);
+    start = startOfBusinessDay(start);
 
     const entries = await prisma.attendanceEntry.findMany({
       where: { userId: user.id, date: { gte: start } },

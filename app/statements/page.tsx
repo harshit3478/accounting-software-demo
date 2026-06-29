@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Navigation from "../../components/Navigation";
 import Footer from "@/components/Footer";
+import { formatBusinessDate } from "@/lib/business-date";
 
 interface Customer {
   id: number;
@@ -102,13 +103,7 @@ export default function StatementsPage() {
     },
   ];
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
-  };
+  const formatDate = (dateString: string) => formatBusinessDate(dateString);
 
   return (
     <div className="bg-gray-50 hero-pattern min-h-screen">

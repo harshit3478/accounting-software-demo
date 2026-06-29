@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Modal from "../invoices/Modal";
 import type { Payment } from "../../hooks/usePayments";
+import { toBusinessDateString } from "../../lib/business-date";
 
 interface PaymentMethodType {
   id: number;
@@ -90,7 +91,7 @@ export default function EditPaymentModal({
     setMethodId(String(payment.methodId || payment.method?.id || ""));
     setPaymentDate(
       payment.paymentDate
-        ? new Date(payment.paymentDate).toISOString().split("T")[0]
+        ? toBusinessDateString(new Date(payment.paymentDate))
         : "",
     );
     setNotes(payment.notes || "");

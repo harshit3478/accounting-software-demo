@@ -2,6 +2,10 @@
 
 import Navigation from "@/components/Navigation";
 import { useEffect, useState } from "react";
+import {
+  formatBusinessDate,
+  getBusinessTodayString,
+} from "@/lib/business-date";
 // import Navigation from "../../components/Navigation";
 
 export default function MyRegularizations() {
@@ -9,7 +13,7 @@ export default function MyRegularizations() {
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [newRequest, setNewRequest] = useState({
-    forDate: new Date().toISOString().slice(0, 10),
+    forDate: getBusinessTodayString(),
     type: "manual",
     requestedCheckIn: "",
     requestedCheckOut: "",
@@ -50,7 +54,7 @@ export default function MyRegularizations() {
       });
       if (res.ok) {
         setNewRequest({
-          forDate: new Date().toISOString().slice(0, 10),
+          forDate: getBusinessTodayString(),
           type: "manual",
           requestedCheckIn: "",
           requestedCheckOut: "",
@@ -161,7 +165,7 @@ export default function MyRegularizations() {
                 type="button"
                 onClick={() =>
                   setNewRequest({
-                    forDate: new Date().toISOString().slice(0, 10),
+                    forDate: getBusinessTodayString(),
                     type: "manual",
                     requestedCheckIn: "",
                     requestedCheckOut: "",
@@ -198,7 +202,7 @@ export default function MyRegularizations() {
                 {items.map((r) => (
                   <tr key={r.id} className="border-t">
                     <td className="px-4 py-2">
-                      {new Date(r.forDate).toLocaleDateString()}
+                      {formatBusinessDate(r.forDate)}
                     </td>
                     <td className="px-4 py-2">{r.type}</td>
                     <td className="px-4 py-2">

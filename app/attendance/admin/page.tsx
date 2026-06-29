@@ -7,6 +7,11 @@ import AttendanceFilters, {
   DateRange,
 } from "../../../components/attendance/AttendanceFilters";
 import { generateAttendancePDF } from "../../../lib/attendance-pdf-export";
+import {
+  toBusinessDateString,
+  getBusinessTodayString,
+  formatBusinessDate,
+} from "../../../lib/business-date";
 
 interface User {
   id: number;
@@ -42,10 +47,9 @@ function AttendanceAdminContent() {
       // Initialize with default "This Month" filter
       const now = new Date();
       const start = new Date(now.getFullYear(), now.getMonth(), 1);
-      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       const defaultRange = {
-        start: start.toISOString().split("T")[0],
-        end: today.toISOString().split("T")[0],
+        start: toBusinessDateString(start),
+        end: getBusinessTodayString(),
       };
       setDateRange(defaultRange);
       fetchForUser(userId, defaultRange);
@@ -122,8 +126,8 @@ function AttendanceAdminContent() {
       }
     }
 
-    setExportStartDate(start.toISOString().split("T")[0]);
-    setExportEndDate(end.toISOString().split("T")[0]);
+    setExportStartDate(toBusinessDateString(start));
+    setExportEndDate(toBusinessDateString(end));
   }
 
   async function handleExportPDF() {
@@ -279,7 +283,7 @@ function AttendanceAdminContent() {
                       return (
                         <tr key={e.id} className="border-t hover:bg-gray-50">
                           <td className="px-4 py-3">
-                            {new Date(e.date).toLocaleDateString()}
+                            {formatBusinessDate(e.date)}
                           </td>
                           <td className="px-4 py-3">
                             {e.checkIn

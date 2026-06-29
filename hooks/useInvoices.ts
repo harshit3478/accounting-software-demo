@@ -2,6 +2,10 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import {
+  getBusinessTodayString,
+  toBusinessDateString,
+} from "../lib/business-date";
 
 export interface InvoiceItem {
   name: string;
@@ -576,11 +580,11 @@ export function useInvoices(
         setInvoices(
           data.invoices.map((inv: any) => ({
             ...inv,
-            invoiceDate: new Date(inv.invoiceDate || inv.createdAt)
-              .toISOString()
-              .split("T")[0],
-            dueDate: new Date(inv.dueDate).toISOString().split("T")[0],
-            createdAt: new Date(inv.createdAt).toISOString().split("T")[0],
+            invoiceDate: toBusinessDateString(
+              new Date(inv.invoiceDate || inv.createdAt),
+            ),
+            dueDate: toBusinessDateString(new Date(inv.dueDate)),
+            createdAt: toBusinessDateString(new Date(inv.createdAt)),
           })),
         );
         setTotalItems(data.pagination.total);
@@ -757,7 +761,7 @@ export function useInvoices(
         const fileNameMatch = disposition?.match(/filename="?([^\";]+)"?/i);
         anchor.download =
           fileNameMatch?.[1] ||
-          `invoices-export-${new Date().toISOString().split("T")[0]}.xlsx`;
+          `invoices-export-${getBusinessTodayString()}.xlsx`;
 
         document.body.appendChild(anchor);
         anchor.click();

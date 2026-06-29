@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import prisma from "../../../../../lib/prisma";
 import { requireAdmin } from "../../../../../lib/auth";
+import {
+  endOfBusinessDay,
+  startOfBusinessDay,
+} from "../../../../../lib/business-date";
 
 export async function GET(req: Request) {
   try {
@@ -30,24 +34,16 @@ export async function GET(req: Request) {
 
     // Apply date filtering if provided
     if (startDate && endDate) {
-      const start = new Date(startDate);
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(endDate);
-      end.setHours(23, 59, 59, 999);
-
       whereClause.date = {
-        gte: start,
-        lte: end,
+        gte: startOfBusinessDay(startDate),
+        lte: endOfBusinessDay(endDate),
       };
     } else {
-      // Default to last 3 months if no range provided
-      const now = new Date();
-      const threeMonthsAgo = new Date(now);
-      threeMonthsAgo.setMonth(now.getMonth() - 3);
-      threeMonthsAgo.setHours(0, 0, 0, 0);
+      const threeMonthsAgo = new Date(startOfBusinessDay(new Date()));
+      threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
 
       whereClause.date = {
-        gte: threeMonthsAgo,
+        gte: startOfBusinessDay(threeMonthsAgo),
       };
     }
 

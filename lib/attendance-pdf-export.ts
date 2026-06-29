@@ -1,5 +1,9 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
+import {
+  formatBusinessDate,
+  getBusinessTodayString,
+} from "./business-date";
 
 interface AttendanceEntry {
   id: number;
@@ -29,7 +33,7 @@ export function generateAttendancePDF(data: AttendanceData) {
   doc.setFontSize(10);
   doc.setFont("helvetica", "normal");
   doc.setTextColor(100);
-  doc.text(`Generated: ${new Date().toLocaleDateString()}`, 105, 28, {
+  doc.text(`Generated: ${formatBusinessDate(new Date())}`, 105, 28, {
     align: "center",
   });
 
@@ -61,11 +65,7 @@ export function generateAttendancePDF(data: AttendanceData) {
     doc.setTextColor(60, 60, 200);
     doc.setFont("helvetica", "bold");
     doc.text(
-      `Period: ${new Date(
-        data.dateRange.start,
-      ).toLocaleDateString()} - ${new Date(
-        data.dateRange.end,
-      ).toLocaleDateString()}`,
+      `Period: ${formatBusinessDate(data.dateRange.start)} - ${formatBusinessDate(data.dateRange.end)}`,
       105,
       yPos,
       { align: "center" },
@@ -139,7 +139,7 @@ export function generateAttendancePDF(data: AttendanceData) {
 
   // Prepare table data
   const tableData = data.entries.map((entry) => {
-    const date = new Date(entry.date).toLocaleDateString();
+    const date = formatBusinessDate(entry.date);
     const checkIn = entry.checkIn
       ? new Date(entry.checkIn).toLocaleTimeString([], {
           hour: "2-digit",
@@ -224,7 +224,7 @@ export function generateAttendancePDF(data: AttendanceData) {
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
     doc.text(
-      `Generated on ${new Date().toLocaleString()} - Page ${i} of ${pageCount}`,
+      `Generated on ${formatBusinessDate(new Date(), { dateStyle: "medium", timeStyle: "short" })} - Page ${i} of ${pageCount}`,
       105,
       285,
       { align: "center" },
@@ -232,7 +232,7 @@ export function generateAttendancePDF(data: AttendanceData) {
   }
 
   // Download
-  const timestamp = new Date().toISOString().split("T")[0];
+  const timestamp = getBusinessTodayString();
   const fileName = data.dateRange
     ? `attendance-${data.employeeName.replace(/\s+/g, "-")}-${
         data.dateRange.start

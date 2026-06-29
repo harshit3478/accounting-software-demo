@@ -7,6 +7,7 @@ import { serializeInvoiceEditHistoryEntry } from "../../../lib/user-display";
 import { sendPaymentConfirmation } from "../../../lib/email";
 import { stampPaymentCode } from "../../../lib/payment-code";
 import { createLateFeePayment } from "../../../lib/late-fee";
+import { endOfBusinessDay, startOfBusinessDay } from "../../../lib/business-date";
 import {
   buildPaymentStatusWhere,
   getPaymentDisplayStatus,
@@ -65,8 +66,8 @@ export async function GET(request: NextRequest) {
     // Date range filter
     if (startDate && endDate) {
       where.paymentDate = {
-        gte: new Date(startDate),
-        lte: new Date(new Date(endDate).setHours(23, 59, 59, 999)),
+        gte: startOfBusinessDay(startDate),
+        lte: endOfBusinessDay(endDate),
       };
     }
 

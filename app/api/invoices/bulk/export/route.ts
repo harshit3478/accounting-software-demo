@@ -5,6 +5,7 @@ import {
   buildInvoiceSheetWorkbook,
   workbookToBuffer,
 } from "../../../../../lib/invoice-bulk-sheet";
+import { getBusinessTodayString } from "../../../../../lib/business-date";
 
 export async function POST(request: NextRequest) {
   try {
@@ -67,7 +68,7 @@ export async function POST(request: NextRequest) {
     });
     const fileBuffer = workbookToBuffer(workbook);
 
-    const timestamp = new Date().toISOString().split("T")[0];
+    const timestamp = getBusinessTodayString();
     return new NextResponse(fileBuffer, {
       headers: {
         "Content-Type":

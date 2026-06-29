@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { FiCheck, FiRefreshCw } from "react-icons/fi";
 import ConfirmModal from "../ConfirmModal";
 import SensitiveActionOtpModal from "../SensitiveActionOtpModal";
+import { formatBusinessDate } from "@/lib/business-date";
 import { useAuth } from "@/lib/AuthContext";
 
 interface QuickBooksConnection {
@@ -255,9 +256,7 @@ export default function QuickBooksTab({
                 <p className="text-sm text-gray-600 mb-1">Last Sync</p>
                 <p className="font-medium text-gray-900">
                   {qbConnection.connection?.lastSyncAt
-                    ? new Date(
-                        qbConnection.connection.lastSyncAt,
-                      ).toLocaleDateString()
+                    ? formatBusinessDate(qbConnection.connection.lastSyncAt)
                     : "Never"}
                 </p>
               </div>

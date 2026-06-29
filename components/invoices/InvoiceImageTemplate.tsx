@@ -1,6 +1,7 @@
 "use client";
 
 import { BUSINESS_CONFIG } from "../../lib/business-config";
+import { formatBusinessDate } from "../../lib/business-date";
 import {
   buildInvoicePdfSummaryRows,
   formatInvoiceSummaryRowValue,
@@ -105,7 +106,7 @@ function fmt(amount: number) {
 }
 
 function fmtDate(dateString: string) {
-  return new Date(dateString).toLocaleDateString("en-US", {
+  return formatBusinessDate(dateString, {
     year: "numeric",
     month: "long",
     day: "numeric",
@@ -113,7 +114,7 @@ function fmtDate(dateString: string) {
 }
 
 function fmtShortDate(dateString: string) {
-  return new Date(dateString).toLocaleDateString("en-US", {
+  return formatBusinessDate(dateString, {
     month: "2-digit",
     day: "2-digit",
     year: "2-digit",
@@ -821,7 +822,7 @@ export default function InvoiceImageTemplate({
           style={{ fontSize: "11px", color: "#999999", textAlign: "center" }}
         >
           Generated on{" "}
-          {new Date().toLocaleDateString("en-US", {
+          {formatBusinessDate(new Date(), {
             year: "numeric",
             month: "long",
             day: "numeric",

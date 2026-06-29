@@ -12,6 +12,11 @@ import {
   isChequeRequestReadOnly,
 } from "@/lib/cheque-vault-permissions";
 import ConfirmModal from "@/components/ConfirmModal";
+import {
+  formatBusinessDate,
+  getBusinessTodayString,
+  toBusinessDateString,
+} from "@/lib/business-date";
 
 interface ChequeDetailModalProps {
   isOpen: boolean;
@@ -49,11 +54,7 @@ const STATUS_STYLES: Record<string, string> = {
 
 function formatDate(dateStr: string | null) {
   if (!dateStr) return "—";
-  return new Date(dateStr).toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
+  return formatBusinessDate(dateStr);
 }
 
 function formatDateTime(dateStr: string | null) {
@@ -109,7 +110,7 @@ export default function ChequeDetailModal({
     setAmount(String(cheque.amount ?? ""));
     setChequeDate(
       cheque.chequeDate
-        ? new Date(cheque.chequeDate).toISOString().split("T")[0]
+        ? toBusinessDateString(new Date(cheque.chequeDate))
         : "",
     );
     setBankName(cheque.bankName || "");
@@ -196,7 +197,7 @@ export default function ChequeDetailModal({
       chequeNumber: chequeNumber.trim(),
       payorName: payorName.trim(),
       amount: parseFloat(amount) || 0,
-      chequeDate: chequeDate || new Date().toISOString().split("T")[0],
+      chequeDate: chequeDate || getBusinessTodayString(),
       bankName: bankName.trim() || null,
       customerEmail: customerEmail.trim() || null,
     });

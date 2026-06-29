@@ -23,6 +23,10 @@ import {
 } from "../../lib/late-fee-client";
 import { formatPaymentCode } from "../../lib/payment-code";
 import { formatUserDisplayName } from "../../lib/user-display";
+import {
+  formatBusinessDate,
+  getBusinessTodayString,
+} from "../../lib/business-date";
 
 interface Payment {
   id: number;
@@ -448,7 +452,7 @@ export default function ViewInvoiceModal({
     setMarkPaidMode("create");
     setPaymentAmount(installment.amount);
     setLinkAmount(installment.amount);
-    setPaymentDate(new Date().toISOString().split("T")[0]);
+    setPaymentDate(getBusinessTodayString());
     setPaymentNotes(`Layaway installment payment: ${installment.label}`);
     setApplyLateFee(null);
     setLateFeeWaivedReason("");
@@ -794,13 +798,12 @@ export default function ViewInvoiceModal({
 
   if (!invoice) return null;
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("en-US", {
+  const formatDate = (dateString: string) =>
+    formatBusinessDate(dateString, {
       year: "numeric",
       month: "long",
       day: "numeric",
     });
-  };
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-US", {
@@ -1315,7 +1318,7 @@ export default function ViewInvoiceModal({
               </p>
               <p className="mt-1 text-amber-800">
                 {overdueInstallmentToday.label} was due on{" "}
-                {new Date(overdueInstallmentToday.dueDate).toLocaleDateString()}
+                {formatBusinessDate(overdueInstallmentToday.dueDate)}
                 . The configured late fee is{" "}
                 {formatCurrency(lateFeeSetting.amount)} and will be offered when
                 you record or link a payment.
@@ -1338,7 +1341,7 @@ export default function ViewInvoiceModal({
             </span>
             {invoiceSentAt && (
               <span className="inline-flex items-center rounded-full bg-sky-100 px-3 py-1 text-sm font-semibold text-sky-800">
-                Sent {new Date(invoiceSentAt).toLocaleDateString()}
+                Sent {formatBusinessDate(invoiceSentAt)}
               </span>
             )}
           </div>
@@ -1718,7 +1721,7 @@ export default function ViewInvoiceModal({
                 >
                   <span>
                     {payment.notes || "Late fee applied"} (
-                    {new Date(payment.date).toLocaleDateString()})
+                    {formatBusinessDate(payment.date)})
                   </span>
                   <div className="flex items-center gap-2">
                     <span className="font-medium">
@@ -1756,7 +1759,7 @@ export default function ViewInvoiceModal({
                   <span>
                     {formatPaymentNumber(payment)} —{" "}
                     {payment.notes || "Deposit fee retained"} (
-                    {new Date(payment.date).toLocaleDateString()})
+                    {formatBusinessDate(payment.date)})
                   </span>
                   <span className="font-medium">
                     {formatCurrency(payment.amount)}
@@ -1771,7 +1774,7 @@ export default function ViewInvoiceModal({
                   <span>
                     {entry.action === "skip"
                       ? `Removed item deposit fee skipped: ${entry.reason}`
-                      : `Removed item deposit fee applied (${new Date(entry.date).toLocaleDateString()}) — included in total`}
+                      : `Removed item deposit fee applied (${formatBusinessDate(entry.date)}) — included in total`}
                   </span>
                   <span className="font-medium">
                     {formatCurrency(
@@ -1798,7 +1801,7 @@ export default function ViewInvoiceModal({
                   <span>
                     {formatPaymentNumber(payment)} —{" "}
                     {payment.notes || "Restocking fee retained"} (
-                    {new Date(payment.date).toLocaleDateString()})
+                    {formatBusinessDate(payment.date)})
                   </span>
                   <span className="font-medium">
                     {formatCurrency(payment.amount)}
@@ -1811,7 +1814,7 @@ export default function ViewInvoiceModal({
                   className="flex justify-between text-sm"
                 >
                   <span className="text-gray-600">
-                    {entry.label} ({new Date(entry.date).toLocaleDateString()})
+                    {entry.label} ({formatBusinessDate(entry.date)})
                   </span>
                   <span className="font-medium text-violet-700">
                     {formatCurrency(entry.amount)}
@@ -1933,7 +1936,7 @@ export default function ViewInvoiceModal({
                                 <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
                                   Paid{" "}
                                   {inst.paidDate
-                                    ? `on ${new Date(inst.paidDate).toLocaleDateString()}`
+                                    ? `on ${formatBusinessDate(inst.paidDate)}`
                                     : ""}
                                 </span>
                               ) : (
@@ -2130,7 +2133,7 @@ export default function ViewInvoiceModal({
                         )}
                         <span className="text-xs text-gray-400">
                           Recorded:{" "}
-                          {new Date(payment.createdAt).toLocaleDateString()}
+                          {formatBusinessDate(payment.createdAt)}
                         </span>
                       </div>
                     </div>
@@ -2519,7 +2522,7 @@ export default function ViewInvoiceModal({
                 </p>
                 <p className="text-xs text-amber-800 mt-1">
                   {overdueInstallment.label} was due on{" "}
-                  {new Date(overdueInstallment.dueDate).toLocaleDateString()}.
+                  {formatBusinessDate(overdueInstallment.dueDate)}.
                   Apply late fee to this invoice? Admin late fee: $
                   {lateFeeSetting.amount.toFixed(2)}
                 </p>
