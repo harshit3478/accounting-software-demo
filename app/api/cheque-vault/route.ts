@@ -107,6 +107,9 @@ export async function GET(request: NextRequest) {
     if (error.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    if (error.message === "Forbidden") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
     console.error("[cheque-vault GET]", error);
     return NextResponse.json(
       { error: "Internal server error" },
@@ -221,6 +224,21 @@ export async function POST(request: NextRequest) {
 
     if (error.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    if (error.message === "Forbidden") {
+      return NextResponse.json(
+        { error: "You do not have permission to upload cheques" },
+        { status: 403 },
+      );
+    }
+    if (error.message === "Super admin cannot upload cheques") {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+    if (error.message === "Failed to upload file to storage") {
+      return NextResponse.json(
+        { error: "Failed to store cheque image. Please contact support." },
+        { status: 502 },
+      );
     }
     console.error("[cheque-vault POST]", error);
     return NextResponse.json(

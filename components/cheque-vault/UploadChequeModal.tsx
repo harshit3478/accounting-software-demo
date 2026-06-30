@@ -176,7 +176,26 @@ export default function UploadChequeModal({
         method: "POST",
         body: formData,
       });
-      const data = await res.json();
+      const contentType = res.headers.get("content-type") ?? "";
+      let data: {
+        error?: string;
+        cheque?: ChequeVaultRecord;
+        ocrResult?: OcrResult;
+      };
+      if (contentType.includes("application/json")) {
+        data = await res.json();
+      } else {
+        if (res.status === 413) {
+          throw new Error(
+            "File is too large for the server to accept. Please use a file under 10MB.",
+          );
+        }
+        throw new Error(
+          res.status >= 500
+            ? "Server error during upload. Please try again or contact support."
+            : `Upload failed (HTTP ${res.status}). Please try again.`,
+        );
+      }
       if (!res.ok) throw new Error(data.error || "Upload failed");
       const cheque: ChequeVaultRecord = data.cheque;
       const ocr: OcrResult = data.ocrResult;
