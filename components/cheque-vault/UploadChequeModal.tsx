@@ -186,9 +186,13 @@ export default function UploadChequeModal({
         data = await res.json();
       } else {
         if (res.status === 413) {
-          throw new Error(
-            "File is too large for the server to accept. Please use a file under 10MB.",
-          );
+          const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+          if (file.size <= CHEQUE_VAULT_MAX_FILE_SIZE_BYTES) {
+            throw new Error(
+              `Upload rejected by the server (HTTP 413). Your ${sizeMb}MB file is under the 10MB app limit, but the server proxy is still capped at 1MB. Ask an administrator to set client_max_body_size 10m in nginx and reload it, or compress the image below 1MB.`,
+            );
+          }
+          throw new Error("File is too large. Please use a file under 10MB.");
         }
         throw new Error(
           res.status >= 500

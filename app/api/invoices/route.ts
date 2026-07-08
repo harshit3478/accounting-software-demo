@@ -259,9 +259,9 @@ export async function GET(request: NextRequest) {
       };
     }
 
-    // Date range filter
+    // Date range filter (by invoice date, not record creation time)
     if (startDate && endDate) {
-      where.createdAt = {
+      where.invoiceDate = {
         gte: new Date(startDate),
         lte: new Date(new Date(endDate).setHours(23, 59, 59, 999)),
       };

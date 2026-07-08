@@ -1,6 +1,10 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import {
+  resolveInvoiceDate,
+  resolveLiveTypeLabel,
+} from "@/lib/invoice-display";
 
 interface InvoiceOption {
   id: number;
@@ -10,6 +14,22 @@ interface InvoiceOption {
   paidAmount: number;
   status: string;
   dueDate: string;
+  invoiceDate?: string | null;
+  createdAt?: string | null;
+  liveTypeSnapshot?: string | null;
+  liveType?: {
+    name?: string | null;
+    country?: string | null;
+  } | null;
+}
+
+function formatDate(dateStr: string | null | undefined) {
+  if (!dateStr) return "—";
+  return new Date(dateStr).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
 }
 
 export interface AllocationEntry {
@@ -140,7 +160,7 @@ export default function InvoiceSearchModal({
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
         onClick={onClose}
       />
-      <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-2xl mx-4 flex flex-col max-h-[85vh]">
+      <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-4xl mx-4 flex flex-col max-h-[85vh]">
         {/* Header */}
         <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
           <h3 className="text-lg font-semibold text-gray-900">Link Invoices</h3>
@@ -206,6 +226,12 @@ export default function InvoiceSearchModal({
                   <th className="text-left px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Client
                   </th>
+                  <th className="text-left px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Invoice Date
+                  </th>
+                  <th className="text-left px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Live Type
+                  </th>
                   <th className="text-right px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Remaining
                   </th>
@@ -218,6 +244,7 @@ export default function InvoiceSearchModal({
               <tbody className="divide-y divide-gray-100">
                 {invoices.map((inv) => {
                   const isSelected = selectedIds.has(inv.id);
+                  const liveTypeLabel = resolveLiveTypeLabel(inv);
                   return (
                     <tr
                       key={inv.id}
@@ -228,6 +255,19 @@ export default function InvoiceSearchModal({
                       </td>
                       <td className="px-4 py-2.5 text-gray-700">
                         {inv.clientName}
+                      </td>
+                      <td className="px-4 py-2.5 text-gray-500 whitespace-nowrap">
+                        {formatDate(
+                          resolveInvoiceDate(inv.invoiceDate, inv.createdAt),
+                        )}
+                      </td>
+                      <td
+                        className="px-4 py-2.5 text-gray-700 max-w-[140px] truncate"
+                        title={liveTypeLabel || undefined}
+                      >
+                        {liveTypeLabel || (
+                          <span className="text-gray-400">—</span>
+                        )}
                       </td>
                       <td className="px-4 py-2.5 text-right font-medium text-gray-900">
                         ${remaining(inv).toFixed(2)}
