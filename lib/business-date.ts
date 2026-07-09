@@ -167,8 +167,19 @@ export function formatBusinessDate(
     year: "numeric",
   },
 ): string {
-  const date =
-    typeof input === "string" ? parseBusinessDateInput(input) : input;
+  let date: Date;
+  if (typeof input === "string") {
+    if (!input.trim()) {
+      return "";
+    }
+    try {
+      date = parseBusinessDateInput(input);
+    } catch {
+      return "";
+    }
+  } else {
+    date = input;
+  }
 
   if (Number.isNaN(date.getTime())) {
     return "";

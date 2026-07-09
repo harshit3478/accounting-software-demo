@@ -17,6 +17,43 @@ import {
   findCustomerByEmail,
   normalizeCustomerEmail,
 } from "../../../../../lib/customer-email";
+import {
+  calculateDepositFeeForItem,
+  normalizeDepositFeeRules,
+} from "../../../../../lib/deposit-fees";
+
+async function getConfiguredDepositFeeRules() {
+  const ruleModel = (prisma as any)?.depositFeeRule;
+  if (!ruleModel) {
+    return [];
+  }
+
+  try {
+    const rows = await ruleModel.findMany({
+      where: { isActive: true },
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
+    });
+
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return [];
+    }
+
+    return normalizeDepositFeeRules(
+      rows.map((row: any) => ({
+        unitName: row.unitName,
+        ruleType: row.ruleType === "flat" ? "flat" : "range",
+        minUnit: row.minUnit?.toNumber ? row.minUnit.toNumber() : row.minUnit,
+        maxUnit: row.maxUnit?.toNumber ? row.maxUnit.toNumber() : row.maxUnit,
+        fee: row.fee?.toNumber ? row.fee.toNumber() : Number(row.fee || 0),
+        isPercentage: !!row.isPercentage,
+        isActive: row.isActive,
+        sortOrder: row.sortOrder,
+      })),
+    );
+  } catch {
+    return [];
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -73,6 +110,8 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       );
     }
+
+    const depositFeeRules = await getConfiguredDepositFeeRules();
 
     // Create all invoices in a transaction
     const createdInvoices = await prisma.$transaction(async (tx) => {
@@ -235,17 +274,22 @@ export async function POST(request: NextRequest) {
 
         const items = group.rows.map((row) => {
           const { quantity, price } = getBulkRowItemPricing(row);
+          const unit = row.unit?.trim() || undefined;
 
           return {
             name: row.description?.trim() || "Bulk imported item",
             quantity,
             price,
-            unit: row.unit?.trim() || undefined,
+            unit,
             liveType: row.liveType?.trim() || undefined,
             country: row.country?.trim() || undefined,
             vca116g: Number(row.vca116g || 0),
             k18_121g: Number(row.k18_121g || 0),
             vca118g: Number(row.vca118g || 0),
+            depositFee: calculateDepositFeeForItem(
+              { quantity, unit, price },
+              depositFeeRules,
+            ),
           };
         });
 
