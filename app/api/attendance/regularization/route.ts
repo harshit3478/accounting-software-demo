@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
+import { startOfBusinessDay, toBusinessDateString } from "@/lib/business-date";
 
 export async function POST(req: Request) {
   try {
@@ -27,10 +28,8 @@ export async function POST(req: Request) {
 
     // Prevent creating a regularization if there is already an attendance entry
     // for that day with both checkIn and checkOut set.
-    const day = new Date(forDate);
-    day.setHours(0, 0, 0, 0);
-    const nextDay = new Date(day);
-    nextDay.setDate(nextDay.getDate() + 1);
+    const day = startOfBusinessDay(forDate);
+    const nextDay = new Date(day.getTime() + 24 * 60 * 60 * 1000);
 
     const existing = await prisma.attendanceEntry.findFirst({
       where: {
@@ -60,7 +59,7 @@ export async function POST(req: Request) {
         const timeOnly = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(value);
         if (timeOnly) {
           // Combine with forDate (assume forDate is YYYY-MM-DD or Date string)
-          const datePart = new Date(forDate).toISOString().slice(0, 10);
+          const datePart = toBusinessDateString(new Date(forDate));
           const iso = `${datePart}T${timeOnly[1].padStart(2, "0")}:${
             timeOnly[2]
           }:00.000Z`;
@@ -101,7 +100,7 @@ export async function POST(req: Request) {
     const created = await prisma.regularizationRequest.create({
       data: {
         userId: user.id,
-        forDate: new Date(forDate),
+        forDate: startOfBusinessDay(forDate),
         type: type || "manual",
         requestedCheckIn: parsedCheckIn || undefined,
         requestedCheckOut: parsedCheckOut || undefined,

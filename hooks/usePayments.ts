@@ -7,6 +7,11 @@ import type {
   PaymentDisplayStatus,
   PaymentStatusFilter,
 } from "../lib/payment-display-status";
+import {
+  formatBusinessDate,
+  getBusinessTodayString,
+  toBusinessDateString,
+} from "../lib/business-date";
 
 export type { PaymentStatusFilter } from "../lib/payment-display-status";
 
@@ -346,11 +351,11 @@ export function usePayments(): UsePaymentsReturn {
         const fetchedPayments = data.payments.map((payment: any) => ({
           ...payment,
           paymentDate: payment.paymentDate
-            ? new Date(payment.paymentDate).toISOString().split("T")[0]
-            : new Date().toISOString().split("T")[0],
+            ? toBusinessDateString(new Date(payment.paymentDate))
+            : getBusinessTodayString(),
           createdAt: payment.createdAt
-            ? new Date(payment.createdAt).toISOString().split("T")[0]
-            : new Date().toISOString().split("T")[0],
+            ? toBusinessDateString(new Date(payment.createdAt))
+            : getBusinessTodayString(),
         }));
 
         setPayments(fetchedPayments);
@@ -444,7 +449,7 @@ export function usePayments(): UsePaymentsReturn {
       doc.setFontSize(10);
       doc.setFont("helvetica", "normal");
       doc.setTextColor(100);
-      doc.text(`Generated: ${new Date().toLocaleDateString()}`, 105, 28, {
+      doc.text(`Generated: ${formatBusinessDate(new Date())}`, 105, 28, {
         align: "center",
       });
 
@@ -492,7 +497,7 @@ export function usePayments(): UsePaymentsReturn {
 
       // Prepare table data
       const tableData = payments.map((payment) => {
-        const date = new Date(payment.paymentDate).toLocaleDateString();
+        const date = formatBusinessDate(payment.paymentDate);
         const invoice =
           payment.invoice?.invoiceNumber ||
           payment.paymentMatches
@@ -598,7 +603,7 @@ export function usePayments(): UsePaymentsReturn {
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `payments-export-${new Date().toISOString().split("T")[0]}.csv`;
+      link.download = `payments-export-${getBusinessTodayString()}.csv`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);

@@ -11,6 +11,10 @@ import {
   type ChequeVaultDocumentType,
 } from "@/lib/cheque-vault-upload";
 import ChequeDocumentPreview from "./ChequeDocumentPreview";
+import {
+  formatBusinessDate,
+  getBusinessTodayString,
+} from "@/lib/business-date";
 
 interface OcrResult {
   chequeNumber: string | null;
@@ -267,7 +271,7 @@ export default function UploadChequeModal({
       const data = await res.json();
       if (data.isDuplicate && data.existingCheques.length > 0) {
         const existing = data.existingCheques[0];
-        const date = new Date(existing.createdAt).toLocaleDateString();
+        const date = formatBusinessDate(existing.createdAt);
         setDuplicateWarning(
           `A ${docLabelLower} with number "${num}" was already uploaded on ${date} by ${existing.uploadedBy?.name || "another user"} (status: ${existing.status}).`,
         );
@@ -296,7 +300,7 @@ export default function UploadChequeModal({
           chequeNumber: chequeNumber.trim(),
           payorName: payorName.trim(),
           amount: parseFloat(amount) || 0,
-          chequeDate: chequeDate || new Date().toISOString().split("T")[0],
+          chequeDate: chequeDate || getBusinessTodayString(),
           bankName: bankName.trim() || null,
           customerEmail: customerEmail.trim() || null,
           memoText: isMemo ? memoText.trim() || null : undefined,

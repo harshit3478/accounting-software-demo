@@ -1,5 +1,6 @@
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
+import { toBusinessDateString } from "./business-date";
 
 export interface SpreadsheetInvoiceRow {
   name: string;
@@ -91,7 +92,7 @@ function parseDate(value: unknown): string | undefined {
   const date = new Date(raw);
   if (Number.isNaN(date.getTime())) return undefined;
 
-  return date.toISOString().split("T")[0];
+  return toBusinessDateString(date);
 }
 
 function findColumnIndex(headers: string[], aliases: string[]): number {

@@ -26,6 +26,11 @@ import {
   canUseMigratedInvoiceEdit,
   getMigratedInvoiceEditSettingSnapshot,
 } from "../../../../lib/migrated-invoice-edit";
+import {
+  isBeforeBusinessToday,
+  isFutureBusinessDate,
+  startOfBusinessDay,
+} from "../../../../lib/business-date";
 import { calculateRestockingFeeAmount } from "../../../../lib/restocking-fee";
 import { buildLayawayInstallmentSchedule } from "../../../../lib/layaway-installments";
 import { uploadToR2 } from "../../../../lib/r2-client";
@@ -248,8 +253,8 @@ export async function PUT(
     }
 
     const invoiceDateValue = invoiceDate
-      ? new Date(invoiceDate)
-      : existingInvoice.createdAt;
+      ? startOfBusinessDay(invoiceDate)
+      : startOfBusinessDay(existingInvoice.createdAt);
     if (Number.isNaN(invoiceDateValue.getTime())) {
       return NextResponse.json(
         { error: "Invalid invoice date" },
@@ -257,28 +262,21 @@ export async function PUT(
       );
     }
 
-    const normalizedInvoiceDate = new Date(invoiceDateValue);
-    normalizedInvoiceDate.setHours(0, 0, 0, 0);
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    if (normalizedInvoiceDate > today) {
+    if (isFutureBusinessDate(invoiceDateValue)) {
       return NextResponse.json(
         { error: "Invoice date cannot be in the future" },
         { status: 400 },
       );
     }
 
-    const dueDateValue = new Date(dueDate);
-    if (Number.isNaN(dueDateValue.getTime())) {
+    let dueDateValue: Date;
+    try {
+      dueDateValue = startOfBusinessDay(dueDate);
+    } catch {
       return NextResponse.json({ error: "Invalid due date" }, { status: 400 });
     }
 
-    const selectedDueDate = new Date(dueDateValue);
-    selectedDueDate.setHours(0, 0, 0, 0);
-
-    const requiresDueDateReason = selectedDueDate < today;
+    const requiresDueDateReason = isBeforeBusinessToday(dueDateValue);
 
     const normalizedDueDateReason =
       typeof dueDateReason === "string" ? dueDateReason.trim() : "";
@@ -712,6 +710,17 @@ export async function PUT(
             const hasPaidExistingPlan = Boolean(
               existingPlan && hasPaidInstallments,
             );
+            const paidRegularInstallmentCount = hasPaidExistingPlan
+              ? paidInstallments.filter(
+                  (inst: { label: string }) =>
+                    !inst.label.toLowerCase().includes("down payment"),
+                ).length
+              : 0;
+            const hasPaidDownPayment = hasPaidExistingPlan
+              ? paidInstallments.some((inst: { label: string }) =>
+                  inst.label.toLowerCase().includes("down payment"),
+                )
+              : false;
             const hasLayawayPlanConfigChanged = Boolean(
               existingPlan &&
                 (existingPlan.months !== normalizedLayawayPlan.months ||
@@ -755,16 +764,18 @@ export async function PUT(
               };
             }
 
-            const downPayment = hasPaidExistingPlan
-              ? 0
+            const planDownPayment = hasPaidExistingPlan
+              ? Number(existingPlan!.downPayment)
               : normalizedLayawayPlan.downPayment;
+            const planTotal = Number(updated.amount);
             const installments = buildLayawayInstallmentSchedule({
               invoiceDate: invoiceDateValue,
               frequency: normalizedLayawayPlan.paymentFrequency,
               months: normalizedLayawayPlan.months,
-              downPayment,
-              totalAmount: totalForPlan + recalcFeeAmount,
-              includeDownPayment: !hasPaidExistingPlan,
+              downPayment: planDownPayment,
+              totalAmount: planTotal,
+              includeDownPayment: !hasPaidDownPayment,
+              paidRegularInstallmentCount,
             });
 
             if (existingPlan) {
@@ -792,7 +803,7 @@ export async function PUT(
                   invoiceId,
                   months: normalizedLayawayPlan.months,
                   paymentFrequency: normalizedLayawayPlan.paymentFrequency,
-                  downPayment,
+                  downPayment: normalizedLayawayPlan.downPayment,
                   notes: normalizedLayawayPlan.notes,
                 },
               });

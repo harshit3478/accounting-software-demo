@@ -9,6 +9,7 @@ import {
 } from "../../../components/ToastContext";
 import TableSkeleton from "../../../components/TableSkeleton";
 import { Folder, File, ArrowLeft, MoreVertical } from "lucide-react";
+import { formatBusinessDate } from "@/lib/business-date";
 
 interface DeletedDocument {
   id: number;
@@ -159,15 +160,14 @@ function TrashPageContent() {
     return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + " " + sizes[i];
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("en-US", {
+  const formatDate = (dateString: string) =>
+    formatBusinessDate(dateString, {
       year: "numeric",
       month: "short",
       day: "numeric",
       hour: "2-digit",
       minute: "2-digit",
     });
-  };
 
   const expiredDocs = deletedDocs.filter((doc) => doc.isExpired);
 

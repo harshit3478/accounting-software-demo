@@ -18,15 +18,7 @@ export function roundMoney(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
-export function daysBetween(start: Date, end: Date): number {
-  const startUtc = Date.UTC(
-    start.getFullYear(),
-    start.getMonth(),
-    start.getDate(),
-  );
-  const endUtc = Date.UTC(end.getFullYear(), end.getMonth(), end.getDate());
-  return Math.floor((endUtc - startUtc) / (1000 * 60 * 60 * 24));
-}
+export { daysBetweenBusiness as daysBetween } from "./business-date";
 
 export function calculateEarlyPaymentDiscountAmount(
   invoiceAmount: number,

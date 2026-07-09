@@ -1,3 +1,5 @@
+import { formatBusinessDate } from "./business-date";
+
 export interface InvoiceDisplayLike {
   isLayaway?: boolean;
   layawayFee?: number | null;
@@ -447,19 +449,18 @@ export function getInvoicePdfPaymentLabel(payment: {
     return "Restocking fee retained:";
   }
   if (isRefundPayment(payment)) {
-    const dateStr = new Date(
+    const dateStr = formatBusinessDate(
       payment.paymentDate || payment.date || "",
-    ).toLocaleDateString("en-US", {
-      month: "long",
-      day: "numeric",
-      year: "numeric",
-    });
+      {
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+      },
+    );
     return `Refund on ${dateStr}:`;
   }
 
-  const dateStr = new Date(
-    payment.paymentDate || payment.date || "",
-  ).toLocaleDateString("en-US", {
+  const dateStr = formatBusinessDate(payment.paymentDate || payment.date || "", {
     month: "long",
     day: "numeric",
     year: "numeric",

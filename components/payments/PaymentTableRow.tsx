@@ -11,6 +11,7 @@ import {
   getPaymentDisplayStatus,
   getPaymentDisplayStatusLabel,
 } from "../../lib/payment-display-status";
+import { formatBusinessDate } from "../../lib/business-date";
 
 interface PaymentTableRowProps {
   payment: Payment;
@@ -33,13 +34,7 @@ export default function PaymentTableRow({
   const [showAbandonModal, setShowAbandonModal] = useState(false);
   const [isAbandoning, setIsAbandoning] = useState(false);
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
-  };
+  const formatDate = (dateString: string) => formatBusinessDate(dateString);
 
   const formatAmount = (value: unknown) => {
     const numericValue =

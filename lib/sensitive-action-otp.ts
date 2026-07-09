@@ -32,6 +32,8 @@ export async function sendSensitiveActionOtp(user: OtpUser) {
     },
   });
 
+  console.log(`Verification code sent to ${user.email}: ${otp}`);
+
   const emailResult = await sendSensitiveActionOtpEmail(user.email!, otp);
   if (!emailResult.success) {
     throw new SensitiveActionOtpError("Failed to send verification code", 500);

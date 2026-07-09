@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Navigation from "../../components/Navigation";
 import Link from "next/link";
 import { generateAttendancePDF } from "../../lib/attendance-pdf-export";
+import { toBusinessDateString, formatBusinessDate } from "../../lib/business-date";
 
 export default function AttendancePage() {
   const WORKING_HOURS = parseFloat(
@@ -133,8 +134,8 @@ export default function AttendancePage() {
       }
     }
 
-    setExportStartDate(start.toISOString().split("T")[0]);
-    setExportEndDate(end.toISOString().split("T")[0]);
+    setExportStartDate(toBusinessDateString(start));
+    setExportEndDate(toBusinessDateString(end));
   }
 
   return (
@@ -211,7 +212,7 @@ export default function AttendancePage() {
                   return (
                     <tr key={e.id} className="border-t">
                       <td className="py-2">
-                        {new Date(e.date).toLocaleDateString()}
+                        {formatBusinessDate(e.date)}
                       </td>
                       <td className="py-2">
                         {e.checkIn

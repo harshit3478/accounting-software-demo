@@ -14,6 +14,10 @@ import {
   isEarlyPaymentDiscountConfigured,
   type EarlyPaymentDiscountSettingSnapshot,
 } from "../../lib/early-payment-discount-client";
+import {
+  formatBusinessDate,
+  getBusinessTodayString,
+} from "../../lib/business-date";
 import EarlyPaymentDiscountNotice from "./EarlyPaymentDiscountNotice";
 
 interface PaymentMethodType {
@@ -125,7 +129,7 @@ export default function PaymentModal({
   useEffect(() => {
     if (invoice && isOpen) {
       const grossRemaining = invoice.amount - invoice.paidAmount;
-      const paymentDateStr = new Date().toISOString().split("T")[0];
+      const paymentDateStr = getBusinessTodayString();
       let amountToPay = grossRemaining;
 
       if (isEarlyPaymentDiscountConfigured(earlyDiscountSetting)) {
@@ -472,7 +476,7 @@ export default function PaymentModal({
                 </p>
                 <p className="text-xs text-amber-800 mt-1">
                   {overdueInstallment.label} was due on{" "}
-                  {new Date(overdueInstallment.dueDate).toLocaleDateString()}.
+                  {formatBusinessDate(overdueInstallment.dueDate)}.
                   Apply late fee to this invoice? Admin late fee: $
                   {lateFeeSetting.amount.toFixed(2)}
                 </p>

@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { Resend } from "resend";
 import { BUSINESS_CONFIG } from "./business-config";
+import { formatBusinessDate } from "./business-date";
 import prisma from "./prisma";
 import { buildSingleInvoicePdfBuffer } from "./pdf-export";
 
@@ -85,14 +86,11 @@ export async function sendPaymentConfirmation(
     colors,
   } = BUSINESS_CONFIG;
   const { gold, cream, charcoal } = colors;
-  const paymentDate = new Date(payment.paymentDate).toLocaleDateString(
-    "en-US",
-    {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    },
-  );
+  const paymentDate = formatBusinessDate(payment.paymentDate, {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
   const receiptRef = `PAY-${String(payment.id).padStart(5, "0")}`;
   const isPaidInFull = invoice.newRemaining <= 0.01;
 
@@ -348,7 +346,7 @@ export async function sendInvoiceEmail(invoice: {
     throw new Error("Customer email is required to send invoice");
   }
 
-  const dueDate = new Date(invoice.dueDate).toLocaleDateString("en-US", {
+  const dueDate = formatBusinessDate(invoice.dueDate, {
     year: "numeric",
     month: "long",
     day: "numeric",
@@ -482,7 +480,7 @@ export async function sendDuePaymentReminderEmail(params: {
   } = BUSINESS_CONFIG;
   const { gold, cream, charcoal } = colors;
 
-  const dueDate = new Date(params.invoice.dueDate).toLocaleDateString("en-US", {
+  const dueDate = formatBusinessDate(params.invoice.dueDate, {
     year: "numeric",
     month: "long",
     day: "numeric",

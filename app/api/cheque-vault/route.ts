@@ -17,6 +17,7 @@ import {
   parseChequeVaultDocumentType,
 } from "@/lib/cheque-vault-upload";
 import { chequeVaultUserInclude } from "@/lib/cheque-vault-include";
+import { endOfBusinessDay, startOfBusinessDay } from "@/lib/business-date";
 
 function serializeCheque(cheque: any) {
   return {
@@ -74,11 +75,9 @@ export async function GET(request: NextRequest) {
 
     if (startDate || endDate) {
       where.createdAt = {};
-      if (startDate) where.createdAt.gte = new Date(startDate);
+      if (startDate) where.createdAt.gte = startOfBusinessDay(startDate);
       if (endDate) {
-        const end = new Date(endDate);
-        end.setHours(23, 59, 59, 999);
-        where.createdAt.lte = end;
+        where.createdAt.lte = endOfBusinessDay(endDate);
       }
     }
 
@@ -223,8 +222,8 @@ export async function POST(request: NextRequest) {
       : null;
     const chequeDate =
       parsedChequeDate && !isNaN(parsedChequeDate.getTime())
-        ? parsedChequeDate
-        : new Date();
+        ? startOfBusinessDay(parsedChequeDate)
+        : startOfBusinessDay(new Date());
 
     const cheque = await prisma.chequeVault.create({
       data: {

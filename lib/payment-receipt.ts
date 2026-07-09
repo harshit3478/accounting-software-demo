@@ -1,5 +1,6 @@
 import { jsPDF } from "jspdf";
 import { BUSINESS_CONFIG } from "./business-config";
+import { formatBusinessDate } from "./business-date";
 
 const { colors } = BUSINESS_CONFIG;
 
@@ -74,7 +75,7 @@ export function generatePaymentReceiptPDF(payment: PaymentReceipt) {
   doc.setFont("helvetica", "normal");
   doc.text("Date:", 5, y);
   doc.text(
-    new Date(payment.date).toLocaleDateString("en-US", {
+    formatBusinessDate(payment.date, {
       year: "numeric",
       month: "long",
       day: "numeric",
@@ -190,9 +191,14 @@ export function generatePaymentReceiptPDF(payment: PaymentReceipt) {
     doc.text(BUSINESS_CONFIG.website, centerX, y, { align: "center" });
     y += 4;
   }
-  doc.text(`Generated: ${new Date().toLocaleString()}`, centerX, y, {
-    align: "center",
-  });
+  doc.text(
+    `Generated: ${formatBusinessDate(new Date(), { dateStyle: "medium", timeStyle: "short" })}`,
+    centerX,
+    y,
+    {
+      align: "center",
+    },
+  );
 
   // Open as print preview
   const blobUrl = doc.output("bloburl");

@@ -14,6 +14,10 @@ import {
   resolveInvoiceDate,
   resolveLiveTypeLabel,
 } from "./invoice-display";
+import {
+  formatBusinessDate,
+  getBusinessTodayString,
+} from "./business-date";
 
 function formatUsd(amount: number): string {
   return `$${amount.toLocaleString("en-US", {
@@ -192,7 +196,7 @@ export function generateInvoicesPDF(
   doc.setFontSize(9);
   doc.setFont("helvetica", "normal");
   doc.setTextColor(100);
-  doc.text(`Generated: ${new Date().toLocaleDateString()}`, 105, yPos, {
+  doc.text(`Generated: ${formatBusinessDate(new Date())}`, 105, yPos, {
     align: "center",
   });
   yPos += 8;
@@ -202,7 +206,7 @@ export function generateInvoicesPDF(
     doc.setFontSize(9);
     doc.setTextColor(...colors.goldRGB);
     doc.text(
-      `Period: ${new Date(filters.dateRange.start).toLocaleDateString()} - ${new Date(filters.dateRange.end).toLocaleDateString()}`,
+      `Period: ${formatBusinessDate(filters.dateRange.start)} - ${formatBusinessDate(filters.dateRange.end)}`,
       105,
       yPos,
       { align: "center" },
@@ -255,7 +259,7 @@ export function generateInvoicesPDF(
   const tableData = invoices.map((invoice) => [
     invoice.invoiceNumber,
     invoice.clientName,
-    new Date(invoice.createdAt).toLocaleDateString(),
+    formatBusinessDate(invoice.createdAt),
     formatUsd(getInvoiceTotalForDisplay(invoice)),
     `$${invoice.paidAmount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
     formatUsd(getInvoiceAmountDue(invoice)),
@@ -331,14 +335,14 @@ export function generateInvoicesPDF(
       align: "center",
     });
     doc.text(
-      `Generated on ${new Date().toLocaleString()} - Page ${i} of ${pageCount}`,
+      `Generated on ${formatBusinessDate(new Date(), { dateStyle: "medium", timeStyle: "short" })} - Page ${i} of ${pageCount}`,
       105,
       288,
       { align: "center" },
     );
   }
 
-  const timestamp = new Date().toISOString().split("T")[0];
+  const timestamp = getBusinessTodayString();
   const fileName = filters?.dateRange
     ? `invoice-statement-${filters.dateRange.start}-to-${filters.dateRange.end}.pdf`
     : `invoice-statement-${timestamp}.pdf`;
@@ -499,7 +503,7 @@ export async function generateSingleInvoicePDF(
     { label: "Invoice Number:", value: invoice.invoiceNumber },
     {
       label: "Invoice Date:",
-      value: new Date(invoiceDate).toLocaleDateString("en-US", {
+      value: formatBusinessDate(invoiceDate, {
         month: "long",
         day: "numeric",
         year: "numeric",
@@ -507,7 +511,7 @@ export async function generateSingleInvoicePDF(
     },
     {
       label: "Payment Due:",
-      value: new Date(invoice.dueDate).toLocaleDateString("en-US", {
+      value: formatBusinessDate(invoice.dueDate, {
         month: "long",
         day: "numeric",
         year: "numeric",
@@ -691,7 +695,7 @@ export async function generateSingleInvoicePDF(
   });
 
   recalculationFeeEntries.forEach((entry) => {
-    const label = `${entry.label} (${new Date(entry.date).toLocaleDateString()})`;
+    const label = `${entry.label} (${formatBusinessDate(entry.date)})`;
     const labelLines = doc.splitTextToSize(label, R - L - 35);
     doc.text(labelLines, summaryLabelX, y, { align: "right" });
     doc.text(`$${entry.amount.toFixed(2)}`, R, y, { align: "right" });
@@ -703,7 +707,7 @@ export async function generateSingleInvoicePDF(
       const label =
         entry.action === "skip"
           ? `${entry.label}: ${entry.reason}`
-          : `${entry.label} (${new Date(entry.date).toLocaleDateString()})`;
+          : `${entry.label} (${formatBusinessDate(entry.date)})`;
       const labelLines = doc.splitTextToSize(label, R - L - 35);
       doc.text(labelLines, summaryLabelX, y, { align: "right" });
       doc.text(`$${entry.amount.toFixed(2)}`, R, y, { align: "right" });
@@ -772,7 +776,7 @@ export async function generateSingleInvoicePDF(
           doc.addPage();
           y = 20;
         }
-        const d = new Date(inst.dueDate).toLocaleDateString("en-US", {
+        const d = formatBusinessDate(inst.dueDate, {
           month: "2-digit",
           day: "2-digit",
           year: "2-digit",
@@ -949,18 +953,19 @@ export function buildSingleInvoicePdfBuffer(
 
   const metaLabelX = 160;
   let metaY = 66;
-  const dueDate = new Date(invoice.dueDate).toLocaleDateString("en-US", {
+  const dueDate = formatBusinessDate(invoice.dueDate, {
     month: "long",
     day: "numeric",
     year: "numeric",
   });
-  const invoiceDate = new Date(
+  const invoiceDate = formatBusinessDate(
     invoice.invoiceDate || invoice.createdAt,
-  ).toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
+    {
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    },
+  );
   const removedItemDepositFeeEntries = getRemovedItemDepositFeeDisplayEntries(
     invoice.editHistory || [],
   );
@@ -1102,7 +1107,7 @@ export function buildSingleInvoicePdfBuffer(
   });
 
   recalculationFeeEntries.forEach((entry) => {
-    const label = `${entry.label} (${new Date(entry.date).toLocaleDateString()})`;
+    const label = `${entry.label} (${formatBusinessDate(entry.date)})`;
     const labelLines = doc.splitTextToSize(label, 115);
     doc.text(labelLines, 130, y, { align: "right" });
     doc.text(`$${entry.amount.toFixed(2)}`, R, y, { align: "right" });
@@ -1114,7 +1119,7 @@ export function buildSingleInvoicePdfBuffer(
       const label =
         entry.action === "skip"
           ? `${entry.label}: ${entry.reason}`
-          : `${entry.label} (${new Date(entry.date).toLocaleDateString()})`;
+          : `${entry.label} (${formatBusinessDate(entry.date)})`;
       const labelLines = doc.splitTextToSize(label, 115);
       doc.text(labelLines, 130, y, { align: "right" });
       doc.text(`$${entry.amount.toFixed(2)}`, R, y, { align: "right" });
@@ -1177,7 +1182,7 @@ export function buildSingleInvoicePdfBuffer(
           doc.addPage();
           y = 20;
         }
-        const d = new Date(inst.dueDate).toLocaleDateString("en-US", {
+        const d = formatBusinessDate(inst.dueDate, {
           month: "2-digit",
           day: "2-digit",
           year: "2-digit",

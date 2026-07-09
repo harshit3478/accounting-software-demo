@@ -1,3 +1,8 @@
+import {
+  getBusinessTodayString,
+  toBusinessDateString,
+} from "./business-date";
+
 export interface XpsAddress {
   name?: string;
   company?: string;
@@ -85,7 +90,7 @@ export async function putOrderToXps(
   // Construct payload
   const payload: XpsOrderPayload = {
     orderId: invoice.id.toString(),
-    orderDate: new Date().toISOString().split("T")[0],
+    orderDate: getBusinessTodayString(),
     orderNumber: invoice.invoiceNumber,
     fulfillmentStatus: "pending",
     weightUnit: "lb", // Defaulting to lb, should be configurable
@@ -116,8 +121,8 @@ export async function putOrderToXps(
     shippingService: "Ground",
     shippingTotal: invoice.amount ? invoice.amount.toString() : "0.00",
     dueByDate: invoice.dueDate
-      ? new Date(invoice.dueDate).toISOString().split("T")[0]
-      : new Date().toISOString().split("T")[0],
+      ? toBusinessDateString(new Date(invoice.dueDate))
+      : getBusinessTodayString(),
     orderGroup: "Web Orders",
     items: Array.isArray(invoice.items)
       ? invoice.items.map((item: any, idx: number) => ({

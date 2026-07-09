@@ -1,13 +1,12 @@
 import { NextResponse } from "next/server";
 import prisma from "../../../../lib/prisma";
 import { requireAuth } from "../../../../lib/auth";
+import { startOfBusinessDay } from "../../../../lib/business-date";
 
 export async function GET(req: Request) {
   try {
     const user = await requireAuth();
-    const now = new Date();
-    const startOfDay = new Date(now);
-    startOfDay.setHours(0, 0, 0, 0);
+    const startOfDay = startOfBusinessDay(new Date());
 
     const entry = await prisma.attendanceEntry.findFirst({
       where: { userId: user.id, date: startOfDay },

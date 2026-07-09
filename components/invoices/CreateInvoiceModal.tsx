@@ -23,6 +23,11 @@ import {
   buildLayawayInstallmentSchedule,
   formatLayawayInstallmentDate,
 } from "../../lib/layaway-installments";
+import {
+  getBusinessTodayString,
+  isBeforeBusinessToday,
+  isFutureBusinessDate,
+} from "../../lib/business-date";
 
 interface CustomerOption {
   id: number;
@@ -78,14 +83,6 @@ export default function CreateInvoiceModal({
   onSuccess,
   onError,
 }: CreateInvoiceModalProps) {
-  const getTodayDateString = () => {
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = String(today.getMonth() + 1).padStart(2, "0");
-    const day = String(today.getDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`;
-  };
-
   const [clientName, setClientName] = useState("");
   const [customerId, setCustomerId] = useState<number | null>(null);
   const [applyStoreCredit, setApplyStoreCredit] = useState(false);
@@ -104,7 +101,7 @@ export default function CreateInvoiceModal({
   const [showUpdateCustomerFieldsModal, setShowUpdateCustomerFieldsModal] =
     useState(false);
   const [pendingNewCustomerName, setPendingNewCustomerName] = useState("");
-  const [invoiceDate, setInvoiceDate] = useState(getTodayDateString());
+  const [invoiceDate, setInvoiceDate] = useState(getBusinessTodayString());
   const [dueDate, setDueDate] = useState("");
   const [dueDateReason, setDueDateReason] = useState("");
   const [dueDateReasons, setDueDateReasons] = useState<DueDateReasonOption[]>(
@@ -116,37 +113,7 @@ export default function CreateInvoiceModal({
   );
   const customerRef = useRef<HTMLDivElement>(null);
 
-  const isBackDate = (selectedDate: string) => {
-    if (!selectedDate) return false;
-
-    const parsed = new Date(selectedDate);
-    if (Number.isNaN(parsed.getTime())) return false;
-
-    const selected = new Date(parsed);
-    selected.setHours(0, 0, 0, 0);
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    return selected < today;
-  };
-
-  const isFutureDate = (selectedDate: string) => {
-    if (!selectedDate) return false;
-
-    const parsed = new Date(selectedDate);
-    if (Number.isNaN(parsed.getTime())) return false;
-
-    const selected = new Date(parsed);
-    selected.setHours(0, 0, 0, 0);
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    return selected > today;
-  };
-
-  const requiresDueDateReason = isBackDate(dueDate);
+  const requiresDueDateReason = isBeforeBusinessToday(dueDate);
 
   // Load layaway defaults from localStorage
   useEffect(() => {
@@ -536,7 +503,7 @@ export default function CreateInvoiceModal({
       setInvoiceDateError("Invoice date is required");
       return false;
     }
-    if (isFutureDate(selectedDate)) {
+    if (isFutureBusinessDate(selectedDate)) {
       setInvoiceDateError("Invoice date cannot be in the future");
       return false;
     }
@@ -623,7 +590,7 @@ export default function CreateInvoiceModal({
     setClientName("");
     setCustomerId(null);
     setCustomerAddress("");
-    setInvoiceDate(getTodayDateString());
+    setInvoiceDate(getBusinessTodayString());
     setDueDate("");
     setDueDateReason("");
     setDueDateReasons([]);
@@ -1586,7 +1553,7 @@ export default function CreateInvoiceModal({
                             const previewInstallments =
                               buildLayawayInstallmentSchedule({
                                 invoiceDate:
-                                  invoiceDate || getTodayDateString(),
+                                  invoiceDate || getBusinessTodayString(),
                                 frequency: layawayFrequency,
                                 months: layawayMonths,
                                 downPayment: layawayDownPayment,

@@ -1,4 +1,4 @@
-import React from "react";
+import { formatBusinessDate } from "@/lib/business-date";
 import {
   Folder,
   File,
@@ -48,16 +48,14 @@ export default function DocumentsTable({
 }: DocumentsTableProps) {
   const [openMenuId, setOpenMenuId] = React.useState<number | null>(null);
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString("en-US", {
+  const formatDate = (dateString: string) =>
+    formatBusinessDate(dateString, {
       year: "numeric",
       month: "short",
       day: "numeric",
       hour: "2-digit",
       minute: "2-digit",
     });
-  };
 
   const handleDownload = async (doc: Document) => {
     if (doc.type === "folder" || !doc.fileUrl) return;

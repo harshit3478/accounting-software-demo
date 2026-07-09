@@ -6,6 +6,7 @@ import Modal from "../invoices/Modal";
 import LucideIcon from "../LucideIcon";
 import { AlertTriangle } from "lucide-react";
 import type { Payment } from "../../hooks/usePayments";
+import { formatBusinessDate } from "../../lib/business-date";
 
 interface AbandonPaymentModalProps {
   isOpen: boolean;
@@ -64,13 +65,7 @@ export default function AbandonPaymentModal({
     onClose();
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
-  };
+  const formatDate = (dateString: string) => formatBusinessDate(dateString);
 
   const methodColor = payment.method?.color || "#6B7280";
 

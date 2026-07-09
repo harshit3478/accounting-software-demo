@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "../../../../lib/prisma";
 import { requireAuth } from "../../../../lib/auth";
+import {
+  endOfBusinessDay,
+  formatBusinessDate,
+  startOfBusinessDay,
+  toBusinessDateString,
+} from "../../../../lib/business-date";
 
 interface DateRange {
   start: Date;
@@ -12,46 +18,54 @@ function getDateRange(
   customStart?: string,
   customEnd?: string,
 ): DateRange {
-  const end = new Date();
-  let start = new Date();
+  let end = endOfBusinessDay(new Date());
+  let start = startOfBusinessDay(new Date());
 
   switch (period) {
     case "7":
-      start.setDate(end.getDate() - 7);
+      start = startOfBusinessDay(
+        new Date(start.getTime() - 7 * 24 * 60 * 60 * 1000),
+      );
       break;
     case "30":
-      start.setDate(end.getDate() - 30);
+      start = startOfBusinessDay(
+        new Date(start.getTime() - 30 * 24 * 60 * 60 * 1000),
+      );
       break;
     case "90":
-      start.setDate(end.getDate() - 90);
+      start = startOfBusinessDay(
+        new Date(start.getTime() - 90 * 24 * 60 * 60 * 1000),
+      );
       break;
     case "custom":
       if (customStart && customEnd) {
-        start = new Date(customStart);
-        end.setTime(new Date(customEnd).getTime());
+        start = startOfBusinessDay(customStart);
+        end = endOfBusinessDay(customEnd);
       }
       break;
     default:
-      start.setDate(end.getDate() - 30);
+      start = startOfBusinessDay(
+        new Date(start.getTime() - 30 * 24 * 60 * 60 * 1000),
+      );
   }
-
-  start.setHours(0, 0, 0, 0);
-  end.setHours(23, 59, 59, 999);
 
   return { start, end };
 }
 
 function formatDate(date: Date): string {
-  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return formatBusinessDate(date, { month: "short", day: "numeric" });
 }
 
 function getDatesInRange(start: Date, end: Date): Date[] {
   const dates: Date[] = [];
-  const current = new Date(start);
+  let current = startOfBusinessDay(start);
+  const endDay = startOfBusinessDay(end);
 
-  while (current <= end) {
+  while (current.getTime() <= endDay.getTime()) {
     dates.push(new Date(current));
-    current.setDate(current.getDate() + 1);
+    current = startOfBusinessDay(
+      new Date(current.getTime() + 24 * 60 * 60 * 1000),
+    );
   }
 
   return dates;
@@ -114,12 +128,12 @@ export async function GET(request: NextRequest) {
     const revenueData: { [key: string]: number } = {};
 
     dates.forEach((date) => {
-      const dateStr = date.toISOString().split("T")[0];
+      const dateStr = toBusinessDateString(date);
       revenueData[dateStr] = 0;
     });
 
     invoices.forEach((invoice) => {
-      const dateStr = invoice.createdAt.toISOString().split("T")[0];
+      const dateStr = toBusinessDateString(invoice.createdAt);
       if (revenueData[dateStr] !== undefined) {
         revenueData[dateStr] += invoice.amount.toNumber();
       }
@@ -138,19 +152,19 @@ export async function GET(request: NextRequest) {
     for (const m of allMethods) {
       paymentMethodData[m.id] = {};
       dates.forEach((date) => {
-        paymentMethodData[m.id][date.toISOString().split("T")[0]] = 0;
+        paymentMethodData[m.id][toBusinessDateString(date)] = 0;
       });
     }
 
     payments.forEach((payment) => {
-      const dateStr = payment.paymentDate.toISOString().split("T")[0];
+      const dateStr = toBusinessDateString(payment.paymentDate);
       if (paymentMethodData[payment.methodId]?.[dateStr] !== undefined) {
         paymentMethodData[payment.methodId][dateStr] +=
           payment.amount.toNumber();
       }
     });
 
-    const dateKeys = dates.map((d) => d.toISOString().split("T")[0]);
+    const dateKeys = dates.map((d) => toBusinessDateString(d));
     const enrichedMethods = allMethods.map((m) => {
       const values = dateKeys.map((ds) => paymentMethodData[m.id]?.[ds] ?? 0);
       const total = values.reduce((s, v) => s + v, 0);

@@ -6,6 +6,7 @@ import {
   canEditChequeRequest,
 } from "@/lib/cheque-vault-permissions";
 import { useAuth } from "@/lib/AuthContext";
+import { formatBusinessDate } from "@/lib/business-date";
 
 interface ChequeVaultTableProps {
   cheques: ChequeVaultRecord[];
@@ -30,11 +31,7 @@ const STATUS_LABELS: Record<ChequeStatus, string> = {
 };
 
 function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
+  return formatBusinessDate(dateStr);
 }
 
 export default function ChequeVaultTable({

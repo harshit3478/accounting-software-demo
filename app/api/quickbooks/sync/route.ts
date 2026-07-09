@@ -11,6 +11,10 @@ import {
   formatSensitiveActionOtpError,
   requireSensitiveActionOtp,
 } from "../../../../lib/sensitive-action-otp";
+import {
+  startOfBusinessDay,
+  toBusinessDateString,
+} from "../../../../lib/business-date";
 
 export async function POST(request: NextRequest) {
   try {
@@ -44,9 +48,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Calculate date range
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - daysBack);
-    const startDateStr = startDate.toISOString().split("T")[0];
+    const startDate = startOfBusinessDay(
+      new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000),
+    );
+    const startDateStr = toBusinessDateString(startDate);
 
     console.log(`Syncing payments from QuickBooks since ${startDateStr}`);
 
@@ -148,8 +153,8 @@ export async function POST(request: NextRequest) {
           qbPayment.PaymentType ||
           "unknown";
         const date = qbPayment.TxnDate
-          ? new Date(qbPayment.TxnDate)
-          : new Date();
+          ? startOfBusinessDay(qbPayment.TxnDate)
+          : startOfBusinessDay(new Date());
 
         // Extract customer and reference info
         const customerName = qbPayment.CustomerRef?.name || "Unknown Customer";

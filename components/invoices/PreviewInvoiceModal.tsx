@@ -3,6 +3,7 @@
 import Modal from "./Modal";
 import { InvoiceItem } from "./types";
 import { useEffect, useState } from "react";
+import { formatBusinessDate } from "../../lib/business-date";
 
 interface PreviewInvoiceModalProps {
   isOpen: boolean;
@@ -169,7 +170,7 @@ export default function PreviewInvoiceModal({
               Invoice Date
             </p>
             <p className="text-lg font-semibold text-gray-900 mt-1">
-              {new Date(invoiceDate).toLocaleDateString("en-US", {
+              {formatBusinessDate(invoiceDate, {
                 year: "numeric",
                 month: "long",
                 day: "numeric",
@@ -181,7 +182,7 @@ export default function PreviewInvoiceModal({
               Due Date
             </p>
             <p className="text-lg font-semibold text-gray-900 mt-1">
-              {new Date(dueDate).toLocaleDateString("en-US", {
+              {formatBusinessDate(dueDate, {
                 year: "numeric",
                 month: "long",
                 day: "numeric",

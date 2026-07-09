@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "../../../../lib/prisma";
 import { requireAuth } from "../../../../lib/auth";
 import { buildPaymentStatusWhere } from "../../../../lib/payment-display-status";
+import {
+  endOfBusinessDay,
+  getBusinessTodayString,
+  startOfBusinessDay,
+  toBusinessDateString,
+} from "../../../../lib/business-date";
 
 export async function GET(request: NextRequest) {
   try {
@@ -45,8 +51,8 @@ export async function GET(request: NextRequest) {
     // Date range filter
     if (startDate && endDate) {
       where.paymentDate = {
-        gte: new Date(startDate),
-        lte: new Date(new Date(endDate).setHours(23, 59, 59, 999)),
+        gte: startOfBusinessDay(startDate),
+        lte: endOfBusinessDay(endDate),
       };
     }
 
@@ -100,7 +106,7 @@ export async function GET(request: NextRequest) {
 
       return {
         amount: payment.amount.toNumber(),
-        paymentDate: payment.paymentDate.toISOString().split("T")[0],
+        paymentDate: toBusinessDateString(payment.paymentDate),
         methodName: payment.method.name,
         notes: payment.notes,
         invoiceNumber,
@@ -108,7 +114,7 @@ export async function GET(request: NextRequest) {
         recordedBy:
           payment.user.name?.trim() || payment.user?.email || "Unknown",
         source: payment.source || "manual",
-        createdAt: payment.createdAt.toISOString().split("T")[0],
+        createdAt: toBusinessDateString(payment.createdAt),
       };
     });
 
@@ -143,7 +149,7 @@ export async function GET(request: NextRequest) {
     ];
 
     const csvContent = csvRows.join("\n");
-    const filename = `payments-export-${new Date().toISOString().split("T")[0]}.csv`;
+    const filename = `payments-export-${getBusinessTodayString()}.csv`;
 
     return new NextResponse(csvContent, {
       headers: {

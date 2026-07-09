@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { formatBusinessDate } from "../../lib/business-date";
 import type { InvoiceFilter } from "../../hooks/useInvoices";
 import DateRangePicker from "../DateRangePicker";
 
@@ -205,8 +206,8 @@ export default function InvoiceFilters({
             </svg>
             <span>
               Showing invoices from{" "}
-              {new Date(dateRange.start).toLocaleDateString()} to{" "}
-              {new Date(dateRange.end).toLocaleDateString()}
+              {formatBusinessDate(dateRange.start)} to{" "}
+              {formatBusinessDate(dateRange.end)}
             </span>
             <button
               onClick={() => onDateRangeChange?.(null)}

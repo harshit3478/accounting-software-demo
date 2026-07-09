@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { toBusinessDateString } from "@/lib/business-date";
 
 export interface DateRange {
   start: string;
@@ -75,8 +76,8 @@ export default function AttendanceFilters({
     }
 
     return {
-      start: start.toISOString().split("T")[0],
-      end: end.toISOString().split("T")[0],
+      start: toBusinessDateString(start),
+      end: toBusinessDateString(end),
     };
   }
 

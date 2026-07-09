@@ -2,6 +2,8 @@
  * CSV Export Utilities for Invoice Management
  */
 
+import { getBusinessTodayString } from "./business-date";
+
 export interface InvoiceCSVData {
   invoiceNumber: string;
   clientName: string;
@@ -113,7 +115,7 @@ export function downloadCSV(
  */
 export function exportInvoicesToCSV(
   invoices: InvoiceCSVData[],
-  filename: string = `invoices-${new Date().toISOString().split("T")[0]}.csv`,
+  filename: string = `invoices-${getBusinessTodayString()}.csv`,
 ): void {
   const csv = invoicesToCSV(invoices);
   if (csv) {
@@ -182,7 +184,7 @@ export function paymentsToCSV(payments: PaymentCSVData[]): string {
  */
 export function exportPaymentsToCSV(
   payments: PaymentCSVData[],
-  filename: string = `payments-${new Date().toISOString().split("T")[0]}.csv`,
+  filename: string = `payments-${getBusinessTodayString()}.csv`,
 ): void {
   const csv = paymentsToCSV(payments);
   if (csv) {

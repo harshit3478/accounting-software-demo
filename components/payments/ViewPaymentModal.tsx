@@ -4,6 +4,7 @@ import { useRef } from "react";
 import Modal from "../invoices/Modal";
 import LucideIcon from "../LucideIcon";
 import { formatUserDisplayName } from "../../lib/user-display";
+import { formatBusinessDate } from "../../lib/business-date";
 
 interface ViewPaymentModalProps {
   isOpen: boolean;
@@ -82,13 +83,12 @@ export default function ViewPaymentModal({
     });
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("en-US", {
+  const formatDate = (dateString: string) =>
+    formatBusinessDate(dateString, {
       year: "numeric",
       month: "long",
       day: "numeric",
     });
-  };
 
   const methodColor = payment.method?.color || "#6B7280";
 
