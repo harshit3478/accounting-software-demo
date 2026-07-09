@@ -119,6 +119,7 @@ export async function PATCH(
       chequeDate,
       bankName,
       customerEmail,
+      memoText,
     } = body;
 
     const cheque = await prisma.chequeVault.findUnique({
@@ -142,7 +143,8 @@ export async function PATCH(
       amount !== undefined ||
       chequeDate !== undefined ||
       bankName !== undefined ||
-      customerEmail !== undefined;
+      customerEmail !== undefined ||
+      memoText !== undefined;
     const wantsInvoiceUpdate = invoices !== undefined;
 
     const canApprove = hasPermission(user, "chequeVault.approve");
@@ -250,6 +252,7 @@ export async function PATCH(
     if (bankName !== undefined) updateData.bankName = bankName;
     if (customerEmail !== undefined)
       updateData.customerEmail = customerEmail || null;
+    if (memoText !== undefined) updateData.memoText = memoText || null;
 
     if (wantsFieldUpdate && !reviewer) {
       updateData.submittedAt = new Date();

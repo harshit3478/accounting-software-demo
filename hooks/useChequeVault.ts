@@ -25,14 +25,18 @@ export interface InvoiceAllocation {
   } | null;
 }
 
+export type ChequeVaultDocumentType = "CHEQUE" | "MEMO";
+
 export interface ChequeVaultRecord {
   id: number;
+  documentType: ChequeVaultDocumentType;
   chequeNumber: string;
   payorName: string;
   customerEmail: string | null;
   amount: number;
   chequeDate: string;
   bankName: string | null;
+  memoText: string | null;
   imageUrl: string;
   imageFileName: string;
   rawOcrText: string | null;
@@ -83,6 +87,9 @@ export function useChequeVault() {
 
   // Filters
   const [filterStatus, setFilterStatus] = useState<ChequeStatus | "all">("all");
+  const [filterDocumentType, setFilterDocumentType] = useState<
+    ChequeVaultDocumentType | "all"
+  >("all");
   const [searchPayee, setSearchPayee] = useState("");
   const [debouncedPayee, setDebouncedPayee] = useState("");
   const [dateRange, setDateRange] = useState<DateRange | null>(null);
@@ -90,6 +97,8 @@ export function useChequeVault() {
 
   // Modals
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [uploadDocumentType, setUploadDocumentType] =
+    useState<ChequeVaultDocumentType>("CHEQUE");
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedCheque, setSelectedCheque] =
     useState<ChequeVaultRecord | null>(null);
@@ -110,6 +119,8 @@ export function useChequeVault() {
       params.set("page", currentPage.toString());
       params.set("limit", itemsPerPage.toString());
       if (filterStatus !== "all") params.set("status", filterStatus);
+      if (filterDocumentType !== "all")
+        params.set("documentType", filterDocumentType);
       if (debouncedPayee) params.set("payorName", debouncedPayee);
       if (dateRange) {
         params.set("startDate", dateRange.startDate);
@@ -135,6 +146,7 @@ export function useChequeVault() {
     currentPage,
     itemsPerPage,
     filterStatus,
+    filterDocumentType,
     debouncedPayee,
     dateRange,
     filterUploadedBy,
@@ -242,6 +254,7 @@ export function useChequeVault() {
       chequeDate: string;
       bankName: string | null;
       customerEmail: string | null;
+      memoText?: string | null;
     },
   ): Promise<boolean> => {
     try {
@@ -313,6 +326,11 @@ export function useChequeVault() {
       setFilterStatus(s);
       setCurrentPage(1);
     },
+    filterDocumentType,
+    setFilterDocumentType: (t: ChequeVaultDocumentType | "all") => {
+      setFilterDocumentType(t);
+      setCurrentPage(1);
+    },
     searchPayee,
     setSearchPayee,
     dateRange,
@@ -329,6 +347,8 @@ export function useChequeVault() {
     // Modals
     showUploadModal,
     setShowUploadModal,
+    uploadDocumentType,
+    setUploadDocumentType,
     showDetailModal,
     setShowDetailModal,
     selectedCheque,

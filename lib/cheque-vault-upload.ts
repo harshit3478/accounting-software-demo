@@ -47,3 +47,20 @@ export const CHEQUE_VAULT_ACCEPT_ATTRIBUTE =
 
 export const CHEQUE_VAULT_FILE_TYPE_HINT =
   "One file only — JPEG, PNG, WebP, or PDF (max 10MB)";
+
+export type ChequeVaultDocumentType = "CHEQUE" | "MEMO";
+
+export function getChequeVaultStoragePrefix(
+  documentType: ChequeVaultDocumentType,
+): string {
+  return documentType === "MEMO" ? "memos" : "cheques";
+}
+
+export function parseChequeVaultDocumentType(
+  value: FormDataEntryValue | null,
+): ChequeVaultDocumentType {
+  const normalized = String(value ?? "")
+    .trim()
+    .toUpperCase();
+  return normalized === "MEMO" ? "MEMO" : "CHEQUE";
+}

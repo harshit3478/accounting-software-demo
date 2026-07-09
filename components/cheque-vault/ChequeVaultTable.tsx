@@ -53,6 +53,7 @@ export default function ChequeVaultTable({
             <tr>
               {[
                 "Date",
+                "Type",
                 "Cheque #",
                 "Customer / Payor",
                 "Bank",
@@ -74,7 +75,7 @@ export default function ChequeVaultTable({
           <tbody>
             {Array.from({ length: 5 }).map((_, i) => (
               <tr key={i} className="border-t border-gray-100">
-                {Array.from({ length: 9 }).map((_, j) => (
+                {Array.from({ length: 10 }).map((_, j) => (
                   <td key={j} className="px-4 py-3">
                     <div className="h-4 bg-gray-200 rounded animate-pulse" />
                   </td>
@@ -105,11 +106,11 @@ export default function ChequeVaultTable({
             />
           </svg>
         </div>
-        <p className="text-gray-500 font-medium">No cheques found</p>
+        <p className="text-gray-500 font-medium">No records found</p>
         <p className="text-gray-400 text-sm mt-1">
           {canUploadCheques
-            ? "Upload a cheque to get started"
-            : "Cheque requests will appear here once uploaded"}
+            ? "Upload a cheque or memo to get started"
+            : "Cheque and memo requests will appear here once uploaded"}
         </p>
       </div>
     );
@@ -123,6 +124,9 @@ export default function ChequeVaultTable({
             <tr>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Upload Date
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Type
               </th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Cheque #
@@ -160,6 +164,17 @@ export default function ChequeVaultTable({
               >
                 <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
                   {formatDate(cheque.createdAt)}
+                </td>
+                <td className="px-4 py-3">
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                      cheque.documentType === "MEMO"
+                        ? "bg-indigo-100 text-indigo-800"
+                        : "bg-blue-100 text-blue-800"
+                    }`}
+                  >
+                    {cheque.documentType === "MEMO" ? "Memo" : "Cheque"}
+                  </span>
                 </td>
                 <td className="px-4 py-3 font-medium text-gray-900">
                   {cheque.chequeNumber || (

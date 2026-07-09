@@ -7,11 +7,14 @@ import {
 } from "@/lib/auth";
 import { uploadToR2, deleteFromR2 } from "@/lib/r2-client";
 import { extractChequeDataFromFile } from "@/lib/cheque-ocr";
+import { extractMemoDataFromFile, emptyMemoOcrResult } from "@/lib/memo-ocr";
 import {
   CHEQUE_VAULT_MAX_FILE_SIZE_BYTES,
   emptyChequeOcrResult,
   getChequeVaultFileExtension,
+  getChequeVaultStoragePrefix,
   isAllowedChequeVaultMimeType,
+  parseChequeVaultDocumentType,
 } from "@/lib/cheque-vault-upload";
 import { chequeVaultUserInclude } from "@/lib/cheque-vault-include";
 
@@ -48,6 +51,7 @@ export async function GET(request: NextRequest) {
     const payorName =
       searchParams.get("payorName") || searchParams.get("payeeName");
     const uploadedBy = searchParams.get("uploadedBy");
+    const documentType = searchParams.get("documentType");
 
     const where: any = {};
 
@@ -58,6 +62,10 @@ export async function GET(request: NextRequest) {
 
     if (status && status !== "all") {
       where.status = status;
+    }
+
+    if (documentType === "CHEQUE" || documentType === "MEMO") {
+      where.documentType = documentType;
     }
 
     if (payorName) {
@@ -126,6 +134,9 @@ export async function POST(request: NextRequest) {
     const user = await requireChequeVaultUpload();
 
     const formData = await request.formData();
+    const documentType = parseChequeVaultDocumentType(
+      formData.get("documentType"),
+    );
     const fileEntries = formData
       .getAll("file")
       .filter(
@@ -138,7 +149,9 @@ export async function POST(request: NextRequest) {
 
     if (fileEntries.length > 1) {
       return NextResponse.json(
-        { error: "Only one cheque file can be uploaded per request" },
+        {
+          error: `Only one ${documentType === "MEMO" ? "memo" : "cheque"} file can be uploaded per request`,
+        },
         { status: 400 },
       );
     }
@@ -164,7 +177,8 @@ export async function POST(request: NextRequest) {
 
     const ext = getChequeVaultFileExtension(file.type);
     const rand = Math.random().toString(36).substring(2, 10);
-    imageFileName = `cheques/${Date.now()}-${rand}.${ext}`;
+    const storagePrefix = getChequeVaultStoragePrefix(documentType);
+    imageFileName = `${storagePrefix}/${Date.now()}-${rand}.${ext}`;
 
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
@@ -172,12 +186,34 @@ export async function POST(request: NextRequest) {
     const imageUrl = await uploadToR2(buffer, imageFileName, file.type);
     uploadedToR2 = true;
 
-    const ocrResult = await extractChequeDataFromFile(buffer, file.type).catch(
-      (err) => {
-        console.error("[cheque-vault POST] OCR error:", err);
-        return emptyChequeOcrResult();
-      },
-    );
+    let ocrResult: {
+      chequeNumber: string | null;
+      payorName: string | null;
+      amount: number | null;
+      chequeDate: string | null;
+      bankName: string | null;
+      rawText: string;
+      confidence: "high" | "low";
+    };
+    let memoText: string | null = null;
+
+    if (documentType === "MEMO") {
+      const memoOcr = await extractMemoDataFromFile(buffer, file.type).catch(
+        (err) => {
+          console.error("[cheque-vault POST] Memo OCR error:", err);
+          return emptyMemoOcrResult();
+        },
+      );
+      ocrResult = memoOcr;
+      memoText = memoOcr.memoText || null;
+    } else {
+      ocrResult = await extractChequeDataFromFile(buffer, file.type).catch(
+        (err) => {
+          console.error("[cheque-vault POST] OCR error:", err);
+          return emptyChequeOcrResult();
+        },
+      );
+    }
 
     const customerEmail =
       (formData.get("customerEmail") as string | null)?.trim() || null;
@@ -192,12 +228,14 @@ export async function POST(request: NextRequest) {
 
     const cheque = await prisma.chequeVault.create({
       data: {
+        documentType,
         chequeNumber: ocrResult.chequeNumber || "",
         payorName: ocrResult.payorName || "",
         customerEmail,
         amount: ocrResult.amount ?? 0,
         chequeDate,
         bankName: ocrResult.bankName || null,
+        memoText,
         imageUrl,
         imageFileName,
         rawOcrText: ocrResult.rawText || null,

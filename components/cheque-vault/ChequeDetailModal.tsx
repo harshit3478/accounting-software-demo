@@ -35,6 +35,7 @@ interface ChequeDetailModalProps {
       chequeDate: string;
       bankName: string | null;
       customerEmail: string | null;
+      memoText?: string | null;
     },
   ) => Promise<boolean>;
   onDelete?: (id: number) => Promise<boolean>;
@@ -86,6 +87,7 @@ export default function ChequeDetailModal({
   const [amount, setAmount] = useState("");
   const [chequeDate, setChequeDate] = useState("");
   const [bankName, setBankName] = useState("");
+  const [memoText, setMemoText] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
   const [isSavingDetails, setIsSavingDetails] = useState(false);
   const [actionMode, setActionMode] = useState<
@@ -113,10 +115,14 @@ export default function ChequeDetailModal({
         : "",
     );
     setBankName(cheque.bankName || "");
+    setMemoText(cheque.memoText || "");
     setCustomerEmail(cheque.customerEmail || "");
   }, [cheque]);
 
   if (!isOpen || !cheque) return null;
+
+  const isMemo = cheque.documentType === "MEMO";
+  const docLabel = isMemo ? "Memo" : "Cheque";
 
   const readOnly = isChequeRequestReadOnly(cheque);
   const canEdit =
@@ -199,6 +205,7 @@ export default function ChequeDetailModal({
       chequeDate: chequeDate || new Date().toISOString().split("T")[0],
       bankName: bankName.trim() || null,
       customerEmail: customerEmail.trim() || null,
+      memoText: isMemo ? memoText.trim() || null : undefined,
     });
     setIsSavingDetails(false);
   };
@@ -233,8 +240,17 @@ export default function ChequeDetailModal({
           <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <h2 className="text-lg font-semibold text-gray-900">
-                {canEdit ? "Edit Cheque Request" : "Cheque Detail"}
+                {canEdit ? `Edit ${docLabel} Request` : `${docLabel} Detail`}
               </h2>
+              <span
+                className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                  isMemo
+                    ? "bg-indigo-100 text-indigo-800"
+                    : "bg-blue-100 text-blue-800"
+                }`}
+              >
+                {docLabel}
+              </span>
               <span
                 className={`px-2 py-1 rounded-full text-xs font-medium ${STATUS_STYLES[cheque.status]}`}
               >
@@ -267,7 +283,7 @@ export default function ChequeDetailModal({
               {/* Left: Image */}
               <div className="p-6">
                 <p className="text-sm font-medium text-gray-700 mb-3">
-                  Cheque Document
+                  {docLabel} Document
                 </p>
                 <div
                   className="bg-gray-100 rounded-lg overflow-hidden border border-gray-200 cursor-pointer hover:opacity-90 transition-opacity"
@@ -337,7 +353,7 @@ export default function ChequeDetailModal({
               <div className="p-6">
                 <div className="flex items-center justify-between mb-4">
                   <p className="text-sm font-medium text-gray-700">
-                    {canEdit ? "Cheque Details" : "Extracted Fields"}
+                    {canEdit ? `${docLabel} Details` : "Extracted Fields"}
                   </p>
                   {canEdit && (
                     <button
@@ -352,7 +368,7 @@ export default function ChequeDetailModal({
                 <dl className="space-y-3">
                   {canEdit ? (
                     <>
-                      <EditableField label="Cheque Number *" required>
+                      <EditableField label={`${docLabel} Number *`} required>
                         <input
                           value={chequeNumber}
                           onChange={(e) => setChequeNumber(e.target.value)}
@@ -385,7 +401,7 @@ export default function ChequeDetailModal({
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                       </EditableField>
-                      <EditableField label="Cheque Date">
+                      <EditableField label={`${docLabel} Date`}>
                         <input
                           type="date"
                           value={chequeDate}
@@ -400,11 +416,21 @@ export default function ChequeDetailModal({
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                       </EditableField>
+                      {isMemo && (
+                        <EditableField label="Memo Text">
+                          <textarea
+                            value={memoText}
+                            onChange={(e) => setMemoText(e.target.value)}
+                            rows={3}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
+                          />
+                        </EditableField>
+                      )}
                     </>
                   ) : (
                     <>
                       <Field
-                        label="Cheque Number"
+                        label={`${docLabel} Number`}
                         value={cheque.chequeNumber}
                       />
                       <Field
@@ -422,10 +448,13 @@ export default function ChequeDetailModal({
                         value={`$${cheque.amount.toFixed(2)}`}
                       />
                       <Field
-                        label="Cheque Date"
+                        label={`${docLabel} Date`}
                         value={formatDate(cheque.chequeDate)}
                       />
                       <Field label="Bank Name" value={cheque.bankName} />
+                      {isMemo && (
+                        <Field label="Memo Text" value={cheque.memoText} />
+                      )}
                     </>
                   )}
 

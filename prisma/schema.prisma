@@ -40,6 +40,11 @@ enum ChequeStatus {
   NEEDS_CORRECTION
 }
 
+enum ChequeVaultDocumentType {
+  CHEQUE
+  MEMO
+}
+
 enum RegularizationType {
   checkin
   checkout
@@ -694,17 +699,19 @@ model CustomerCreditTransaction {
 }
 
 model ChequeVault {
-  id              Int          @id @default(autoincrement())
+  id              Int                     @id @default(autoincrement())
+  documentType    ChequeVaultDocumentType @default(CHEQUE)
   chequeNumber    String
   payorName       String
   customerEmail   String?
-  amount          Decimal      @db.Decimal(10, 2)
+  amount          Decimal                 @db.Decimal(10, 2)
   chequeDate      DateTime
   bankName        String?
+  memoText        String?                 @db.Text
   imageUrl        String
   imageFileName   String
-  rawOcrText      String?      @db.Text
-  status          ChequeStatus @default(PENDING)
+  rawOcrText      String?                 @db.Text
+  status          ChequeStatus            @default(PENDING)
   uploadedById    Int
   approvedById            Int?
   approvedAt              DateTime?
@@ -729,6 +736,7 @@ model ChequeVault {
 
   @@index([chequeNumber])
   @@index([status])
+  @@index([documentType])
   @@index([uploadedById, status])
   @@map("cheque_vault")
 }
