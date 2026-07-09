@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import ConfirmModal from "../ConfirmModal";
 import SensitiveActionOtpModal from "../SensitiveActionOtpModal";
-import { Plus } from "lucide-react";
+import Pagination from "../Pagination";
+import { Plus, Search } from "lucide-react";
 import { formatUserDisplayName } from "../../lib/user-display";
 import { useAuth } from "../../lib/AuthContext";
 import { formatBusinessDate } from "../../lib/business-date";
@@ -36,7 +37,7 @@ export default function UserManagementTab({
   showSuccess,
   showError,
 }: UserManagementTabProps) {
-  const { isSuperAdmin, user: currentUser } = useAuth();
+  const { isSuperAdmin } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newUser, setNewUser] = useState({
@@ -61,6 +62,21 @@ export default function UserManagementTab({
     action: (otp: string) => Promise<void>;
   } | null>(null);
   const [otpLoading, setOtpLoading] = useState(false);
+  const [emailFilterInput, setEmailFilterInput] = useState("");
+  const [emailFilter, setEmailFilter] = useState("");
+  const [roleFilter, setRoleFilter] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [totalItems, setTotalItems] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setEmailFilter(emailFilterInput.trim().toLowerCase());
+      setCurrentPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [emailFilterInput]);
 
   const runSensitiveUserAction = (
     config: {
@@ -77,32 +93,37 @@ export default function UserManagementTab({
     setOtpModal({ ...config, action });
   };
 
-  useEffect(() => {
-    fetchUsers();
-  }, []);
-
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/users");
+      const params = new URLSearchParams({
+        page: String(currentPage),
+        limit: String(itemsPerPage),
+      });
+      if (emailFilter) params.set("email", emailFilter);
+      if (roleFilter) params.set("role", roleFilter);
+
+      const res = await fetch(`/api/users?${params}`);
       if (res.ok) {
         const data = await res.json();
-        setUsers(data);
+        setUsers(data.users ?? []);
+        setTotalItems(data.pagination?.total ?? 0);
+        setTotalPages(data.pagination?.totalPages ?? 1);
       }
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentPage, itemsPerPage, emailFilter, roleFilter]);
+
+  useEffect(() => {
+    fetchUsers();
+  }, [fetchUsers]);
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     const email = newUser.email.trim().toLowerCase();
     if (!email || !newUser.name.trim()) {
       showError("Email and name are required");
-      return;
-    }
-    if (users.some((u) => u.email.toLowerCase() === email)) {
-      showError("A user with this email already exists");
       return;
     }
 
@@ -284,8 +305,6 @@ export default function UserManagementTab({
   const countEnabledSettings = (privileges?: UserPrivileges) =>
     SETTINGS_PERMISSIONS.filter((key) => privileges?.settings?.[key]).length;
 
-  const visibleUsers = users.filter((user) => user.id !== currentUser?.id);
-
   const renderSettingsPermissions = (
     privileges: UserPrivileges,
     onChange: (next: UserPrivileges) => void,
@@ -392,6 +411,36 @@ export default function UserManagementTab({
         </button>
       </div>
 
+      {/* Filters */}
+      <div className="flex flex-col sm:flex-row gap-3 mb-4">
+        <div className="relative flex-1">
+          <Search
+            size={16}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+          />
+          <input
+            type="text"
+            value={emailFilterInput}
+            onChange={(e) => setEmailFilterInput(e.target.value)}
+            placeholder="Filter by email..."
+            className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          />
+        </div>
+        <select
+          value={roleFilter}
+          onChange={(e) => {
+            setRoleFilter(e.target.value);
+            setCurrentPage(1);
+          }}
+          className="px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 focus:ring-2 focus:ring-blue-500 min-w-[160px]"
+        >
+          <option value="">All roles</option>
+          <option value="accountant">Accountant</option>
+          <option value="staff">Staff</option>
+          {isSuperAdmin && <option value="admin">Admin</option>}
+        </select>
+      </div>
+
       {/* Users Table */}
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
         {loading ? (
@@ -422,17 +471,19 @@ export default function UserManagementTab({
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {visibleUsers.length === 0 ? (
+                {users.length === 0 ? (
                   <tr>
                     <td
                       colSpan={5}
                       className="px-4 py-8 text-center text-sm text-gray-500"
                     >
-                      No users to manage.
+                      {emailFilter || roleFilter
+                        ? "No users match your filters."
+                        : "No users to manage."}
                     </td>
                   </tr>
                 ) : (
-                  visibleUsers.map((user, index) => (
+                  users.map((user, index) => (
                     <tr
                       key={user.id}
                       className={`${index % 2 === 0 ? "bg-white" : "bg-gray-50"} hover:bg-blue-50 transition duration-150`}
@@ -552,6 +603,19 @@ export default function UserManagementTab({
                 )}
               </tbody>
             </table>
+            {!loading && (
+              <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                totalItems={totalItems}
+                itemsPerPage={itemsPerPage}
+                onPageChange={setCurrentPage}
+                onItemsPerPageChange={(items) => {
+                  setItemsPerPage(items);
+                  setCurrentPage(1);
+                }}
+              />
+            )}
           </div>
         )}
       </div>

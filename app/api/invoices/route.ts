@@ -265,7 +265,7 @@ export async function GET(request: NextRequest) {
       };
     }
 
-    // Date range filter
+    // Date range filter (by invoice date, not record creation time)
     if (startDate && endDate) {
       where.createdAt = {
         gte: startOfBusinessDay(startDate),

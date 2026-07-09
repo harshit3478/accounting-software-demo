@@ -76,40 +76,53 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const storedToken = localStorage.getItem("token");
     setToken(storedToken);
 
-    if (storedToken) {
-      syncAuthCookie(storedToken);
-    }
-
     if (isAuthPage(window.location.pathname)) {
       setSessionChecked(true);
       return;
     }
+
+    const applySessionResult = (
+      result: { ok: boolean; status: number; data: any },
+      allowLocalTokenRetry: boolean,
+    ): Promise<void> | void => {
+      if (result.ok && result.data?.authenticated && result.data.user) {
+        setUser(result.data.user);
+        return;
+      }
+
+      const localToken = localStorage.getItem("token");
+      if (
+        allowLocalTokenRetry &&
+        localToken &&
+        !result.data?.authenticated &&
+        result.status !== 401
+      ) {
+        syncAuthCookie(localToken);
+        return fetch("/api/auth-check")
+          .then(async (res) => {
+            const data = await res.json();
+            return { ok: res.ok, status: res.status, data };
+          })
+          .then((retryResult) => applySessionResult(retryResult, false));
+      }
+
+      if (result.status === 401) {
+        forceLogoutAndRedirect();
+        return;
+      }
+
+      clearClientAuthSession();
+      setToken(null);
+      setUser(null);
+      window.location.replace("/login");
+    };
 
     fetch("/api/auth-check")
       .then(async (res) => {
         const data = await res.json();
         return { ok: res.ok, status: res.status, data };
       })
-      .then((result) => {
-        if (result.ok && result.data?.authenticated && result.data.user) {
-          setUser(result.data.user);
-          const storedToken = localStorage.getItem("token");
-          if (storedToken) {
-            syncAuthCookie(storedToken);
-          }
-          return;
-        }
-
-        if (result.status === 401) {
-          forceLogoutAndRedirect();
-          return;
-        }
-
-        clearClientAuthSession();
-        setToken(null);
-        setUser(null);
-        window.location.replace("/login");
-      })
+      .then((result) => applySessionResult(result, true))
       .catch((err) => {
         console.error("Error fetching user:", err);
         forceLogoutAndRedirect();

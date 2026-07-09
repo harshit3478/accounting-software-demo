@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { FiCheck, FiEdit2 } from "react-icons/fi";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import {
   DEFAULT_LAYAWAY_FEE_CONFIGS,
   flattenLayawayFeeConfigs,
@@ -74,6 +75,9 @@ export default function LayawaySettingsTab({
   const [feeRatesLoading, setFeeRatesLoading] = useState(true);
   const [feeRatesSaving, setFeeRatesSaving] = useState(false);
   const [feeRatesChanged, setFeeRatesChanged] = useState(false);
+  const [expandedConfigs, setExpandedConfigs] = useState<Record<string, boolean>>(
+    {},
+  );
 
   useEffect(() => {
     try {
@@ -258,6 +262,28 @@ export default function LayawaySettingsTab({
 
   const normalizeName = (value: string) => value.trim().toLowerCase();
 
+  const isConfigExpanded = (unitName: string) =>
+    expandedConfigs[normalizeName(unitName)] ?? true;
+
+  const toggleConfigExpanded = (unitName: string) => {
+    const key = normalizeName(unitName);
+    setExpandedConfigs((prev) => ({
+      ...prev,
+      [key]: !(prev[key] ?? true),
+    }));
+  };
+
+  const renameExpandedConfig = (currentUnitName: string, nextUnitName: string) => {
+    const oldKey = normalizeName(currentUnitName);
+    const newKey = normalizeName(nextUnitName);
+    setExpandedConfigs((prev) => {
+      const next = { ...prev };
+      next[newKey] = prev[oldKey] ?? true;
+      delete next[oldKey];
+      return next;
+    });
+  };
+
   const isUnitInUse = (unitName: string, ignoreUnitName?: string) => {
     const normalizedUnitName = normalizeName(unitName);
     const normalizedIgnore = ignoreUnitName
@@ -293,6 +319,10 @@ export default function LayawaySettingsTab({
     }));
 
     setFeeRates((prev) => [...prev, ...rowsToAdd]);
+    setExpandedConfigs((prev) => ({
+      ...prev,
+      [normalizeName(nextUnit)]: true,
+    }));
     setFeeRatesChanged(true);
   };
 
@@ -313,6 +343,7 @@ export default function LayawaySettingsTab({
           : rate,
       ),
     );
+    renameExpandedConfig(currentUnitName, nextUnitName);
     setFeeRatesChanged(true);
   };
 
@@ -344,6 +375,11 @@ export default function LayawaySettingsTab({
           normalizeName(rate.unitName || "grams") !== normalizeName(unitName),
       ),
     );
+    setExpandedConfigs((prev) => {
+      const next = { ...prev };
+      delete next[normalizeName(unitName)];
+      return next;
+    });
     setFeeRatesChanged(true);
   };
 
@@ -533,27 +569,43 @@ export default function LayawaySettingsTab({
                   !isUnitInUse(unit.name, config.unitName) ||
                   normalizeName(unit.name) === normalizeName(config.unitName),
               );
+              const isExpanded = isConfigExpanded(config.unitName);
 
               return (
                 <div
                   key={config.unitName}
-                  className="rounded-lg border border-gray-200 bg-white p-4 space-y-4"
+                  className="rounded-lg border border-gray-200 bg-white overflow-hidden"
                 >
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <h4 className="text-sm font-semibold text-gray-900">
-                        {config.unitName}
-                      </h4>
-                      <p className="text-xs text-gray-500">
-                        Layaway rate schedule for this unit.
-                      </p>
-                    </div>
+                  <div className="flex flex-wrap items-center justify-between gap-3 p-4">
+                    <button
+                      type="button"
+                      onClick={() => toggleConfigExpanded(config.unitName)}
+                      className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                      aria-expanded={isExpanded}
+                    >
+                      {isExpanded ? (
+                        <ChevronUp className="h-4 w-4 shrink-0 text-gray-500" />
+                      ) : (
+                        <ChevronDown className="h-4 w-4 shrink-0 text-gray-500" />
+                      )}
+                      <div className="min-w-0">
+                        <h4 className="text-sm font-semibold text-gray-900">
+                          {config.unitName}
+                        </h4>
+                        <p className="text-xs text-gray-500">
+                          {isExpanded
+                            ? "Layaway rate schedule for this unit."
+                            : `${config.rates.length || defaultMonthRows.length} month rates · sample fee $${getSampleFee(config).toFixed(2)} on 1000 ${config.unitName}`}
+                        </p>
+                      </div>
+                    </button>
                     <div className="flex items-center gap-2">
                       <select
                         value={config.unitName}
                         onChange={(e) =>
                           updateConfigUnitName(config.unitName, e.target.value)
                         }
+                        onClick={(e) => e.stopPropagation()}
                         className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
                       >
                         {editableOptions.map((unit) => (
@@ -573,7 +625,9 @@ export default function LayawaySettingsTab({
                     </div>
                   </div>
 
-                  <div className="overflow-hidden rounded-lg border border-gray-200 bg-gray-50">
+                  {isExpanded && (
+                    <div className="border-t border-gray-200 px-4 pb-4">
+                      <div className="overflow-hidden rounded-lg border border-gray-200 bg-gray-50">
                     <table className="min-w-full divide-y divide-gray-200">
                       <thead className="bg-gray-100">
                         <tr>
@@ -638,7 +692,9 @@ export default function LayawaySettingsTab({
                         })}
                       </tbody>
                     </table>
-                  </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}

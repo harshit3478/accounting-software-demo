@@ -8,6 +8,7 @@ import {
   CHEQUE_VAULT_MAX_FILE_SIZE_BYTES,
   isAllowedChequeVaultMimeType,
   isChequeVaultPdfMimeType,
+  type ChequeVaultDocumentType,
 } from "@/lib/cheque-vault-upload";
 import ChequeDocumentPreview from "./ChequeDocumentPreview";
 import {
@@ -21,11 +22,13 @@ interface OcrResult {
   amount: number | null;
   chequeDate: string | null;
   bankName: string | null;
+  memoText?: string | null;
   confidence: "high" | "low";
 }
 
 interface UploadChequeModalProps {
   isOpen: boolean;
+  documentType?: ChequeVaultDocumentType;
   onClose: () => void;
   onSuccess: (cheque: ChequeVaultRecord) => void;
 }
@@ -34,9 +37,13 @@ const STEPS = ["Upload", "Analyzing", "Review & Submit"] as const;
 
 export default function UploadChequeModal({
   isOpen,
+  documentType = "CHEQUE",
   onClose,
   onSuccess,
 }: UploadChequeModalProps) {
+  const isMemo = documentType === "MEMO";
+  const docLabel = isMemo ? "Memo" : "Cheque";
+  const docLabelLower = isMemo ? "memo" : "cheque";
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
@@ -52,6 +59,7 @@ export default function UploadChequeModal({
   const [amount, setAmount] = useState("");
   const [chequeDate, setChequeDate] = useState("");
   const [bankName, setBankName] = useState("");
+  const [memoText, setMemoText] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
@@ -81,6 +89,7 @@ export default function UploadChequeModal({
     setAmount("");
     setChequeDate("");
     setBankName("");
+    setMemoText("");
     setCustomerEmail("");
     setFoundCustomer(null);
     setEmailLookupState("idle");
@@ -119,7 +128,7 @@ export default function UploadChequeModal({
     if (!isAllowedChequeVaultMimeType(pasted.type)) return null;
     if (pasted.name) return pasted;
     const ext = pasted.type.split("/")[1]?.replace("jpeg", "jpg") || "png";
-    return new File([pasted], `pasted-cheque.${ext}`, { type: pasted.type });
+    return new File([pasted], `pasted-${docLabelLower}.${ext}`, { type: pasted.type });
   };
 
   const handlePaste = useCallback(
@@ -138,7 +147,7 @@ export default function UploadChequeModal({
 
       e.preventDefault();
       if (pastedFiles.length > 1) {
-        setUploadError("Only one cheque file can be uploaded.");
+        setUploadError(`Only one ${docLabelLower} file can be uploaded.`);
         return;
       }
       handleFileSelect(pastedFiles[0]);
@@ -157,7 +166,7 @@ export default function UploadChequeModal({
       e.preventDefault();
       setIsDragging(false);
       if (e.dataTransfer.files.length > 1) {
-        setUploadError("Only one cheque file can be uploaded.");
+        setUploadError(`Only one ${docLabelLower} file can be uploaded.`);
         return;
       }
       const dropped = e.dataTransfer.files[0];
@@ -172,6 +181,7 @@ export default function UploadChequeModal({
     setStep(2);
     const formData = new FormData();
     formData.append("file", file);
+    formData.append("documentType", documentType);
     if (customerEmail.trim()) {
       formData.append("customerEmail", customerEmail.trim());
     }
@@ -180,7 +190,30 @@ export default function UploadChequeModal({
         method: "POST",
         body: formData,
       });
-      const data = await res.json();
+      const contentType = res.headers.get("content-type") ?? "";
+      let data: {
+        error?: string;
+        cheque?: ChequeVaultRecord;
+        ocrResult?: OcrResult;
+      };
+      if (contentType.includes("application/json")) {
+        data = await res.json();
+      } else {
+        if (res.status === 413) {
+          const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+          if (file.size <= CHEQUE_VAULT_MAX_FILE_SIZE_BYTES) {
+            throw new Error(
+              `Upload rejected by the server (HTTP 413). Your ${sizeMb}MB file is under the 10MB app limit, but the server proxy is still capped at 1MB. Ask an administrator to set client_max_body_size 10m in nginx and reload it, or compress the image below 1MB.`,
+            );
+          }
+          throw new Error("File is too large. Please use a file under 10MB.");
+        }
+        throw new Error(
+          res.status >= 500
+            ? "Server error during upload. Please try again or contact support."
+            : `Upload failed (HTTP ${res.status}). Please try again.`,
+        );
+      }
       if (!res.ok) throw new Error(data.error || "Upload failed");
       const cheque: ChequeVaultRecord = data.cheque;
       const ocr: OcrResult = data.ocrResult;
@@ -191,6 +224,7 @@ export default function UploadChequeModal({
       setAmount(ocr.amount != null ? String(ocr.amount) : "");
       setChequeDate(ocr.chequeDate || "");
       setBankName(ocr.bankName || "");
+      setMemoText(ocr.memoText || "");
       setStep(3);
     } catch (err: any) {
       setUploadError(err.message || "Upload failed");
@@ -232,14 +266,14 @@ export default function UploadChequeModal({
     setIsDuplicateChecking(true);
     try {
       const res = await fetch(
-        `/api/cheque-vault/check-duplicate?chequeNumber=${encodeURIComponent(num.trim())}`,
+        `/api/cheque-vault/check-duplicate?chequeNumber=${encodeURIComponent(num.trim())}&documentType=${documentType}`,
       );
       const data = await res.json();
       if (data.isDuplicate && data.existingCheques.length > 0) {
         const existing = data.existingCheques[0];
         const date = formatBusinessDate(existing.createdAt);
         setDuplicateWarning(
-          `A cheque with number "${num}" was already uploaded on ${date} by ${existing.uploadedBy?.name || "another user"} (status: ${existing.status}).`,
+          `A ${docLabelLower} with number "${num}" was already uploaded on ${date} by ${existing.uploadedBy?.name || "another user"} (status: ${existing.status}).`,
         );
       } else {
         setDuplicateWarning(null);
@@ -253,7 +287,7 @@ export default function UploadChequeModal({
 
   const handleSubmit = async () => {
     if (!uploadedCheque || !chequeNumber.trim()) {
-      setUploadError("Cheque number is required.");
+      setUploadError(`${docLabel} number is required.`);
       return;
     }
     setIsSaving(true);
@@ -269,6 +303,7 @@ export default function UploadChequeModal({
           chequeDate: chequeDate || getBusinessTodayString(),
           bankName: bankName.trim() || null,
           customerEmail: customerEmail.trim() || null,
+          memoText: isMemo ? memoText.trim() || null : undefined,
         }),
       });
       const data = await res.json();
@@ -294,7 +329,7 @@ export default function UploadChequeModal({
         <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
           <div>
             <h2 className="text-lg font-semibold text-gray-900">
-              Submit Cheque Request
+              Submit {docLabel} Request
             </h2>
             <p className="text-xs text-gray-500 mt-0.5">
               Step {step} of 3 — {STEPS[step - 1]}
@@ -358,13 +393,13 @@ export default function UploadChequeModal({
           {step === 1 && (
             <div>
               <p className="text-sm text-gray-600 mb-4">
-                Upload the cheque image and confirm the details. An approver
-                will link invoices before the payment is recorded.
+                Upload the {docLabelLower} image and confirm the details. An
+                approver will link invoices before the payment is recorded.
               </p>
               <div
                 tabIndex={0}
                 role="button"
-                aria-label="Upload cheque image by drag and drop, paste, or browse"
+                aria-label={`Upload ${docLabelLower} image by drag and drop, paste, or browse`}
                 className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
                   isDragging
                     ? "border-blue-500 bg-blue-50"
@@ -393,7 +428,7 @@ export default function UploadChequeModal({
                     const files = e.target.files;
                     if (!files?.length) return;
                     if (files.length > 1) {
-                      setUploadError("Only one cheque file can be uploaded.");
+                      setUploadError(`Only one ${docLabelLower} file can be uploaded.`);
                       return;
                     }
                     handleFileSelect(files[0]);
@@ -492,7 +527,7 @@ export default function UploadChequeModal({
               )}
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
               <p className="text-sm text-gray-600 font-medium">
-                Analyzing cheque with AI...
+                Analyzing {docLabelLower} with AI...
               </p>
             </div>
           )}
@@ -501,7 +536,7 @@ export default function UploadChequeModal({
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div>
                 <p className="text-sm font-medium text-gray-700 mb-2">
-                  Cheque Image
+                  {docLabel} Image
                 </p>
                 <ChequeDocumentPreview
                   imageUrl={uploadedCheque.imageUrl}
@@ -518,7 +553,7 @@ export default function UploadChequeModal({
               <div className="space-y-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">
-                    Cheque Number *
+                    {docLabel} Number *
                   </label>
                   <input
                     type="text"
@@ -579,9 +614,24 @@ export default function UploadChequeModal({
                   />
                 </div>
 
+                {isMemo && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Memo Text
+                    </label>
+                    <textarea
+                      value={memoText}
+                      onChange={(e) => setMemoText(e.target.value)}
+                      rows={3}
+                      placeholder="Payment description from memo line"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
+                    />
+                  </div>
+                )}
+
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">
-                    Cheque Date
+                    {docLabel} Date
                   </label>
                   <input
                     type="date"
@@ -620,7 +670,7 @@ export default function UploadChequeModal({
               disabled={isSaving || !chequeNumber.trim()}
               className="px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
             >
-              {isSaving ? "Submitting..." : "Submit Cheque Request"}
+              {isSaving ? "Submitting..." : `Submit ${docLabel} Request`}
             </button>
           </div>
         )}

@@ -24,6 +24,12 @@ const STATUS_OPTIONS = [
   { value: "NEEDS_CORRECTION", label: "Needs Correction" },
 ] as const;
 
+const DOCUMENT_TYPE_OPTIONS = [
+  { value: "all", label: "All Types" },
+  { value: "CHEQUE", label: "Cheques" },
+  { value: "MEMO", label: "Memos" },
+] as const;
+
 function ChequeVaultContent() {
   const { isSuperAdmin, canUploadCheques, canApproveCheques, user } = useAuth();
   const vault = useChequeVault();
@@ -52,32 +58,59 @@ function ChequeVaultContent() {
             <h1 className="text-2xl font-bold text-gray-900">Cheque Vault</h1>
             <p className="text-sm text-gray-500 mt-1">
               {canApproveCheques
-                ? "Review, approve, or reject cheque payment requests"
+                ? "Review, approve, or reject cheque and memo payment requests"
                 : canUploadCheque
-                  ? "Upload and manage cheque-based payments"
-                  : "View uploaded cheque payment requests"}
+                  ? "Upload and manage cheque and memo payments"
+                  : "View uploaded cheque and memo payment requests"}
             </p>
           </div>
           {canUploadCheque && (
-            <button
-              onClick={() => vault.setShowUploadModal(true)}
-              className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
-            >
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  vault.setUploadDocumentType("CHEQUE");
+                  vault.setShowUploadModal(true);
+                }}
+                className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-                />
-              </svg>
-              Upload Cheque
-            </button>
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                  />
+                </svg>
+                Upload Cheque
+              </button>
+              <button
+                onClick={() => {
+                  vault.setUploadDocumentType("MEMO");
+                  vault.setShowUploadModal(true);
+                }}
+                className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-2"
+              >
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                  />
+                </svg>
+                Upload Memo
+              </button>
+            </div>
           )}
         </div>
 
@@ -115,6 +148,20 @@ function ChequeVaultContent() {
               className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               {STATUS_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={vault.filterDocumentType}
+              onChange={(e) =>
+                vault.setFilterDocumentType(e.target.value as any)
+              }
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {DOCUMENT_TYPE_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>
                   {opt.label}
                 </option>
@@ -177,6 +224,7 @@ function ChequeVaultContent() {
       {/* Modals */}
       <UploadChequeModal
         isOpen={vault.showUploadModal}
+        documentType={vault.uploadDocumentType}
         onClose={() => vault.setShowUploadModal(false)}
         onSuccess={(_cheque) => {
           vault.setShowUploadModal(false);
@@ -204,7 +252,7 @@ function ChequeVaultContent() {
         title="Delete cheque request?"
         message={
           deleteTarget
-            ? `Delete pending request for cheque #${deleteTarget.chequeNumber || "—"}? This cannot be undone. Approved requests cannot be deleted.`
+            ? `Delete pending ${deleteTarget.documentType === "MEMO" ? "memo" : "cheque"} request for #${deleteTarget.chequeNumber || "—"}? This cannot be undone. Approved requests cannot be deleted.`
             : ""
         }
         confirmText="Delete"
