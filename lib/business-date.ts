@@ -159,6 +159,25 @@ export function daysBetweenBusiness(
   return Math.floor((endMs - startMs) / (1000 * 60 * 60 * 24));
 }
 
+function formatOptionsIncludeTime(
+  options: Intl.DateTimeFormatOptions,
+): boolean {
+  return (
+    options.hour != null ||
+    options.minute != null ||
+    options.second != null ||
+    options.timeStyle != null
+  );
+}
+
+/**
+ * Format a date for display.
+ * - Timestamps with time → viewer's local timezone (browser on client;
+ *   process TZ on server, set from BUSINESS_TIMEZONE in instrumentation).
+ * - Date-only values → business calendar day (BUSINESS_TIMEZONE) so due dates
+ *   and payment dates do not shift across timezones.
+ * Storage stays UTC; no DB changes.
+ */
 export function formatBusinessDate(
   input: string | Date,
   options: Intl.DateTimeFormatOptions = {
@@ -167,24 +186,31 @@ export function formatBusinessDate(
     year: "numeric",
   },
 ): string {
-  let date: Date;
-  if (typeof input === "string") {
-    if (!input.trim()) {
-      return "";
-    }
-    try {
-      date = parseBusinessDateInput(input);
-    } catch {
-      return "";
-    }
-  } else {
-    date = input;
+  if (typeof input === "string" && !input.trim()) {
+    return "";
   }
 
+  // YYYY-MM-DD: format the civil day as-is (no TZ day-shift).
+  if (typeof input === "string" && DATE_ONLY_REGEX.test(input.trim())) {
+    const [year, month, day] = input.trim().split("-").map(Number);
+    const date = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+    return new Intl.DateTimeFormat("en-US", {
+      ...options,
+      timeZone: "UTC",
+    }).format(date);
+  }
+
+  const date = typeof input === "string" ? new Date(input) : input;
   if (Number.isNaN(date.getTime())) {
     return "";
   }
 
+  // Timestamps with time: show in the viewer's local timezone.
+  if (formatOptionsIncludeTime(options)) {
+    return new Intl.DateTimeFormat("en-US", options).format(date);
+  }
+
+  // Date-only display of stored instants: keep the business calendar day.
   return new Intl.DateTimeFormat("en-US", {
     ...options,
     timeZone: BUSINESS_TIMEZONE,

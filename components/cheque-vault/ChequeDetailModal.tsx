@@ -60,7 +60,7 @@ function formatDate(dateStr: string | null) {
 
 function formatDateTime(dateStr: string | null) {
   if (!dateStr) return "—";
-  return new Date(dateStr).toLocaleString("en-US", {
+  return formatBusinessDate(dateStr, {
     year: "numeric",
     month: "short",
     day: "numeric",
