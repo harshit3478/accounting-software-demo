@@ -11,6 +11,7 @@ import {
   getRecalculationFeeDisplayEntries,
   getRemovedItemDepositFeeDisplayEntries,
   isAbandonedInvoice,
+  isAbandonedLayawayInvoice,
   resolveInvoiceDate,
   resolveLiveTypeLabel,
 } from "./invoice-display";
@@ -116,7 +117,7 @@ function getCurrentItemDepositFeeTotal(invoice: Invoice): number {
   );
 }
 
-function drawCancelledWatermark(doc: jsPDF) {
+function drawInvoiceStatusWatermark(doc: jsPDF, text: "CANCELLED" | "ABANDONED") {
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
 
@@ -127,11 +128,19 @@ function drawCancelledWatermark(doc: jsPDF) {
   doc.setLineWidth(2);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(54);
-  doc.text("CANCELLED", pageW / 2, pageH / 2, {
+  doc.text(text, pageW / 2, pageH / 2, {
     align: "center",
     angle: -28,
   });
   doc.restoreGraphicsState();
+}
+
+function getAbandonedInvoiceWatermarkText(invoice: {
+  status?: string;
+  isLayaway?: boolean;
+}): "CANCELLED" | "ABANDONED" | null {
+  if (!isAbandonedInvoice(invoice)) return null;
+  return isAbandonedLayawayInvoice(invoice) ? "ABANDONED" : "CANCELLED";
 }
 
 function drawBrandedHeader(doc: jsPDF) {
@@ -814,7 +823,10 @@ export async function generateSingleInvoicePDF(
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
     if (invoice.status === "abandoned") {
-      drawCancelledWatermark(doc);
+      const watermark = getAbandonedInvoiceWatermarkText(invoice);
+      if (watermark) {
+        drawInvoiceStatusWatermark(doc, watermark);
+      }
     }
     doc.setFontSize(8);
     doc.setFont("helvetica", "normal");
@@ -959,7 +971,7 @@ export function buildSingleInvoicePdfBuffer(
     year: "numeric",
   });
   const invoiceDate = formatBusinessDate(
-    invoice.invoiceDate || invoice.createdAt,
+    resolveInvoiceDate(invoice.invoiceDate, invoice.createdAt),
     {
       month: "long",
       day: "numeric",
@@ -1221,7 +1233,10 @@ export function buildSingleInvoicePdfBuffer(
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
     if (invoice.status === "abandoned") {
-      drawCancelledWatermark(doc);
+      const watermark = getAbandonedInvoiceWatermarkText(invoice);
+      if (watermark) {
+        drawInvoiceStatusWatermark(doc, watermark);
+      }
     }
     doc.setFontSize(8);
     doc.setFont("helvetica", "normal");

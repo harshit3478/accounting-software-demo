@@ -312,6 +312,8 @@ export async function sendInvoiceEmail(invoice: {
   clientName: string;
   amount: number;
   paidAmount: number;
+  invoiceDate?: string | Date | null;
+  createdAt?: string | Date | null;
   dueDate: string | Date;
   isLayaway: boolean;
   termsSnapshot?: string[] | null;

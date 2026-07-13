@@ -174,18 +174,26 @@ function formatOptionsIncludeTime(
  * Format a date for display.
  * - Timestamps with time → viewer's local timezone (browser on client;
  *   process TZ on server, set from BUSINESS_TIMEZONE in instrumentation).
- * - Date-only values → business calendar day (BUSINESS_TIMEZONE) so due dates
- *   and payment dates do not shift across timezones.
- * Storage stays UTC; no DB changes.
+ * - Date-only values (invoice / due / payment dates) → fixed civil calendar
+ *   day via UTC date parts so the same Invoice Date shows everywhere.
+ *   Legacy rows stored as UTC midnight (e.g. 2026-07-07T00:00:00.000Z) and
+ *   newer rows stored as US Central start-of-day both keep the intended day;
+ *   formatting those instants in America/Chicago incorrectly shifted legacy
+ *   dates back one day (PH saw Jul 7 → Jul 6).
+ * Storage stays UTC; no DB changes. Day boundaries still use BUSINESS_TIMEZONE.
  */
 export function formatBusinessDate(
-  input: string | Date,
+  input: string | Date | null | undefined,
   options: Intl.DateTimeFormatOptions = {
     month: "short",
     day: "numeric",
     year: "numeric",
   },
 ): string {
+  if (input == null) {
+    return "";
+  }
+
   if (typeof input === "string" && !input.trim()) {
     return "";
   }
@@ -210,9 +218,10 @@ export function formatBusinessDate(
     return new Intl.DateTimeFormat("en-US", options).format(date);
   }
 
-  // Date-only display of stored instants: keep the business calendar day.
+  // Date-only: fixed civil day (UTC date parts). Do not use BUSINESS_TIMEZONE
+  // here — that shifts legacy UTC-midnight invoice dates back one day.
   return new Intl.DateTimeFormat("en-US", {
     ...options,
-    timeZone: BUSINESS_TIMEZONE,
+    timeZone: "UTC",
   }).format(date);
 }

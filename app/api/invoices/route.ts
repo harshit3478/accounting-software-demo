@@ -167,7 +167,10 @@ export async function GET(request: NextRequest) {
       supportsAbandonedStatus = false;
     }
 
-    if (status === "abandoned" && !supportsAbandonedStatus) {
+    if (
+      (status === "abandoned" || status === "cancel") &&
+      !supportsAbandonedStatus
+    ) {
       return NextResponse.json({
         invoices: [],
         pagination: {
@@ -193,9 +196,18 @@ export async function GET(request: NextRequest) {
       where.status = { in: [...LINKABLE_INVOICE_STATUSES] };
     } else if (
       status === "inactive" ||
+      status === "cancel" ||
       (status === "abandoned" && supportsAbandonedStatus)
     ) {
-      where.status = status;
+      if (status === "cancel") {
+        where.status = "abandoned";
+        where.isLayaway = false;
+      } else if (status === "abandoned") {
+        where.status = "abandoned";
+        where.isLayaway = true;
+      } else {
+        where.status = status;
+      }
     } else if (status === "all" || showInactive) {
       // No status restriction — include pending, paid, abandoned, inactive, etc.
     } else if (
@@ -242,6 +254,7 @@ export async function GET(request: NextRequest) {
     // Abandoned invoice fee filter (retained deposit/restocking fee vs none)
     if (abandonFee === "with_fee" || abandonFee === "without_fee") {
       where.status = "abandoned";
+      where.isLayaway = true;
       where.paidAmount = abandonFee === "with_fee" ? { gt: 0 } : { lte: 0 };
     }
 

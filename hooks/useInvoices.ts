@@ -108,6 +108,7 @@ export type InvoiceStatusFilter =
   | "paid"
   | "overdue"
   | "partial"
+  | "cancel"
   | "abandoned"
   | "inactive"
   | "hold";
@@ -353,7 +354,7 @@ export function useInvoices(
     setStatusFilterState(status);
     setCurrentPage(1);
     const urlUpdates: Record<string, string | null> = { status, page: "1" };
-    if (status !== "abandoned" && abandonFeeFilter !== "all") {
+    if (status !== "abandoned" && status !== "cancel" && abandonFeeFilter !== "all") {
       setAbandonFeeFilterState("all");
       urlUpdates.abandonFee = null;
     }
@@ -405,6 +406,9 @@ export function useInvoices(
     } else if (val === "inactive") {
       setTypeFilter("all");
       setStatusFilter("inactive");
+    } else if (val === "cancel") {
+      setTypeFilter("all");
+      setStatusFilter("cancel");
     } else if (val === "abandoned") {
       setTypeFilter("all");
       setStatusFilter("abandoned");
@@ -640,7 +644,9 @@ export function useInvoices(
     const isReactivating = deletingInvoice.status === "inactive";
     const reasonPrompt = isReactivating
       ? "Please enter reason for reactivating this invoice:"
-      : "Please enter reason for marking this invoice as abandoned:";
+      : deletingInvoice.isLayaway
+        ? "Please enter reason for marking this invoice as abandoned:"
+        : "Please enter reason for canceling this invoice:";
     const editReason = options?.editReason ?? window.prompt(reasonPrompt, "");
     if (!editReason || !editReason.trim()) {
       showError("Reason is required");

@@ -140,8 +140,10 @@ export default function InvoiceToolbar({
                     <span className="text-blue-600">
                       {statusFilter === "hold"
                         ? "Hold"
-                        : statusFilter.charAt(0).toUpperCase() +
-                          statusFilter.slice(1)}
+                        : statusFilter === "cancel"
+                          ? "Canceled"
+                          : statusFilter.charAt(0).toUpperCase() +
+                            statusFilter.slice(1)}
                     </span>
                   </>
                 )}
@@ -156,6 +158,7 @@ export default function InvoiceToolbar({
                   { value: "overdue", label: "Overdue" },
                   { value: "partial", label: "Partial" },
                   { value: "hold", label: "Hold" },
+                  { value: "cancel", label: "Canceled" },
                   { value: "abandoned", label: "Abandoned" },
                   { value: "inactive", label: "Inactive" },
                 ].map(({ value, label }) => (

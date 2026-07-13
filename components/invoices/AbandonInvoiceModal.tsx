@@ -2,6 +2,16 @@
 
 import { useEffect, useState } from "react";
 import Modal from "./Modal";
+import {
+  getInvoiceAbandonBeforePhrase,
+  getInvoiceAbandonConfirmLabel,
+  getInvoiceAbandonInvoiceReference,
+  getInvoiceAbandonMarkedPhrase,
+  getInvoiceAbandonModalTitle,
+  getInvoiceAbandonReasonPlaceholder,
+  getInvoiceAbandonStatusNoun,
+  getInvoiceAbandonWithoutFeeLabel,
+} from "../../lib/invoice-display";
 
 interface InvoiceOption {
   id: number;
@@ -318,11 +328,16 @@ export default function AbandonInvoiceModal({
 
   if (!invoice) return null;
 
+  const statusNoun = getInvoiceAbandonStatusNoun(invoice.isLayaway);
+  const markedPhrase = getInvoiceAbandonMarkedPhrase(invoice.isLayaway);
+  const beforePhrase = getInvoiceAbandonBeforePhrase(invoice.isLayaway);
+  const invoiceReference = getInvoiceAbandonInvoiceReference(invoice.isLayaway);
+
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={`Mark Invoice ${invoice.invoiceNumber} as Abandoned`}
+      title={getInvoiceAbandonModalTitle(invoice.invoiceNumber, invoice.isLayaway)}
       maxWidth="lg"
       headerColor="red"
       footer={
@@ -339,14 +354,14 @@ export default function AbandonInvoiceModal({
             disabled={isSubmitting}
             className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
           >
-            {isSubmitting ? "Processing..." : "Mark Abandoned"}
+            {isSubmitting ? "Processing..." : getInvoiceAbandonConfirmLabel(invoice.isLayaway)}
           </button>
         </div>
       }
     >
       <div className="space-y-4">
         <p className="text-sm text-gray-700">
-          This action will set the invoice status to <strong>Abandoned</strong>{" "}
+          This action will set the invoice status to <strong>{statusNoun}</strong>{" "}
           and set the invoice total to <strong>$0.00</strong>.
         </p>
 
@@ -360,14 +375,14 @@ export default function AbandonInvoiceModal({
         {!hasPayments && !showFeeHandling && (
           <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
             This invoice has no linked payments and no applicable fees. It will
-            be marked abandoned with a $0 total.
+            be {markedPhrase} with a $0 total.
           </div>
         )}
 
         {!hasPayments && showFeeHandling && (
           <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
             This invoice has no linked payments. Choose whether to create and
-            retain a fee payment before marking it abandoned.
+            retain a fee payment before {beforePhrase}.
           </div>
         )}
 
@@ -442,7 +457,7 @@ export default function AbandonInvoiceModal({
                 onChange={() => setFeeAction("none")}
                 className="mt-0.5"
               />
-              Abandon without fee
+              {getInvoiceAbandonWithoutFeeLabel(invoice.isLayaway)}
             </label>
 
             {feeAction !== "none" && selectedFeeAmount > 0 && (
@@ -473,13 +488,13 @@ export default function AbandonInvoiceModal({
                       Restocking fee (${bothFeeAmounts.restocking.toFixed(2)})
                       and deposit fee (${bothFeeAmounts.deposit.toFixed(2)})
                       payments totaling ${selectedFeeAmount.toFixed(2)} will be
-                      linked to this abandoned invoice.
+                      linked to this {invoiceReference}.
                     </>
                   ) : (
                     <>
                       A {feeAction === "restocking" ? "restocking" : "deposit"}{" "}
                       fee payment of ${selectedFeeAmount.toFixed(2)} will be
-                      linked to this abandoned invoice.
+                      linked to this {invoiceReference}.
                     </>
                   )}
                 </p>
@@ -589,7 +604,7 @@ export default function AbandonInvoiceModal({
             onChange={(e) => setReason(e.target.value)}
             rows={3}
             className="w-full px-3 py-2 border border-gray-300 text-gray-900 rounded-lg"
-            placeholder="Why are you abandoning this invoice?"
+            placeholder={getInvoiceAbandonReasonPlaceholder(invoice.isLayaway)}
           />
         </div>
 

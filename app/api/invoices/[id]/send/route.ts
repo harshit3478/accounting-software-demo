@@ -53,6 +53,8 @@ export async function POST(
       clientName: invoice.clientName,
       amount: Number(invoice.amount),
       paidAmount: Number(invoice.paidAmount),
+      invoiceDate: invoice.invoiceDate,
+      createdAt: invoice.createdAt,
       dueDate: invoice.dueDate,
       isLayaway: invoice.isLayaway,
       termsSnapshot: (invoice as any).termsSnapshot || null,

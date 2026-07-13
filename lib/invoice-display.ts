@@ -162,6 +162,76 @@ export function isAbandonedInvoice(invoice: { status?: string }): boolean {
   return invoice.status === "abandoned";
 }
 
+export function isCancelledCashInvoice(invoice: {
+  status?: string;
+  isLayaway?: boolean;
+}): boolean {
+  return invoice.status === "abandoned" && !invoice.isLayaway;
+}
+
+export function isAbandonedLayawayInvoice(invoice: {
+  status?: string;
+  isLayaway?: boolean;
+}): boolean {
+  return invoice.status === "abandoned" && !!invoice.isLayaway;
+}
+
+export function getInvoiceStatusLabel(invoice: {
+  status?: string;
+  isLayaway?: boolean;
+}): string {
+  const status = invoice.status || "";
+  if (isCancelledCashInvoice(invoice)) return "Canceled";
+  if (status === "abandoned") return "Abandoned";
+  if (!status) return "";
+  return status.charAt(0).toUpperCase() + status.slice(1);
+}
+
+export function getInvoiceAbandonActionLabel(invoice: {
+  isLayaway?: boolean;
+}): string {
+  return invoice.isLayaway ? "Mark Abandoned" : "Cancel Invoice";
+}
+
+export function getInvoiceAbandonModalTitle(
+  invoiceNumber: string,
+  isLayaway?: boolean,
+): string {
+  return isLayaway
+    ? `Mark Invoice ${invoiceNumber} as Abandoned`
+    : `Cancel Invoice ${invoiceNumber}`;
+}
+
+export function getInvoiceAbandonConfirmLabel(isLayaway?: boolean): string {
+  return isLayaway ? "Mark Abandoned" : "Cancel Invoice";
+}
+
+export function getInvoiceAbandonStatusNoun(isLayaway?: boolean): string {
+  return isLayaway ? "Abandoned" : "Canceled";
+}
+
+export function getInvoiceAbandonWithoutFeeLabel(isLayaway?: boolean): string {
+  return isLayaway ? "Abandon without fee" : "Cancel without fee";
+}
+
+export function getInvoiceAbandonMarkedPhrase(isLayaway?: boolean): string {
+  return isLayaway ? "marked abandoned" : "marked canceled";
+}
+
+export function getInvoiceAbandonBeforePhrase(isLayaway?: boolean): string {
+  return isLayaway ? "marking it abandoned" : "canceling it";
+}
+
+export function getInvoiceAbandonInvoiceReference(isLayaway?: boolean): string {
+  return isLayaway ? "abandoned invoice" : "canceled invoice";
+}
+
+export function getInvoiceAbandonReasonPlaceholder(isLayaway?: boolean): string {
+  return isLayaway
+    ? "Why are you abandoning this invoice?"
+    : "Why are you canceling this invoice?";
+}
+
 export function getInvoiceAmountDue(invoice: {
   status?: string;
   amount?: number | null;

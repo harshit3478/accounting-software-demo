@@ -13,6 +13,7 @@ import {
   getRemovedItemDepositFeeDisplayEntries,
   isAbandonedInvoice,
   resolveLiveTypeLabel,
+  isAbandonedLayawayInvoice,
   resolveInvoiceDate,
 } from "../../lib/invoice-display";
 import type { InvoiceItem } from "./types";
@@ -189,7 +190,7 @@ export default function InvoiceImageTemplate({
             whiteSpace: "nowrap",
           }}
         >
-          Cancelled
+          {isAbandonedLayawayInvoice(invoice) ? "Abandoned" : "Cancelled"}
         </div>
       )}
       {/* ── HEADER: Logo (left) + INVOICE + Biz info (right) ── */}

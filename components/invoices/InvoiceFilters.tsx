@@ -58,6 +58,11 @@ export default function InvoiceFilters({
       color: "bg-blue-100 text-blue-800 hover:bg-blue-200",
     },
     {
+      value: "cancel",
+      label: "Canceled",
+      color: "bg-orange-100 text-orange-800 hover:bg-orange-200",
+    },
+    {
       value: "abandoned",
       label: "Abandoned",
       color: "bg-orange-100 text-orange-800 hover:bg-orange-200",

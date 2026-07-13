@@ -17,7 +17,11 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Button } from "../ui/button";
 import type { Invoice } from "../../hooks/useInvoices";
-import { formatBusinessDate } from "../../lib/business-date";
+import {
+  getInvoiceAbandonActionLabel,
+  getInvoiceStatusLabel,
+} from "../../lib/invoice-display";
+import { formatBusinessDate } from "@/lib/business-date";
 
 interface InvoiceTableRowProps {
   invoice: Invoice;
@@ -190,7 +194,7 @@ export default function InvoiceTableRow({
       </td>
       <td className="px-4 py-3 whitespace-nowrap">
         <span className={getStatusBadge(invoice.status)}>
-          {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}
+          {getInvoiceStatusLabel(invoice)}
         </span>
       </td>
       <td className="px-4 py-3 whitespace-nowrap">
@@ -327,7 +331,7 @@ export default function InvoiceTableRow({
                     className="flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-md text-left"
                   >
                     <XCircle className="h-4 w-4" />
-                    Mark Abandoned
+                    {getInvoiceAbandonActionLabel(invoice)}
                   </button>
                 )}
               {invoice.status === "inactive" && (

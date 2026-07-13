@@ -11,6 +11,7 @@ import {
   getAppliedRemovedItemDepositFeeTotal,
   getCurrentItemDepositFeeTotal,
   getInvoicePaymentsForPdf,
+  getInvoiceStatusLabel,
   getRecalculationFeeDisplayEntries,
   getRemovedItemDepositFeeDisplayEntries,
   getVisibleLayawayFee,
@@ -1429,7 +1430,10 @@ export default function ViewInvoiceModal({
                 <span
                   className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${getStatusBadgeClass(localStatus)}`}
                 >
-                  {localStatus.charAt(0).toUpperCase() + localStatus.slice(1)}
+                  {getInvoiceStatusLabel({
+                    status: localStatus,
+                    isLayaway: invoice.isLayaway,
+                  })}
                 </span>
                 {invoice.isLayaway && (
                   <span className="ml-2 inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-purple-100 text-purple-800">
@@ -1890,8 +1894,9 @@ export default function ViewInvoiceModal({
               )}
               {invoice.status === "abandoned" ? (
                 <p className="text-sm text-purple-800 bg-purple-100/60 rounded-lg px-3 py-2">
-                  Layaway installments are closed for abandoned invoices. See
-                  payment history below for refund or fee payments.
+                  {invoice.isLayaway
+                    ? "Layaway installments are closed for abandoned invoices. See payment history below for refund or fee payments."
+                    : "This canceled invoice is closed. See payment history below for refund or fee payments."}
                 </p>
               ) : (
                 invoice.layawayPlan.installments.length > 0 && (
@@ -2157,12 +2162,16 @@ export default function ViewInvoiceModal({
                 </svg>
                 <p className="text-gray-600 font-medium">
                   {invoice.status === "abandoned"
-                    ? "No abandonment payments recorded"
+                    ? invoice.isLayaway
+                      ? "No abandonment payments recorded"
+                      : "No cancellation payments recorded"
                     : "No payments recorded yet"}
                 </p>
                 <p className="text-sm text-gray-500 mt-1">
                   {invoice.status === "abandoned"
-                    ? "Refund or fee payment numbers will appear here after abandoning"
+                    ? invoice.isLayaway
+                      ? "Refund or fee payment numbers will appear here after abandoning"
+                      : "Refund or fee payment numbers will appear here after canceling"
                     : "Payments will appear here once recorded"}
                 </p>
               </div>
