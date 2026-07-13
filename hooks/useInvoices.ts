@@ -2,10 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import {
-  getBusinessTodayString,
-  toBusinessDateString,
-} from "../lib/business-date";
+import { getBusinessTodayString } from "../lib/business-date";
 
 export interface InvoiceItem {
   name: string;
@@ -581,16 +578,7 @@ export function useInvoices(
       const res = await fetch(`/api/invoices?${params.toString()}`);
       if (res.ok) {
         const data = await res.json();
-        setInvoices(
-          data.invoices.map((inv: any) => ({
-            ...inv,
-            invoiceDate: toBusinessDateString(
-              new Date(inv.invoiceDate || inv.createdAt),
-            ),
-            dueDate: toBusinessDateString(new Date(inv.dueDate)),
-            createdAt: toBusinessDateString(new Date(inv.createdAt)),
-          })),
-        );
+        setInvoices(data.invoices);
         setTotalItems(data.pagination.total);
       } else {
         showError("Failed to fetch invoices");

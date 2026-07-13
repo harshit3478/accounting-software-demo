@@ -170,6 +170,54 @@ function formatOptionsIncludeTime(
   );
 }
 
+function isUtcMidnight(date: Date): boolean {
+  return (
+    date.getUTCHours() === 0 &&
+    date.getUTCMinutes() === 0 &&
+    date.getUTCSeconds() === 0 &&
+    date.getUTCMilliseconds() === 0
+  );
+}
+
+/**
+ * Resolve the fixed calendar day for invoice / due / payment dates.
+ * Legacy rows stored at UTC midnight keep that civil day; newer rows use the
+ * US Central business calendar day from startOfBusinessDay.
+ */
+export function resolveCalendarDateString(input: string | Date): string {
+  if (typeof input === "string" && DATE_ONLY_REGEX.test(input.trim())) {
+    return input.trim();
+  }
+
+  const date = input instanceof Date ? input : new Date(input);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  if (isUtcMidnight(date)) {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: "UTC",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(date);
+  }
+
+  return toBusinessDateString(date);
+}
+
+function formatCalendarDateString(
+  dateStr: string,
+  options: Intl.DateTimeFormatOptions,
+): string {
+  const [year, month, day] = dateStr.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+  return new Intl.DateTimeFormat("en-US", {
+    ...options,
+    timeZone: "UTC",
+  }).format(date);
+}
+
 /**
  * Format a date for display.
  * - Timestamps with time → viewer's local timezone (browser on client;
@@ -200,12 +248,7 @@ export function formatBusinessDate(
 
   // YYYY-MM-DD: format the civil day as-is (no TZ day-shift).
   if (typeof input === "string" && DATE_ONLY_REGEX.test(input.trim())) {
-    const [year, month, day] = input.trim().split("-").map(Number);
-    const date = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
-    return new Intl.DateTimeFormat("en-US", {
-      ...options,
-      timeZone: "UTC",
-    }).format(date);
+    return formatCalendarDateString(input.trim(), options);
   }
 
   const date = typeof input === "string" ? new Date(input) : input;
@@ -218,10 +261,6 @@ export function formatBusinessDate(
     return new Intl.DateTimeFormat("en-US", options).format(date);
   }
 
-  // Date-only: fixed civil day (UTC date parts). Do not use BUSINESS_TIMEZONE
-  // here — that shifts legacy UTC-midnight invoice dates back one day.
-  return new Intl.DateTimeFormat("en-US", {
-    ...options,
-    timeZone: "UTC",
-  }).format(date);
+  // Date-only: fixed civil calendar day (legacy UTC midnight + Central business).
+  return formatCalendarDateString(resolveCalendarDateString(date), options);
 }

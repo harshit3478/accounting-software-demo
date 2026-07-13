@@ -335,7 +335,7 @@ export default function EditInvoiceModal({
       setInvoiceDate(
         (invoice.invoiceDate || invoice.createdAt || "").split("T")[0] || "",
       );
-      setDueDate(invoice.dueDate);
+      setDueDate((invoice.dueDate || "").split("T")[0] || "");
       setDueDateReason(invoice.dueDateReason || "");
       setItems(
         (
