@@ -946,8 +946,10 @@ export async function DELETE(
       | "restocking"
       | "deposit"
       | "both"
+      | "other"
       | "none"
       | undefined;
+    const customFeeAmount = Number(body?.customFeeAmount ?? 0);
     const refundProofDataUrl =
       typeof body?.refundProofDataUrl === "string"
         ? body.refundProofDataUrl
@@ -1014,7 +1016,7 @@ export async function DELETE(
     let resolvedTargetInvoiceId: number | null = null;
     let normalizedPaymentAction: "credit" | "transfer" | "refund" | "none" =
       paymentAction ?? "none";
-    let normalizedFeeAction: "restocking" | "deposit" | "both" | "none" =
+    let normalizedFeeAction: "restocking" | "deposit" | "both" | "other" | "none" =
       feeAction ?? "none";
     let feePaymentId: number | null = null;
     let restockingFeePaymentId: number | null = null;
@@ -1036,6 +1038,12 @@ export async function DELETE(
           ) {
             throw new Error(
               "Restocking fee can only be applied to layaway invoices.",
+            );
+          }
+
+          if (normalizedFeeAction === "other" && existingInvoice.isLayaway) {
+            throw new Error(
+              "Custom non-refundable amounts can only be applied to cash invoices.",
             );
           }
 
@@ -1137,6 +1145,16 @@ export async function DELETE(
               paymentTotal > 0
                 ? Math.min(roundedCalculatedFee, paymentTotal)
                 : roundedCalculatedFee;
+          } else if (normalizedFeeAction === "other") {
+            const roundedCustomFee =
+              Math.round(Math.max(customFeeAmount, 0) * 100) / 100;
+            if (roundedCustomFee <= 0) {
+              throw new Error("Non-refundable amount must be greater than zero.");
+            }
+            feeAmount =
+              paymentTotal > 0
+                ? Math.min(roundedCustomFee, paymentTotal)
+                : roundedCustomFee;
           } else {
             feeAmount = 0;
           }
@@ -1520,7 +1538,7 @@ export async function DELETE(
 
           const createRetainedFeePayment = async (
             amount: number,
-            source: "restocking_fee" | "deposit_fee",
+            source: "restocking_fee" | "deposit_fee" | "retained_fee",
             label: string,
           ) => {
             const feePayment = await tx.payment.create({
@@ -1578,12 +1596,18 @@ export async function DELETE(
               const feeLabel =
                 normalizedFeeAction === "restocking"
                   ? "Restocking fee"
-                  : "Deposit fee";
-              feePaymentId = await createRetainedFeePayment(
-                feeAmount,
+                  : normalizedFeeAction === "other"
+                    ? "Non-refundable amount"
+                    : "Deposit fee";
+              const feeSource =
                 normalizedFeeAction === "restocking"
                   ? "restocking_fee"
-                  : "deposit_fee",
+                  : normalizedFeeAction === "other"
+                    ? "retained_fee"
+                    : "deposit_fee";
+              feePaymentId = await createRetainedFeePayment(
+                feeAmount,
+                feeSource,
                 feeLabel,
               );
             }

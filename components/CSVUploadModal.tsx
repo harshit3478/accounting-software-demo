@@ -39,19 +39,20 @@ interface CSVUploadModalProps {
   uploadUrl: string;
 }
 
-const INVOICE_ACCEPTED_EXTENSIONS = [".xlsx", ".xls", ".csv"];
+const ACCEPTED_EXTENSIONS = [".xlsx", ".xls", ".csv"];
+const ACCEPTED_MIME_TYPES =
+  ".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv";
 
-function isSupportedFile(
-  type: "invoices" | "payments",
-  selectedFile: File,
-): boolean {
+function isSupportedFile(selectedFile: File): boolean {
   const fileName = selectedFile.name.toLowerCase();
 
-  if (type === "payments") {
-    return fileName.endsWith(".csv") || selectedFile.type === "text/csv";
-  }
-
-  return INVOICE_ACCEPTED_EXTENSIONS.some((ext) => fileName.endsWith(ext));
+  return (
+    ACCEPTED_EXTENSIONS.some((ext) => fileName.endsWith(ext)) ||
+    selectedFile.type === "text/csv" ||
+    selectedFile.type ===
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+    selectedFile.type === "application/vnd.ms-excel"
+  );
 }
 
 function getTemplateFileName(
@@ -67,7 +68,7 @@ function getTemplateFileName(
 
   return type === "invoices"
     ? "invoices-template.xlsx"
-    : "payments-template.csv";
+    : "payments-template.xlsx";
 }
 
 export default function CSVUploadModal({
@@ -121,26 +122,18 @@ export default function CSVUploadModal({
     setIsDragging(false);
 
     const droppedFile = e.dataTransfer.files[0];
-    if (droppedFile && isSupportedFile(type, droppedFile)) {
+    if (droppedFile && isSupportedFile(droppedFile)) {
       handleFileSelect(droppedFile);
     } else {
-      setError(
-        type === "invoices"
-          ? "Please upload a valid XLSX/XLS/CSV file"
-          : "Please upload a valid CSV file",
-      );
+      setError("Please upload a valid XLSX/XLS/CSV file");
     }
   };
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (selectedFile) {
-      if (!isSupportedFile(type, selectedFile)) {
-        setError(
-          type === "invoices"
-            ? "Please upload a valid XLSX/XLS/CSV file"
-            : "Please upload a valid CSV file",
-        );
+      if (!isSupportedFile(selectedFile)) {
+        setError("Please upload a valid XLSX/XLS/CSV file");
         return;
       }
 
@@ -251,21 +244,28 @@ export default function CSVUploadModal({
     void performUpload(false, customerEmailOverrides);
   };
 
-  const downloadTemplate = async () => {
+  const downloadTemplate = async (format?: "csv" | "xlsx") => {
     try {
-      const res = await fetch(templateUrl);
+      const url =
+        type === "payments" && format === "csv"
+          ? `${templateUrl}?format=csv`
+          : templateUrl;
+      const res = await fetch(url);
       const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
+      const objectUrl = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = url;
-      a.download = getTemplateFileName(
-        res.headers.get("content-disposition"),
-        type,
-      );
+      a.href = objectUrl;
+      a.download =
+        type === "payments" && format === "csv"
+          ? "payments-template.csv"
+          : getTemplateFileName(
+              res.headers.get("content-disposition"),
+              type,
+            );
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
+      window.URL.revokeObjectURL(objectUrl);
     } catch (err) {
       console.error("Failed to download template:", err);
       setError("Failed to download template");
@@ -305,35 +305,54 @@ export default function CSVUploadModal({
             <h3 className="text-sm font-semibold text-gray-700 mb-2">
               Step 1: Download Template
             </h3>
-            <button
-              onClick={downloadTemplate}
-              className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
-            >
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => downloadTemplate("xlsx")}
+                className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                ></path>
-              </svg>
-              {type === "invoices"
-                ? "Download XLSX Template"
-                : "Download CSV Template"}
-            </button>
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                  ></path>
+                </svg>
+                Download XLSX Template
+              </button>
+              {type === "payments" && (
+                <button
+                  onClick={() => downloadTemplate("csv")}
+                  className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+                >
+                  <svg
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                    ></path>
+                  </svg>
+                  Download CSV Template
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Step 2: Upload File */}
           <div>
             <h3 className="text-sm font-semibold text-gray-700 mb-2">
-              {type === "invoices"
-                ? "Step 2: Upload Filled Sheet"
-                : "Step 2: Upload Filled CSV"}
+              Step 2: Upload Filled Sheet
             </h3>
 
             {!file ? (
@@ -362,19 +381,13 @@ export default function CSVUploadModal({
                   ></path>
                 </svg>
                 <p className="text-gray-600 font-medium mb-1">
-                  {type === "invoices"
-                    ? "Drag & drop XLSX/XLS/CSV file here"
-                    : "Drag & drop CSV file here"}
+                  Drag & drop XLSX/XLS/CSV file here
                 </p>
                 <p className="text-sm text-gray-500">or click to browse</p>
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept={
-                    type === "invoices"
-                      ? ".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
-                      : ".csv,text/csv"
-                  }
+                  accept={ACCEPTED_MIME_TYPES}
                   onChange={handleFileInputChange}
                   className="hidden"
                 />

@@ -343,6 +343,7 @@ function InvoicesPageContent() {
               editReason: payload.editReason,
               paymentAction: payload.paymentAction,
               feeAction: payload.feeAction,
+              customFeeAmount: payload.customFeeAmount,
               feeMethodId: payload.feeMethodId,
               targetInvoiceId: payload.targetInvoiceId || null,
               refundProofDataUrl: payload.refundProof?.dataUrl,

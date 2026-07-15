@@ -203,6 +203,7 @@ export function validateInvoiceRow(
 export function validatePaymentRow(
   row: PaymentRow,
   rowIndex: number,
+  validMethods?: string[],
 ): ValidationError[] {
   const errors: ValidationError[] = [];
 
@@ -226,11 +227,22 @@ export function validatePaymentRow(
   }
 
   // Payment Method validation
-  if (!isValidPaymentMethod(row.method)) {
+  const method = row.method?.trim() ?? "";
+  if (!method) {
     errors.push({
       row: rowIndex,
       field: "method",
       error: "Payment method is required",
+    });
+  } else if (
+    validMethods &&
+    validMethods.length > 0 &&
+    !isValidPaymentMethod(method, validMethods)
+  ) {
+    errors.push({
+      row: rowIndex,
+      field: "method",
+      error: `Unknown payment method: "${method}". Valid methods: ${validMethods.join(", ")}`,
     });
   }
 

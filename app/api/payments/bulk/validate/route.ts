@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "../../../../../lib/auth";
-import Papa from "papaparse";
+import prisma from "../../../../../lib/prisma";
 import {
   validatePaymentRow,
   detectPaymentDuplicates,
   ValidationError,
-  PaymentRow,
 } from "../../../../../lib/csv-validation";
+import { parsePaymentSpreadsheet } from "../../../../../lib/payment-bulk-sheet";
 
 export async function POST(request: NextRequest) {
   try {
@@ -19,51 +19,33 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
-    // Read file content
-    const text = await file.text();
-
-    // Parse CSV
-    const parseResult = Papa.parse<PaymentRow>(text, {
-      header: true,
-      skipEmptyLines: true,
-      transformHeader: (header: string) => header.trim(),
-      transform: (value: string) => value.trim(),
-    });
-
-    if (parseResult.errors.length > 0) {
-      return NextResponse.json(
-        {
-          error: "CSV parsing error",
-          details: parseResult.errors,
-        },
-        { status: 400 },
-      );
-    }
-
-    const rows = parseResult.data;
+    const rows = await parsePaymentSpreadsheet(file);
 
     if (rows.length === 0) {
       return NextResponse.json(
         {
-          error: "CSV file is empty",
+          error: "File is empty",
         },
         { status: 400 },
       );
     }
 
-    // Validate each row
+    const activeMethods = await prisma.paymentMethodEntry.findMany({
+      where: { isActive: true },
+      orderBy: { sortOrder: "asc" },
+    });
+    const validMethodNames = activeMethods.map((method) => method.name);
+
     const validationErrors: ValidationError[] = [];
     rows.forEach((row, index) => {
-      const rowErrors = validatePaymentRow(row, index + 2); // +2 because row 1 is header
+      const rowErrors = validatePaymentRow(row, index + 2, validMethodNames);
       validationErrors.push(...rowErrors);
     });
 
-    // Check for duplicates
     const duplicates = detectPaymentDuplicates(rows);
 
     const isValid = validationErrors.length === 0 && duplicates.length === 0;
 
-    // Group errors by row
     const errorsByRow: { [row: number]: string[] } = {};
     validationErrors.forEach((error) => {
       if (!errorsByRow[error.row]) {
@@ -90,7 +72,7 @@ export async function POST(request: NextRequest) {
       })),
     });
   } catch (error: any) {
-    console.error("Validate CSV error:", error);
+    console.error("Validate payment spreadsheet error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

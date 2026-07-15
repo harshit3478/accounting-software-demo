@@ -18,7 +18,9 @@ export function roundMoney(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
-export { daysBetweenBusiness as daysBetween } from "./business-date";
+import { daysBetweenBusiness as daysBetween } from "./business-date";
+
+export { daysBetween };
 
 export function calculateEarlyPaymentDiscountAmount(
   invoiceAmount: number,

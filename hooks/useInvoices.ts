@@ -211,7 +211,8 @@ interface UseInvoicesReturn {
     editReason?: string;
     targetStatus?: "abandoned" | "inactive" | "reactivate";
     paymentAction?: "credit" | "transfer" | "refund" | "none";
-    feeAction?: "restocking" | "deposit" | "both" | "none";
+    feeAction?: "restocking" | "deposit" | "both" | "other" | "none";
+    customFeeAmount?: number;
     feeMethodId?: number;
     targetInvoiceId?: number | null;
     refundProofDataUrl?: string;
@@ -620,7 +621,8 @@ export function useInvoices(
     editReason?: string;
     targetStatus?: "abandoned" | "inactive" | "reactivate";
     paymentAction?: "credit" | "transfer" | "refund" | "none";
-    feeAction?: "restocking" | "deposit" | "both" | "none";
+    feeAction?: "restocking" | "deposit" | "both" | "other" | "none";
+    customFeeAmount?: number;
     feeMethodId?: number;
     targetInvoiceId?: number | null;
     refundProofDataUrl?: string;
@@ -653,6 +655,7 @@ export function useInvoices(
           editReason: editReason.trim(),
           paymentAction: options?.paymentAction,
           feeAction: options?.feeAction,
+          customFeeAmount: options?.customFeeAmount,
           feeMethodId: options?.feeMethodId,
           targetInvoiceId: options?.targetInvoiceId ?? null,
           refundProofDataUrl: options?.refundProofDataUrl,

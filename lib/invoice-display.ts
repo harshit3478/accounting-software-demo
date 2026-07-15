@@ -285,6 +285,10 @@ export function getAbandonedRetainedFeeDisplay(invoice: {
     invoice.payments,
     "deposit_fee",
   );
+  const retainedFromPayments = getPaymentSourceTotal(
+    invoice.payments,
+    "retained_fee",
+  );
 
   const abandonEntry = (invoice.editHistory || []).find(
     (entry) =>
@@ -343,14 +347,24 @@ export function getAbandonedRetainedFeeDisplay(invoice: {
   }
 
   const amount =
-    depositFromPayments > 0
-      ? depositFromPayments
-      : feeType === "deposit"
-        ? feeAmountFromHistory
-        : 0;
-  return amount > 0
-    ? { label: "Deposit Fee:", amount: Number(amount.toFixed(2)) }
-    : null;
+    retainedFromPayments > 0
+      ? retainedFromPayments
+      : depositFromPayments > 0
+        ? depositFromPayments
+        : feeType === "other"
+          ? feeAmountFromHistory
+          : feeType === "deposit"
+            ? feeAmountFromHistory
+            : 0;
+  if (amount <= 0) return null;
+
+  return {
+    label:
+      retainedFromPayments > 0 || feeType === "other"
+        ? "Non-Refundable Amount:"
+        : "Deposit Fee:",
+    amount: Number(amount.toFixed(2)),
+  };
 }
 
 export function formatInvoiceSummaryRowValue(value: number): string {
@@ -377,6 +391,7 @@ export function buildInvoicePdfSummaryRows(
       "restocking_fee",
     );
     const depositFee = getPaymentSourceTotal(invoice.payments, "deposit_fee");
+    const retainedFee = getPaymentSourceTotal(invoice.payments, "retained_fee");
     const rows: Array<{ label: string; value: number }> = [];
 
     if (restockingFee > 0) {
@@ -391,13 +406,19 @@ export function buildInvoicePdfSummaryRows(
         value: Number(depositFee.toFixed(2)),
       });
     }
+    if (retainedFee > 0) {
+      rows.push({
+        label: "Non-Refundable Amount:",
+        value: Number(retainedFee.toFixed(2)),
+      });
+    }
     if (rows.length > 0) {
       return rows;
     }
 
-    const retainedFee = getAbandonedRetainedFeeDisplay(invoice);
-    return retainedFee
-      ? [{ label: retainedFee.label, value: retainedFee.amount }]
+    const retainedFeeDisplay = getAbandonedRetainedFeeDisplay(invoice);
+    return retainedFeeDisplay
+      ? [{ label: retainedFeeDisplay.label, value: retainedFeeDisplay.amount }]
       : [];
   }
 
@@ -483,7 +504,9 @@ export function getInvoicePaymentsForPdf(invoice: {
 
   const feePayments = payments.filter(
     (payment) =>
-      payment.source === "deposit_fee" || payment.source === "restocking_fee",
+      payment.source === "deposit_fee" ||
+      payment.source === "restocking_fee" ||
+      payment.source === "retained_fee",
   );
 
   const refunds =
@@ -514,6 +537,9 @@ export function getInvoicePdfPaymentLabel(payment: {
 }): string {
   if (payment.source === "deposit_fee") {
     return "Deposit fee retained:";
+  }
+  if (payment.source === "retained_fee") {
+    return "Non-refundable amount retained:";
   }
   if (payment.source === "restocking_fee") {
     return "Restocking fee retained:";

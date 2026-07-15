@@ -1,22 +1,42 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "../../../../../lib/auth";
+import prisma from "../../../../../lib/prisma";
+import {
+  buildPaymentCsvTemplate,
+  buildPaymentSheetWorkbook,
+  paymentWorkbookToBuffer,
+} from "../../../../../lib/payment-bulk-sheet";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     await requireAuth();
 
-    // Create CSV template content with extended fields
-    const headers = "amount,paymentDate,method,notes,invoiceNumber,clientName";
-    const exampleRow1 =
-      "1250.00,2025-01-15,zelle,January payment,INV-2025-001,Acme Corp";
-    const exampleRow2 = "850.00,2025-01-16,check,,,";
-    const csvContent = `${headers}\n${exampleRow1}\n${exampleRow2}`;
+    const format = request.nextUrl.searchParams.get("format")?.toLowerCase();
+    const activeMethods = await prisma.paymentMethodEntry.findMany({
+      where: { isActive: true },
+      orderBy: { sortOrder: "asc" },
+    });
+    const exampleMethods = activeMethods.map((method) => method.name);
 
-    // Return as downloadable file
-    return new NextResponse(csvContent, {
+    if (format === "csv") {
+      const csvContent = buildPaymentCsvTemplate(exampleMethods);
+
+      return new NextResponse(csvContent, {
+        headers: {
+          "Content-Type": "text/csv",
+          "Content-Disposition": 'attachment; filename="payments-template.csv"',
+        },
+      });
+    }
+
+    const workbook = buildPaymentSheetWorkbook(exampleMethods);
+    const fileBuffer: any = paymentWorkbookToBuffer(workbook);
+
+    return new NextResponse(fileBuffer, {
       headers: {
-        "Content-Type": "text/csv",
-        "Content-Disposition": 'attachment; filename="payments-template.csv"',
+        "Content-Type":
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition": 'attachment; filename="payments-template.xlsx"',
       },
     });
   } catch (error: any) {

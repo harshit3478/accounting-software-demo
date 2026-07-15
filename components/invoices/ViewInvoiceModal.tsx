@@ -955,6 +955,7 @@ export default function ViewInvoiceModal({
     | "refund"
     | "deposit_fee"
     | "restocking_fee"
+    | "retained_fee"
     | "late_fee";
 
   const paymentHistoryDisplay = (() => {
@@ -965,6 +966,8 @@ export default function ViewInvoiceModal({
           ? "late_fee"
           : payment.source === "deposit_fee"
             ? "deposit_fee"
+            : payment.source === "retained_fee"
+              ? "retained_fee"
             : payment.source === "restocking_fee"
               ? "restocking_fee"
               : "payment") as PaymentHistoryRole,
@@ -984,6 +987,8 @@ export default function ViewInvoiceModal({
         rows.push({ payment, role: "late_fee" });
       } else if (payment.source === "deposit_fee") {
         rows.push({ payment, role: "deposit_fee" });
+      } else if (payment.source === "retained_fee") {
+        rows.push({ payment, role: "retained_fee" });
       } else if (payment.source === "restocking_fee") {
         rows.push({ payment, role: "restocking_fee" });
       }
@@ -993,6 +998,7 @@ export default function ViewInvoiceModal({
       (row) =>
         row.role === "late_fee" ||
         row.role === "deposit_fee" ||
+        row.role === "retained_fee" ||
         row.role === "restocking_fee",
     );
     if (!hasFeeRow && historyFeeType === "both") {
@@ -1064,15 +1070,25 @@ export default function ViewInvoiceModal({
             name:
               historyFeeType === "restocking"
                 ? "Restocking Fee"
-                : "Deposit Fee",
+                : historyFeeType === "other"
+                  ? "Non-Refundable Amount"
+                  : "Deposit Fee",
             icon: null,
             color: "#7C3AED",
           },
           source:
-            historyFeeType === "restocking" ? "restocking_fee" : "deposit_fee",
+            historyFeeType === "restocking"
+              ? "restocking_fee"
+              : historyFeeType === "other"
+                ? "retained_fee"
+                : "deposit_fee",
         },
         role:
-          historyFeeType === "restocking" ? "restocking_fee" : "deposit_fee",
+          historyFeeType === "restocking"
+            ? "restocking_fee"
+            : historyFeeType === "other"
+              ? "retained_fee"
+              : "deposit_fee",
       });
     }
 
@@ -1087,6 +1103,8 @@ export default function ViewInvoiceModal({
         return "Late Fee";
       case "deposit_fee":
         return "Deposit Fee";
+      case "retained_fee":
+        return "Non-Refundable";
       case "restocking_fee":
         return "Restocking Fee";
       default:
@@ -1102,6 +1120,8 @@ export default function ViewInvoiceModal({
         return "bg-amber-100 text-amber-800";
       case "deposit_fee":
         return "bg-purple-100 text-purple-800";
+      case "retained_fee":
+        return "bg-rose-100 text-rose-800";
       case "restocking_fee":
         return "bg-indigo-100 text-indigo-800";
       default:
@@ -1148,9 +1168,13 @@ export default function ViewInvoiceModal({
         parts.push(`Retained fee payments: ${feeCode}`);
       }
     } else if (feeCode) {
-      parts.push(
-        `${feeType === "restocking" ? "Restocking fee" : "Deposit fee"} payment: ${feeCode}`,
-      );
+      const feeLabel =
+        feeType === "restocking"
+          ? "Restocking fee"
+          : feeType === "other"
+            ? "Non-refundable amount"
+            : "Deposit fee";
+      parts.push(`${feeLabel} payment: ${feeCode}`);
     }
 
     return parts.length > 0 ? parts.join(" · ") : null;

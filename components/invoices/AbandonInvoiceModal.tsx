@@ -54,7 +54,8 @@ interface AbandonInvoiceModalProps {
   onConfirm: (payload: {
     editReason: string;
     paymentAction: "credit" | "transfer" | "refund" | "none";
-    feeAction: "restocking" | "deposit" | "both" | "none";
+    feeAction: "restocking" | "deposit" | "both" | "other" | "none";
+    customFeeAmount?: number;
     targetInvoiceId?: number;
     feeMethodId?: number;
     refundProof?: RefundProof;
@@ -73,8 +74,9 @@ export default function AbandonInvoiceModal({
     "credit" | "transfer" | "refund" | "none"
   >("credit");
   const [feeAction, setFeeAction] = useState<
-    "restocking" | "deposit" | "both" | "none"
+    "restocking" | "deposit" | "both" | "other" | "none"
   >("none");
+  const [customFeeAmount, setCustomFeeAmount] = useState("");
   const [targetInvoiceId, setTargetInvoiceId] = useState<number | null>(null);
   const [customerInvoices, setCustomerInvoices] = useState<InvoiceOption[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>(
@@ -114,7 +116,17 @@ export default function AbandonInvoiceModal({
     isLayaway && !!restockingFeeSetting?.isActive && effectiveRestockingFee > 0;
   const canApplyDeposit = effectiveDepositFee > 0;
   const canApplyBoth = canApplyRestocking && canApplyDeposit;
-  const showFeeHandling = canApplyRestocking || canApplyDeposit;
+  const canApplyOther = !isLayaway && hasPayments;
+  const showFeeHandling = isLayaway
+    ? canApplyRestocking || canApplyDeposit
+    : hasPayments || canApplyDeposit;
+  const parsedCustomFee = Number.parseFloat(customFeeAmount);
+  const effectiveOtherFee =
+    Number.isFinite(parsedCustomFee) && parsedCustomFee > 0
+      ? hasPayments
+        ? Math.min(parsedCustomFee, paidAmount)
+        : parsedCustomFee
+      : 0;
   const bothFeeAmounts = (() => {
     if (!hasPayments) {
       return {
@@ -143,7 +155,9 @@ export default function AbandonInvoiceModal({
         ? effectiveDepositFee
         : feeAction === "both"
           ? bothFeeAmounts.total
-          : 0;
+          : feeAction === "other"
+            ? effectiveOtherFee
+            : 0;
   const refundableBalance = hasPayments
     ? Math.max(paidAmount - selectedFeeAmount, 0)
     : 0;
@@ -180,6 +194,7 @@ export default function AbandonInvoiceModal({
     setCustomerInvoices([]);
     setRefundProof(null);
     setFeeMethodId(null);
+    setCustomFeeAmount("");
 
     if (!invoice || !hasPayments) {
       setPaymentAction("none");
@@ -310,6 +325,11 @@ export default function AbandonInvoiceModal({
       }
     }
 
+    if (feeAction === "other" && effectiveOtherFee <= 0) {
+      setError("Please enter a valid non-refundable amount.");
+      return;
+    }
+
     if (feeAction !== "none" && selectedFeeAmount > 0 && !feeMethodId) {
       setError("Please select a payment method for the fee payment.");
       return;
@@ -320,6 +340,7 @@ export default function AbandonInvoiceModal({
       editReason: reason.trim(),
       paymentAction: hasPayments ? paymentAction : "none",
       feeAction,
+      ...(feeAction === "other" ? { customFeeAmount: effectiveOtherFee } : {}),
       ...(targetInvoiceId ? { targetInvoiceId } : {}),
       ...(feeMethodId ? { feeMethodId } : {}),
       ...(refundProof ? { refundProof } : {}),
@@ -368,7 +389,8 @@ export default function AbandonInvoiceModal({
         {hasPayments && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
             This invoice has recorded payments (${invoice.paidAmount.toFixed(2)}
-            ). Choose how to handle those payments.
+            ). Choose how to handle those payments
+            {showFeeHandling ? " and any non-refundable amounts" : ""}.
           </div>
         )}
 
@@ -389,7 +411,7 @@ export default function AbandonInvoiceModal({
         {showFeeHandling && (
           <div className="space-y-3 rounded-lg border border-gray-200 p-3">
             <label className="block text-sm font-medium text-gray-700">
-              Fee Handling
+              {isLayaway ? "Fee Handling" : "Non-Refundable Amount"}
             </label>
 
             {canApplyRestocking && (
@@ -418,7 +440,9 @@ export default function AbandonInvoiceModal({
                   onChange={() => setFeeAction("deposit")}
                   className="mt-0.5"
                 />
-                Apply deposit fees from invoice items
+                {isLayaway
+                  ? "Apply deposit fees from invoice items"
+                  : "Deduct deposit fees from invoice items"}
                 <span className="text-xs text-gray-500">
                   (${effectiveDepositFee.toFixed(2)}
                   {hasPayments && depositFeeTotal > paidAmount
@@ -427,6 +451,50 @@ export default function AbandonInvoiceModal({
                   )
                 </span>
               </label>
+            )}
+
+            {canApplyOther && (
+              <label className="flex items-start gap-2 text-sm text-gray-700">
+                <input
+                  type="radio"
+                  checked={feeAction === "other"}
+                  onChange={() => setFeeAction("other")}
+                  className="mt-0.5"
+                />
+                Deduct other non-refundable amount
+                <span className="text-xs text-gray-500">
+                  (up to ${paidAmount.toFixed(2)} paid)
+                </span>
+              </label>
+            )}
+
+            {canApplyOther && feeAction === "other" && (
+              <div className="ml-6">
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  Non-refundable amount
+                </label>
+                <div className="relative max-w-xs">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">
+                    $
+                  </span>
+                  <input
+                    type="number"
+                    min="0.01"
+                    max={paidAmount}
+                    step="0.01"
+                    value={customFeeAmount}
+                    onChange={(e) => setCustomFeeAmount(e.target.value)}
+                    className="w-full pl-7 pr-3 py-2 border border-gray-300 text-gray-900 rounded-lg"
+                    placeholder="0.00"
+                  />
+                </div>
+                {effectiveOtherFee > 0 && (
+                  <p className="mt-1 text-xs text-gray-500">
+                    ${effectiveOtherFee.toFixed(2)} will be retained; $
+                    {refundableBalance.toFixed(2)} remains refundable.
+                  </p>
+                )}
+              </div>
             )}
 
             {canApplyBoth && (
@@ -490,6 +558,11 @@ export default function AbandonInvoiceModal({
                       payments totaling ${selectedFeeAmount.toFixed(2)} will be
                       linked to this {invoiceReference}.
                     </>
+                  ) : feeAction === "other" ? (
+                    <>
+                      A non-refundable amount of ${selectedFeeAmount.toFixed(2)}{" "}
+                      will be linked to this {invoiceReference}.
+                    </>
                   ) : (
                     <>
                       A {feeAction === "restocking" ? "restocking" : "deposit"}{" "}
@@ -517,7 +590,14 @@ export default function AbandonInvoiceModal({
                 disabled={!invoice.customerId}
                 className="mt-0.5"
               />
-              Add all invoice payments to customer Store Credit
+              {selectedFeeAmount > 0
+                ? "Add remaining payments to customer Store Credit"
+                : "Add all invoice payments to customer Store Credit"}
+              {selectedFeeAmount > 0 && (
+                <span className="text-xs text-gray-500">
+                  (${refundableBalance.toFixed(2)} after fees)
+                </span>
+              )}
             </label>
 
             <label className="flex items-start gap-2 text-sm text-gray-700">
@@ -528,7 +608,14 @@ export default function AbandonInvoiceModal({
                 disabled={!invoice.customerId}
                 className="mt-0.5"
               />
-              Move all invoice payments to another invoice of the same customer
+              {selectedFeeAmount > 0
+                ? "Move remaining payments to another invoice of the same customer"
+                : "Move all invoice payments to another invoice of the same customer"}
+              {selectedFeeAmount > 0 && (
+                <span className="text-xs text-gray-500">
+                  (${refundableBalance.toFixed(2)} after fees)
+                </span>
+              )}
             </label>
 
             {canRefund && (

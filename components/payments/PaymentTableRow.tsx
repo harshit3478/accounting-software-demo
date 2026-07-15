@@ -97,6 +97,8 @@ export default function PaymentTableRow({
         return "bg-orange-100 text-orange-800";
       case "deposit_fee":
         return "bg-purple-100 text-purple-800";
+      case "retained_fee":
+        return "bg-rose-100 text-rose-800";
       case "restocking_fee":
         return "bg-indigo-100 text-indigo-800";
       default:

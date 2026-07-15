@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "../../../../../lib/auth";
-import Papa from "papaparse";
 import prisma from "../../../../../lib/prisma";
 import { stampPaymentCode } from "../../../../../lib/payment-code";
 import { updateInvoiceAfterPayment } from "../../../../../lib/invoice-utils";
 import {
   validatePaymentRow,
   detectPaymentDuplicates,
-  PaymentRow,
 } from "../../../../../lib/csv-validation";
+import { parsePaymentSpreadsheet } from "../../../../../lib/payment-bulk-sheet";
 
 export async function POST(request: NextRequest) {
   try {
@@ -21,46 +20,32 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
-    // Read file content
-    const text = await file.text();
-
-    // Parse CSV
-    const parseResult = Papa.parse<PaymentRow>(text, {
-      header: true,
-      skipEmptyLines: true,
-      transformHeader: (header: string) => header.trim(),
-      transform: (value: string) => value.trim(),
-    });
-
-    if (parseResult.errors.length > 0) {
-      return NextResponse.json(
-        {
-          error: "CSV parsing error",
-          details: parseResult.errors,
-        },
-        { status: 400 },
-      );
-    }
-
-    const rows = parseResult.data;
+    const rows = await parsePaymentSpreadsheet(file);
 
     if (rows.length === 0) {
       return NextResponse.json(
         {
-          error: "CSV file is empty",
+          error: "File is empty",
         },
         { status: 400 },
       );
     }
 
-    // Validate all rows first
+    const activeMethods = await prisma.paymentMethodEntry.findMany({
+      where: { isActive: true },
+      orderBy: { sortOrder: "asc" },
+    });
+    const validMethodNames = activeMethods.map((method) => method.name);
+    const methodMap = new Map(
+      activeMethods.map((m) => [m.name.toLowerCase(), m.id]),
+    );
+
     const validationErrors: any[] = [];
     rows.forEach((row, index) => {
-      const rowErrors = validatePaymentRow(row, index + 2);
+      const rowErrors = validatePaymentRow(row, index + 2, validMethodNames);
       validationErrors.push(...rowErrors);
     });
 
-    // Check for duplicates
     const duplicates = detectPaymentDuplicates(rows);
 
     if (validationErrors.length > 0 || duplicates.length > 0) {
@@ -74,13 +59,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Look up all payment methods by name for mapping
-    const allMethods = await prisma.paymentMethodEntry.findMany();
-    const methodMap = new Map(
-      allMethods.map((m) => [m.name.toLowerCase(), m.id]),
-    );
-
-    // Create all payments in a transaction
     const createdPayments = await prisma.$transaction(async (tx) => {
       const payments = [];
       let matchedCount = 0;
@@ -95,7 +73,6 @@ export async function POST(request: NextRequest) {
           throw new Error(`Unknown payment method: ${row.method}`);
         }
 
-        // Attempt to find invoice for matching
         let invoiceId = null;
         let isMatched = false;
 
@@ -105,7 +82,6 @@ export async function POST(request: NextRequest) {
               invoiceNumber: row.invoiceNumber.trim(),
               clientName: {
                 contains: row.clientName.trim(),
-                mode: "insensitive",
               },
             },
           });
@@ -116,7 +92,6 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // Create payment
         const payment = await tx.payment.create({
           data: {
             amount,
@@ -132,7 +107,6 @@ export async function POST(request: NextRequest) {
 
         await stampPaymentCode(tx, payment.id);
 
-        // Create PaymentInvoiceMatch if invoice was found
         if (invoiceId) {
           await tx.paymentInvoiceMatch.create({
             data: {
@@ -161,7 +135,6 @@ export async function POST(request: NextRequest) {
       return { payments, matchedCount, unmatchedCount, matchedInvoiceIds };
     });
 
-    // Recalculate paidAmount and status for each matched invoice outside the transaction
     for (const invoiceId of createdPayments.matchedInvoiceIds) {
       await updateInvoiceAfterPayment(invoiceId);
     }

@@ -2,6 +2,7 @@ export type PaymentDisplayStatus =
   | "active"
   | "refund"
   | "deposit_fee"
+  | "retained_fee"
   | "restocking_fee";
 
 export type PaymentStatusFilter = "active" | "refund" | "deposit_fee" | "all";
@@ -12,6 +13,7 @@ export function getPaymentDisplayStatus(payment: {
   source?: string | null;
 }): PaymentDisplayStatus {
   if (payment.source === "deposit_fee") return "deposit_fee";
+  if (payment.source === "retained_fee") return "retained_fee";
   if (payment.source === "restocking_fee") return "restocking_fee";
   if (payment.isAbandoned && payment.refundProofUrl) return "refund";
   return "active";
@@ -25,6 +27,8 @@ export function getPaymentDisplayStatusLabel(
       return "Refund";
     case "deposit_fee":
       return "Deposit Fee";
+    case "retained_fee":
+      return "Non-Refundable";
     case "restocking_fee":
       return "Restocking Fee";
     default:
@@ -45,7 +49,7 @@ export function buildPaymentStatusWhere(
   if (status === "deposit_fee") {
     return {
       isAbandoned: false,
-      source: { in: ["deposit_fee", "restocking_fee"] },
+      source: { in: ["deposit_fee", "restocking_fee", "retained_fee"] },
     };
   }
   if (status === "all") {
@@ -57,7 +61,7 @@ export function buildPaymentStatusWhere(
       { source: null },
       {
         source: {
-          notIn: ["deposit_fee", "restocking_fee"],
+          notIn: ["deposit_fee", "restocking_fee", "retained_fee"],
         },
       },
     ],
