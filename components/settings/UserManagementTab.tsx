@@ -537,7 +537,7 @@ export default function UserManagementTab({
                           <div className="flex flex-wrap gap-1">
                             {user.privileges?.chequeVault?.upload && (
                               <span className="px-1.5 py-0.5 text-xs rounded bg-green-100 text-green-700">
-                                Cheque Upload
+                                Cheque Vault Upload
                               </span>
                             )}
                             {user.privileges?.chequeVault?.approve && (

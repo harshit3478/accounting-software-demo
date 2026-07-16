@@ -45,6 +45,7 @@ interface InvoiceSearchModalProps {
   onClose: () => void;
   onConfirm: (allocations: AllocationEntry[]) => void;
   chequeAmount: number;
+  documentTypeLabel?: string;
   customerId?: number | null;
   initialAllocations?: AllocationEntry[];
 }
@@ -61,6 +62,7 @@ export default function InvoiceSearchModal({
   onClose,
   onConfirm,
   chequeAmount,
+  documentTypeLabel = "Cheque Without Memo",
   customerId,
   initialAllocations = [],
 }: InvoiceSearchModalProps) {
@@ -365,7 +367,7 @@ export default function InvoiceSearchModal({
               Allocated: ${totalAllocated.toFixed(2)}
             </span>
             <span className="text-gray-400 ml-1">
-              / Cheque: ${chequeAmount.toFixed(2)}
+              / {documentTypeLabel}: ${chequeAmount.toFixed(2)}
             </span>
             {isOverAllocated && (
               <span className="ml-2 text-xs text-red-600 font-medium">

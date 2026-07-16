@@ -207,6 +207,6 @@ export const CHEQUE_VAULT_PERMISSION_LABELS: Record<
   ChequeVaultPermission,
   string
 > = {
-  upload: "Upload Cheques",
+  upload: "Upload Cheques Without Memo / With Memo",
   approve: "Approve Cheque Requests",
 };

@@ -1,15 +1,27 @@
 import {
+  daysBetweenBusiness,
   formatBusinessDate,
   normalizeBusinessCalendarDate,
 } from "./business-date";
 
 export type LayawayPaymentFrequency = "monthly" | "bi-weekly" | "weekly";
 
-const SKIP_THRESHOLDS: Record<LayawayPaymentFrequency, number> = {
-  monthly: 10,
-  "bi-weekly": 7,
-  weekly: 2,
-};
+/**
+ * Layaway installment due-date rules:
+ *
+ * - **Bi-weekly** (15th and 30th; 30th uses last day when the month is shorter):
+ *   - Invoice day **9–23** → first payment on the **30th** of the same month
+ *   - Invoice day **1–8** → first payment on the **15th** of the same month
+ *   - Invoice day **24–31** → first payment on the **15th** of the next month
+ *
+ * - **Monthly** (1st of each month — parallel to the bi-weekly 15 / 30 windows):
+ *   - Invoice day **1–15** → first payment on the **upcoming 1st** (1st of next month)
+ *   - Invoice day **16–31** → first payment on the **next 1st** (1st of next month)
+ *
+ * - **Weekly** (7th, 14th, 21st, 28th): first installment is the next anchor
+ *   on/after the invoice date when it is at least 2 days away.
+ */
+const WEEKLY_SKIP_THRESHOLD = 2;
 
 export interface LayawayInstallmentDraft {
   dueDate: Date;
@@ -22,13 +34,121 @@ function startOfDay(date: Date) {
 }
 
 function daysBetween(from: Date, to: Date) {
-  const start = startOfDay(from).getTime();
-  const end = startOfDay(to).getTime();
-  return Math.round((end - start) / (24 * 60 * 60 * 1000));
+  return daysBetweenBusiness(from, to);
 }
 
 function getOrdinalSuffix(value: number) {
   return value === 1 ? "st" : value === 2 ? "nd" : value === 3 ? "rd" : "th";
+}
+
+function addCalendarMonths(year: number, month: number, offset: number) {
+  const absolute = year * 12 + month + offset;
+  return {
+    year: Math.floor(absolute / 12),
+    month: ((absolute % 12) + 12) % 12,
+  };
+}
+
+function createBiWeeklyAnchor(
+  year: number,
+  month: number,
+  target: 15 | 30,
+): Date {
+  const lastDay = new Date(year, month + 1, 0).getDate();
+  const day = target === 30 ? Math.min(30, lastDay) : 15;
+  return new Date(year, month, day, 12, 0, 0, 0);
+}
+
+function createMonthlyAnchor(year: number, month: number): Date {
+  return new Date(year, month, 1, 12, 0, 0, 0);
+}
+
+function getInvoiceDayOfMonth(invoiceDate: Date) {
+  return startOfDay(invoiceDate).getDate();
+}
+
+/** Bi-weekly first installment based on invoice day-of-month windows. */
+export function getBiWeeklyFirstInstallmentDate(invoiceDate: Date | string): Date {
+  const baseDate = startOfDay(new Date(invoiceDate));
+  const day = getInvoiceDayOfMonth(baseDate);
+  const year = baseDate.getFullYear();
+  const month = baseDate.getMonth();
+
+  if (day >= 9 && day <= 23) {
+    return createBiWeeklyAnchor(year, month, 30);
+  }
+
+  if (day >= 1 && day <= 8) {
+    return createBiWeeklyAnchor(year, month, 15);
+  }
+
+  const nextMonth = addCalendarMonths(year, month, 1);
+  return createBiWeeklyAnchor(nextMonth.year, nextMonth.month, 15);
+}
+
+/**
+ * Monthly first installment — both day windows use the 1st of next month
+ * (the bi-weekly 1–15 / 15–30 periods both map to the next calendar 1st).
+ */
+export function getMonthlyFirstInstallmentDate(invoiceDate: Date | string): Date {
+  const baseDate = startOfDay(new Date(invoiceDate));
+  const year = baseDate.getFullYear();
+  const month = baseDate.getMonth();
+  const nextMonth = addCalendarMonths(year, month, 1);
+  return createMonthlyAnchor(nextMonth.year, nextMonth.month);
+}
+
+function getWeeklyFirstInstallmentDate(invoiceDate: Date): Date | null {
+  const baseDate = startOfDay(invoiceDate);
+  const iterator = iterateWeeklyAnchors(
+    baseDate.getFullYear(),
+    baseDate.getMonth(),
+  );
+
+  for (const anchor of iterator) {
+    if (anchor < baseDate) continue;
+    if (daysBetween(baseDate, anchor) >= WEEKLY_SKIP_THRESHOLD) {
+      return new Date(anchor);
+    }
+  }
+
+  return null;
+}
+
+function getFirstInstallmentAnchor(
+  invoiceDate: Date,
+  frequency: LayawayPaymentFrequency,
+): Date | null {
+  if (frequency === "bi-weekly") {
+    return getBiWeeklyFirstInstallmentDate(invoiceDate);
+  }
+  if (frequency === "monthly") {
+    return getMonthlyFirstInstallmentDate(invoiceDate);
+  }
+  return getWeeklyFirstInstallmentDate(invoiceDate);
+}
+
+function collectFollowingAnchors(
+  frequency: LayawayPaymentFrequency,
+  after: Date,
+  count: number,
+): Date[] {
+  if (count <= 0) return [];
+
+  const anchors: Date[] = [];
+  const iterator = getAnchorIterator(
+    frequency,
+    after.getFullYear(),
+    after.getMonth(),
+  );
+
+  for (const anchor of iterator) {
+    if (anchor <= after) continue;
+    anchors.push(new Date(anchor));
+    if (anchors.length >= count) break;
+  }
+
+  return anchors;
 }
 
 function* iterateBiWeeklyAnchors(year: number, month: number) {
@@ -107,8 +227,9 @@ function isFirstInstallmentAnchorValid(
     return false;
   }
 
-  const daysUntilAnchor = daysBetween(normalizedInvoice, normalizedAnchor);
-  return daysUntilAnchor > SKIP_THRESHOLDS[frequency];
+  return (
+    daysBetween(normalizedInvoice, normalizedAnchor) >= WEEKLY_SKIP_THRESHOLD
+  );
 }
 
 export function getLayawayInstallmentDueDates(
@@ -119,6 +240,25 @@ export function getLayawayInstallmentDueDates(
   const baseDate = startOfDay(new Date(invoiceDate));
   if (Number.isNaN(baseDate.getTime()) || count <= 0) {
     return [];
+  }
+
+  if (frequency === "bi-weekly" || frequency === "monthly") {
+    const firstAnchor = getFirstInstallmentAnchor(baseDate, frequency);
+    if (!firstAnchor) return [];
+
+    const dueDates = [firstAnchor];
+    if (dueDates.length >= count) {
+      return dueDates.slice(0, count);
+    }
+
+    dueDates.push(
+      ...collectFollowingAnchors(
+        frequency,
+        firstAnchor,
+        count - dueDates.length,
+      ),
+    );
+    return dueDates;
   }
 
   const iterator = getAnchorIterator(

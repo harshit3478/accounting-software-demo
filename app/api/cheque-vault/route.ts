@@ -11,6 +11,7 @@ import { extractMemoDataFromFile, emptyMemoOcrResult } from "@/lib/memo-ocr";
 import {
   CHEQUE_VAULT_MAX_FILE_SIZE_BYTES,
   emptyChequeOcrResult,
+  getChequeVaultDocumentTypeLabelLower,
   getChequeVaultFileExtension,
   getChequeVaultStoragePrefix,
   isAllowedChequeVaultMimeType,
@@ -149,7 +150,7 @@ export async function POST(request: NextRequest) {
     if (fileEntries.length > 1) {
       return NextResponse.json(
         {
-          error: `Only one ${documentType === "MEMO" ? "memo" : "cheque"} file can be uploaded per request`,
+          error: `Only one ${getChequeVaultDocumentTypeLabelLower(documentType)} file can be uploaded per request`,
         },
         { status: 400 },
       );

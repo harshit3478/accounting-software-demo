@@ -6,6 +6,7 @@ interface ChequeDocumentPreviewProps {
   imageUrl: string;
   imageFileName?: string | null;
   chequeNumber?: string;
+  documentTypeLabel?: string;
   className?: string;
   maxHeight?: string;
 }
@@ -14,6 +15,7 @@ export default function ChequeDocumentPreview({
   imageUrl,
   imageFileName,
   chequeNumber,
+  documentTypeLabel = "Cheque Without Memo",
   className = "",
   maxHeight = "max-h-80",
 }: ChequeDocumentPreviewProps) {
@@ -38,7 +40,7 @@ export default function ChequeDocumentPreview({
             d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"
           />
         </svg>
-        <p className="text-sm font-medium text-gray-700">Cheque PDF</p>
+        <p className="text-sm font-medium text-gray-700">{documentTypeLabel} PDF</p>
         <a
           href={imageUrl}
           target="_blank"
@@ -54,7 +56,11 @@ export default function ChequeDocumentPreview({
   return (
     <img
       src={imageUrl}
-      alt={chequeNumber ? `Cheque #${chequeNumber}` : "Cheque"}
+      alt={
+        chequeNumber
+          ? `${documentTypeLabel} #${chequeNumber}`
+          : documentTypeLabel
+      }
       className={`w-full object-contain ${maxHeight} ${className}`}
       onError={(e) => {
         (e.target as HTMLImageElement).style.display = "none";

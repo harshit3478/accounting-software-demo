@@ -5,7 +5,7 @@ import {
   canDeleteChequeRequest,
   canEditChequeRequest,
 } from "@/lib/cheque-vault-permissions";
-import { useAuth } from "@/lib/AuthContext";
+import { getChequeVaultDocumentTypeLabel } from "@/lib/cheque-vault-upload";
 import { formatBusinessDate } from "@/lib/business-date";
 
 interface ChequeVaultTableProps {
@@ -106,8 +106,8 @@ export default function ChequeVaultTable({
         <p className="text-gray-500 font-medium">No records found</p>
         <p className="text-gray-400 text-sm mt-1">
           {canUploadCheques
-            ? "Upload a cheque or memo to get started"
-            : "Cheque and memo requests will appear here once uploaded"}
+            ? "Upload a Cheque Without Memo or Cheque With Memo to get started"
+            : "Cheque Without Memo and Cheque With Memo requests will appear here once uploaded"}
         </p>
       </div>
     );
@@ -170,7 +170,7 @@ export default function ChequeVaultTable({
                         : "bg-blue-100 text-blue-800"
                     }`}
                   >
-                    {cheque.documentType === "MEMO" ? "Memo" : "Cheque"}
+                    {getChequeVaultDocumentTypeLabel(cheque.documentType)}
                   </span>
                 </td>
                 <td className="px-4 py-3 font-medium text-gray-900">

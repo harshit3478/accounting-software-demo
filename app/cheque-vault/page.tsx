@@ -15,6 +15,10 @@ import { useAuth } from "@/lib/AuthContext";
 import DateRangePicker from "@/components/DateRangePicker";
 import ConfirmModal from "@/components/ConfirmModal";
 import type { ChequeVaultRecord } from "@/hooks/useChequeVault";
+import {
+  getChequeVaultDocumentTypeFilterOptions,
+  getChequeVaultDocumentTypeLabelLower,
+} from "@/lib/cheque-vault-upload";
 
 const STATUS_OPTIONS = [
   { value: "all", label: "All Statuses" },
@@ -26,8 +30,7 @@ const STATUS_OPTIONS = [
 
 const DOCUMENT_TYPE_OPTIONS = [
   { value: "all", label: "All Types" },
-  { value: "CHEQUE", label: "Cheques" },
-  { value: "MEMO", label: "Memos" },
+  ...getChequeVaultDocumentTypeFilterOptions(),
 ] as const;
 
 function ChequeVaultContent() {
@@ -58,10 +61,10 @@ function ChequeVaultContent() {
             <h1 className="text-2xl font-bold text-gray-900">Cheque Vault</h1>
             <p className="text-sm text-gray-500 mt-1">
               {canApproveCheques
-                ? "Review, approve, or reject cheque and memo payment requests"
+                ? "Review, approve, or reject Cheque With Memo and Cheque Without Memo payment requests"
                 : canUploadCheque
-                  ? "Upload and manage cheque and memo payments"
-                  : "View uploaded cheque and memo payment requests"}
+                  ? "Upload and manage Cheque With Memo and Cheque Without Memo payments"
+                  : "View uploaded Cheque With Memo and Cheque Without Memo payment requests"}
             </p>
           </div>
           {canUploadCheque && (
@@ -252,7 +255,7 @@ function ChequeVaultContent() {
         title="Delete cheque request?"
         message={
           deleteTarget
-            ? `Delete pending ${deleteTarget.documentType === "MEMO" ? "memo" : "cheque"} request for #${deleteTarget.chequeNumber || "—"}? This cannot be undone. Approved requests cannot be deleted.`
+            ? `Delete pending ${getChequeVaultDocumentTypeLabelLower(deleteTarget.documentType)} request for #${deleteTarget.chequeNumber || "—"}? This cannot be undone. Approved requests cannot be deleted.`
             : ""
         }
         confirmText="Delete"

@@ -50,6 +50,38 @@ export const CHEQUE_VAULT_FILE_TYPE_HINT =
 
 export type ChequeVaultDocumentType = "CHEQUE" | "MEMO";
 
+export function getChequeVaultDocumentTypeLabel(
+  documentType?: ChequeVaultDocumentType | string | null,
+): string {
+  return documentType === "MEMO" ? "Cheque With Memo" : "Cheque Without Memo";
+}
+
+export function getChequeVaultDocumentTypeLabelPlural(
+  documentType?: ChequeVaultDocumentType | string | null,
+): string {
+  return documentType === "MEMO"
+    ? "Cheques With Memo"
+    : "Cheques Without Memo";
+}
+
+export function getChequeVaultDocumentTypeLabelLower(
+  documentType?: ChequeVaultDocumentType | string | null,
+): string {
+  return documentType === "MEMO"
+    ? "cheque with memo"
+    : "cheque without memo";
+}
+
+export function getChequeVaultDocumentTypeFilterOptions(): Array<{
+  value: ChequeVaultDocumentType;
+  label: string;
+}> {
+  return [
+    { value: "CHEQUE", label: "Cheques Without Memo" },
+    { value: "MEMO", label: "Cheques With Memo" },
+  ];
+}
+
 export function getChequeVaultStoragePrefix(
   documentType: ChequeVaultDocumentType,
 ): string {

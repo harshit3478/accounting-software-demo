@@ -17,6 +17,14 @@ import { Calendar } from "../ui/calendar";
 import { Separator } from "../ui/separator";
 import { CalendarIcon, Search, X, Filter, ChevronDown } from "lucide-react";
 import { format } from "date-fns";
+import { formatBusinessDate } from "@/lib/business-date";
+
+function parseDateOnlyToLocalDate(dateStr?: string): Date | undefined {
+  if (!dateStr) return undefined;
+  const [year, month, day] = dateStr.split("-").map(Number);
+  if (!year || !month || !day) return undefined;
+  return new Date(year, month - 1, day, 12, 0, 0);
+}
 
 interface InvoiceFiltersProps {
   filter: InvoiceFilter;
@@ -45,10 +53,10 @@ export default function InvoiceFiltersNew({
 }: InvoiceFiltersProps) {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [dateFrom, setDateFrom] = useState<Date | undefined>(
-    dateRange?.start ? new Date(dateRange.start) : undefined,
+    parseDateOnlyToLocalDate(dateRange?.start),
   );
   const [dateTo, setDateTo] = useState<Date | undefined>(
-    dateRange?.end ? new Date(dateRange.end) : undefined,
+    parseDateOnlyToLocalDate(dateRange?.end),
   );
 
   const filters: {
@@ -209,8 +217,8 @@ export default function InvoiceFiltersNew({
                   <CalendarIcon className="mr-2 h-4 w-4" />
                   {dateRange ? (
                     <>
-                      {format(new Date(dateRange.start), "MMM dd, yyyy")} -{" "}
-                      {format(new Date(dateRange.end), "MMM dd, yyyy")}
+                      {formatBusinessDate(dateRange.start)} -{" "}
+                      {formatBusinessDate(dateRange.end)}
                     </>
                   ) : (
                     <span>Pick a date range</span>
@@ -300,11 +308,11 @@ export default function InvoiceFiltersNew({
             <span className="text-sm text-blue-900 flex-1">
               Showing invoices from{" "}
               <span className="font-medium">
-                {format(new Date(dateRange.start), "MMM dd, yyyy")}
+                {formatBusinessDate(dateRange.start)}
               </span>{" "}
               to{" "}
               <span className="font-medium">
-                {format(new Date(dateRange.end), "MMM dd, yyyy")}
+                {formatBusinessDate(dateRange.end)}
               </span>
             </span>
             <Button

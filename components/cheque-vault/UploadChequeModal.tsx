@@ -6,6 +6,8 @@ import {
   CHEQUE_VAULT_ACCEPT_ATTRIBUTE,
   CHEQUE_VAULT_FILE_TYPE_HINT,
   CHEQUE_VAULT_MAX_FILE_SIZE_BYTES,
+  getChequeVaultDocumentTypeLabel,
+  getChequeVaultDocumentTypeLabelLower,
   isAllowedChequeVaultMimeType,
   isChequeVaultPdfMimeType,
   type ChequeVaultDocumentType,
@@ -42,8 +44,8 @@ export default function UploadChequeModal({
   onSuccess,
 }: UploadChequeModalProps) {
   const isMemo = documentType === "MEMO";
-  const docLabel = isMemo ? "Memo" : "Cheque";
-  const docLabelLower = isMemo ? "memo" : "cheque";
+  const docLabel = getChequeVaultDocumentTypeLabel(documentType);
+  const docLabelLower = getChequeVaultDocumentTypeLabelLower(documentType);
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
@@ -521,7 +523,7 @@ export default function UploadChequeModal({
               {preview && (
                 <img
                   src={preview}
-                  alt="Cheque"
+                  alt={docLabel}
                   className="max-h-40 rounded-lg object-contain opacity-60"
                 />
               )}
@@ -542,6 +544,7 @@ export default function UploadChequeModal({
                   imageUrl={uploadedCheque.imageUrl}
                   imageFileName={uploadedCheque.imageFileName}
                   chequeNumber={chequeNumber}
+                  documentTypeLabel={docLabel}
                 />
                 {ocrResult?.confidence === "low" && (
                   <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-700">

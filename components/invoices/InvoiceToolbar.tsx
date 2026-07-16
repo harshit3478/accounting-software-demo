@@ -17,6 +17,7 @@ import { Input } from "../ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Calendar as CalendarComponent } from "../ui/calendar";
 import { format } from "date-fns";
+import { formatBusinessDate } from "@/lib/business-date";
 import type {
   InvoiceStatusFilter,
   InvoiceTypeFilter,
@@ -57,6 +58,13 @@ interface InvoiceToolbarProps {
   onClearSelection?: () => void;
 }
 
+function parseDateOnlyToLocalDate(dateStr?: string): Date | undefined {
+  if (!dateStr) return undefined;
+  const [year, month, day] = dateStr.split("-").map(Number);
+  if (!year || !month || !day) return undefined;
+  return new Date(year, month - 1, day, 12, 0, 0);
+}
+
 export default function InvoiceToolbar({
   statusFilter,
   onStatusFilterChange,
@@ -83,10 +91,10 @@ export default function InvoiceToolbar({
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [liveTypes, setLiveTypes] = useState<LiveTypeOption[]>([]);
   const [dateFrom, setDateFrom] = useState<Date | undefined>(
-    dateRange?.start ? new Date(dateRange.start) : undefined,
+    parseDateOnlyToLocalDate(dateRange?.start),
   );
   const [dateTo, setDateTo] = useState<Date | undefined>(
-    dateRange?.end ? new Date(dateRange.end) : undefined,
+    parseDateOnlyToLocalDate(dateRange?.end),
   );
 
   useEffect(() => {
@@ -381,7 +389,7 @@ export default function InvoiceToolbar({
               <Button variant="outline" size="sm" className="h-9 border-dashed">
                 <Calendar className="mr-2 h-4 w-4" />
                 {dateRange
-                  ? `${format(new Date(dateRange.start), "MMM d")} - ${format(new Date(dateRange.end), "MMM d")}`
+                  ? `${formatBusinessDate(dateRange.start, { month: "short", day: "numeric" })} - ${formatBusinessDate(dateRange.end, { month: "short", day: "numeric" })}`
                   : "Date"}
               </Button>
             </PopoverTrigger>

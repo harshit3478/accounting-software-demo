@@ -11,7 +11,7 @@ import {
   canLinkInvoicesOnCheque,
   isChequeRequestReadOnly,
 } from "@/lib/cheque-vault-permissions";
-import ConfirmModal from "@/components/ConfirmModal";
+import { getChequeVaultDocumentTypeLabel } from "@/lib/cheque-vault-upload";
 import {
   formatBusinessDate,
   getBusinessTodayString,
@@ -123,7 +123,7 @@ export default function ChequeDetailModal({
   if (!isOpen || !cheque) return null;
 
   const isMemo = cheque.documentType === "MEMO";
-  const docLabel = isMemo ? "Memo" : "Cheque";
+  const docLabel = getChequeVaultDocumentTypeLabel(cheque.documentType);
 
   const readOnly = isChequeRequestReadOnly(cheque);
   const canEdit =
@@ -295,6 +295,7 @@ export default function ChequeDetailModal({
                     imageUrl={cheque.imageUrl}
                     imageFileName={cheque.imageFileName}
                     chequeNumber={cheque.chequeNumber}
+                    documentTypeLabel={docLabel}
                   />
                 </div>
                 <p className="text-xs text-gray-400 mt-2 text-center">
@@ -733,6 +734,7 @@ export default function ChequeDetailModal({
         onClose={() => setShowInvoiceSearch(false)}
         onConfirm={handleConfirmAllocations}
         chequeAmount={parseFloat(amount) || cheque.amount}
+        documentTypeLabel={docLabel}
         customerId={linkedCustomerId}
         initialAllocations={currentAllocations}
       />
