@@ -7,6 +7,7 @@ import {
 } from "@/lib/cheque-vault-permissions";
 import { getChequeVaultDocumentTypeLabel } from "@/lib/cheque-vault-upload";
 import { formatBusinessDate } from "@/lib/business-date";
+import { useAuth } from "@/lib/AuthContext";
 
 interface ChequeVaultTableProps {
   cheques: ChequeVaultRecord[];
