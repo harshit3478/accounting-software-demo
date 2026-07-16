@@ -9,6 +9,7 @@ import {
   Eye,
 } from "lucide-react";
 import { formatFileSize } from "@/lib/file-utils";
+import React from "react";
 
 interface Document {
   id: number;
