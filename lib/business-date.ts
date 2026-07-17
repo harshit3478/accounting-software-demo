@@ -105,6 +105,78 @@ export function endOfBusinessDay(input: string | Date): Date {
   return new Date(start.getTime() + 24 * 60 * 60 * 1000 - 1);
 }
 
+function utcMidnightOf(dateStr: string): Date {
+  return new Date(`${dateStr}T00:00:00.000Z`);
+}
+
+function addCivilDays(dateStr: string, days: number): string {
+  const date = utcMidnightOf(dateStr);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function eachCivilDayInclusive(startDate: string, endDate: string): string[] {
+  if (startDate > endDate) return [];
+
+  const dates: string[] = [];
+  let current = startDate;
+  // Cap runaway ranges (e.g. bad client input) at ~3 years.
+  for (let i = 0; i < 1100 && current <= endDate; i++) {
+    dates.push(current);
+    current = addCivilDays(current, 1);
+  }
+  return dates;
+}
+
+/**
+ * Prisma filter for date-only fields (invoiceDate, dueDate, paymentDate) that
+ * matches resolveCalendarDateString / formatBusinessDate civil days.
+ *
+ * Storage is mixed:
+ * - Legacy rows: UTC midnight → civil day = UTC date
+ * - Newer rows: BUSINESS_TIMEZONE start-of-day → civil day = business date
+ *
+ * A plain startOfBusinessDay/endOfBusinessDay window is wrong for filters:
+ * Chicago Jul 1 includes 2026-07-02T00:00:00.000Z (displays as Jul 2) and
+ * excludes 2026-07-01T00:00:00.000Z (displays as Jul 1).
+ */
+export function civilCalendarDateRangeWhere(
+  field: string,
+  startDate: string,
+  endDate: string,
+): Record<string, unknown> | null {
+  const start =
+    typeof startDate === "string" && DATE_ONLY_REGEX.test(startDate.trim())
+      ? startDate.trim()
+      : toBusinessDateStringFromInput(startDate);
+  const end =
+    typeof endDate === "string" && DATE_ONLY_REGEX.test(endDate.trim())
+      ? endDate.trim()
+      : toBusinessDateStringFromInput(endDate);
+
+  if (!start || !end || start > end) {
+    return null;
+  }
+
+  const midnights = eachCivilDayInclusive(start, end).map(utcMidnightOf);
+  // Chicago end-of-day for `end` extends into the next UTC calendar day and
+  // would otherwise pull in that day's legacy midnight row.
+  const nextDayMidnight = utcMidnightOf(addCivilDays(end, 1));
+
+  return {
+    OR: [
+      { [field]: { in: midnights } },
+      {
+        [field]: {
+          gte: startOfBusinessDay(start),
+          lte: endOfBusinessDay(end),
+          not: nextDayMidnight,
+        },
+      },
+    ],
+  };
+}
+
 export function normalizeBusinessCalendarDate(input: string | Date): Date {
   const dateStr =
     typeof input === "string" && DATE_ONLY_REGEX.test(input)

@@ -26,7 +26,7 @@ import { invalidateDashboard } from "../../../lib/cache-helpers";
 import { serializeInvoiceEditHistoryEntry } from "../../../lib/user-display";
 import { applyAvailableStoreCreditToInvoice } from "../../../lib/store-credit-apply";
 import {
-  endOfBusinessDay,
+  civilCalendarDateRangeWhere,
   isBeforeBusinessToday,
   isFutureBusinessDate,
   startOfBusinessDay,
@@ -278,12 +278,17 @@ export async function GET(request: NextRequest) {
       };
     }
 
-    // Date range filter (by invoice date)
+    // Date range filter by civil invoice date (matches UI / formatBusinessDate).
+    // Do not use Chicago day bounds alone — that pulls in next-day UTC midnights.
     if (startDate && endDate) {
-      where.invoiceDate = {
-        gte: startOfBusinessDay(startDate),
-        lte: endOfBusinessDay(endDate),
-      };
+      const dateFilter = civilCalendarDateRangeWhere(
+        "invoiceDate",
+        startDate,
+        endDate,
+      );
+      if (dateFilter) {
+        where.AND = [...(where.AND || []), dateFilter];
+      }
     }
 
     // Shipment filter (local shipmentId / trackingNumber)

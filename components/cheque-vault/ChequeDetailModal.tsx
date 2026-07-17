@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { ChequeVaultRecord, InvoiceAllocation } from "@/hooks/useChequeVault";
+import ConfirmModal from "@/components/ConfirmModal";
 import InvoiceSearchModal, { AllocationEntry } from "./InvoiceSearchModal";
 import ChequeDocumentPreview from "./ChequeDocumentPreview";
 import { useAuth } from "@/lib/AuthContext";
