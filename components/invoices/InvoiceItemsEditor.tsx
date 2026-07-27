@@ -118,6 +118,12 @@ export default function InvoiceItemsEditor({
     ]);
   };
 
+  const parseQuantityValue = (value: string | number): number => {
+    if (typeof value === "number") return value;
+    const parsed = parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+
   const updateItem = (
     index: number,
     field: keyof InvoiceItem,
@@ -197,16 +203,27 @@ export default function InvoiceItemsEditor({
               <div>
                 <input
                   type="number"
-                  min="0.01"
+                  min="0"
                   step="any"
-                  value={item.quantity || ""}
-                  onChange={(e) =>
-                    updateItem(
-                      index,
-                      "quantity",
-                      parseFloat(e.target.value) || 1,
-                    )
+                  value={
+                    typeof item.quantity === "string"
+                      ? item.quantity
+                      : item.quantity || ""
                   }
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    if (raw === "" || /^\d*\.?\d*$/.test(raw)) {
+                      updateItem(
+                        index,
+                        "quantity",
+                        raw === "" ||
+                          raw.includes(".") ||
+                          raw === "0"
+                          ? raw
+                          : parseFloat(raw),
+                      );
+                    }
+                  }}
                   onBlur={(e) => {
                     const val = parseFloat(e.target.value);
                     if (!isNaN(val) && val > 0) {
@@ -252,7 +269,7 @@ export default function InvoiceItemsEditor({
                 />
               </div>
               <div className="rounded-lg bg-gray-100 px-3 py-2 text-right font-medium text-gray-700">
-                ${(item.quantity * item.price).toFixed(2)}
+                ${(parseQuantityValue(item.quantity) * item.price).toFixed(2)}
               </div>
               <div>
                 <input
