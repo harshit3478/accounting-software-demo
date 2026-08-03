@@ -395,7 +395,7 @@ export default function RecordPaymentModal({
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-3">
             <div>
               <p className="text-sm font-semibold text-amber-900">
-                Late fee required for overdue installment
+                Late fee required for overdue installment — adds to invoice total
               </p>
               <p className="text-xs text-amber-800 mt-1">
                 {overdueInstallment.label} was due on{" "}
@@ -413,7 +413,7 @@ export default function RecordPaymentModal({
                     : "bg-white text-amber-900 border-amber-200"
                 }`}
               >
-                Apply late fee
+                Add to invoice total
               </button>
               <button
                 type="button"

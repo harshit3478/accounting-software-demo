@@ -95,6 +95,7 @@ interface Invoice {
   dueDateReason?: string | null;
   status: "paid" | "pending" | "overdue" | "partial" | "abandoned" | "inactive";
   isLayaway: boolean;
+  waiveLayawayFee?: boolean;
   createdAt: string;
   termsId?: number | null;
   termsSnapshot?: string[] | null;
@@ -159,6 +160,7 @@ export default function EditInvoiceModal({
   const [layawayBasisUnit, setLayawayBasisUnit] = useState("grams");
   const [layawayDownPayment, setLayawayDownPayment] = useState(0);
   const [layawayNotes, setLayawayNotes] = useState("");
+  const [waiveLayawayFee, setWaiveLayawayFee] = useState(false);
   const [recalculationFeeSetting, setRecalculationFeeSetting] = useState({
     amount: 0,
     isActive: false,
@@ -356,6 +358,7 @@ export default function EditInvoiceModal({
       setLayawayFrequency(invoice.layawayPlan?.paymentFrequency || "monthly");
       setLayawayDownPayment(Number(invoice.layawayPlan?.downPayment || 0));
       setLayawayNotes(invoice.layawayPlan?.notes || "");
+      setWaiveLayawayFee(Boolean(invoice.waiveLayawayFee));
       if (invoice.terms?.id) {
         setSelectedTermsId(invoice.terms.id);
         setCustomTerms(
@@ -408,7 +411,7 @@ export default function EditInvoiceModal({
   };
 
   const calculateLayawayFeeAmount = () => {
-    if (!isLayaway) return 0;
+    if (!isLayaway || waiveLayawayFee) return 0;
     if (editMigratedInvoice) {
       return Number(invoice?.layawayFee || 0);
     }
@@ -649,6 +652,7 @@ export default function EditInvoiceModal({
           dueDate,
           dueDateReason: requiresDueDateReason ? dueDateReason.trim() : null,
           isLayaway,
+          waiveLayawayFee: isLayaway ? waiveLayawayFee : false,
           layawayPlan: isLayaway
             ? {
                 months: layawayMonths,
@@ -1095,6 +1099,23 @@ export default function EditInvoiceModal({
                     <h4 className="text-sm font-semibold text-purple-900">
                       Layaway Plan Configuration
                     </h4>
+
+                    <div className="flex items-center">
+                      <input
+                        type="checkbox"
+                        id="editWaiveLayawayFee"
+                        checked={waiveLayawayFee}
+                        onChange={(e) => setWaiveLayawayFee(e.target.checked)}
+                        disabled={editMigratedInvoice}
+                        className="rounded border-gray-300 text-purple-600 focus:ring-purple-500 mr-2 disabled:opacity-50"
+                      />
+                      <label
+                        htmlFor="editWaiveLayawayFee"
+                        className="text-sm font-medium text-gray-700"
+                      >
+                        Waive layaway fee
+                      </label>
+                    </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>

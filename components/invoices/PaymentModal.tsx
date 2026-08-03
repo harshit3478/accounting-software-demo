@@ -477,7 +477,7 @@ export default function PaymentModal({
                 <p className="text-xs text-amber-800 mt-1">
                   {overdueInstallment.label} was due on{" "}
                   {formatBusinessDate(overdueInstallment.dueDate)}.
-                  Apply late fee to this invoice? Admin late fee: $
+                  Add late fee to invoice total? Admin late fee: $
                   {lateFeeSetting.amount.toFixed(2)}
                 </p>
               </div>
@@ -491,7 +491,7 @@ export default function PaymentModal({
                       : "bg-white text-amber-900 border-amber-200"
                   }`}
                 >
-                  Apply late fee
+                  Add to invoice total
                 </button>
                 <button
                   type="button"

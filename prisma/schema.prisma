@@ -118,6 +118,7 @@ model Invoice {
   shippingFee         Decimal  @default(0) @db.Decimal(10, 2)
   insuranceAmount     Decimal  @default(0) @db.Decimal(10, 2)
   layawayFee          Decimal  @default(0) @db.Decimal(10, 2)
+  lateFee             Decimal  @default(0) @db.Decimal(10, 2)
   processingFee       Decimal  @default(0) @db.Decimal(10, 2)
   earlyPaymentDiscount Decimal @default(0) @db.Decimal(10, 2)
   insuranceBaseAmount Decimal? @db.Decimal(10, 2)
@@ -129,6 +130,7 @@ model Invoice {
   dueDateReason String?       @db.Text
   status        InvoiceStatus @default(pending)
   isLayaway     Boolean       @default(false)
+  waiveLayawayFee Boolean     @default(false)
   isHold        Boolean       @default(false)
 
   // Automated due reminder tracking

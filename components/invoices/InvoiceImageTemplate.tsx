@@ -9,8 +9,9 @@ import {
   getInvoicePaymentsForPdf,
   getInvoicePdfPaymentLabel,
   getInvoiceTotalForDisplay,
+  getAppliedRemovedItemDepositFeeEntries,
+  getItemDepositReferenceRow,
   getRecalculationFeeDisplayEntries,
-  getRemovedItemDepositFeeDisplayEntries,
   isAbandonedInvoice,
   resolveLiveTypeLabel,
   isAbandonedLayawayInvoice,
@@ -141,9 +142,9 @@ export default function InvoiceImageTemplate({
     { includeSubtotal: true },
   );
   const biz = BUSINESS_CONFIG;
-  const removedItemDepositFeeEntries = getRemovedItemDepositFeeDisplayEntries(
-    invoice.editHistory || [],
-  );
+  const appliedRemovedItemDepositFeeEntries =
+    getAppliedRemovedItemDepositFeeEntries(invoice.editHistory || []);
+  const itemDepositReference = getItemDepositReferenceRow(invoice.items);
   const recalculationFeeEntries = getRecalculationFeeDisplayEntries(
     invoice.editHistory || [],
   );
@@ -604,7 +605,7 @@ export default function InvoiceImageTemplate({
             </div>
           ))}
           {!abandoned &&
-            removedItemDepositFeeEntries.map((entry) => (
+            appliedRemovedItemDepositFeeEntries.map((entry) => (
               <div
                 key={`${entry.date}-${entry.label}`}
                 style={{
@@ -615,9 +616,7 @@ export default function InvoiceImageTemplate({
                 }}
               >
                 <span style={{ color: "#333333" }}>
-                  {entry.action === "skip"
-                    ? `${entry.label}: ${entry.reason}`
-                    : `${entry.label} (${fmtDate(entry.date)})`}
+                  {entry.label} ({fmtDate(entry.date)})
                 </span>
                 <span style={{ fontWeight: 600 }}>{fmt(entry.amount)}</span>
               </div>
@@ -715,6 +714,21 @@ export default function InvoiceImageTemplate({
             <span>Amount Due (USD):</span>
             <span>{fmt(amtDue)}</span>
           </div>
+          {itemDepositReference && (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                padding: "6px 0 0",
+                fontSize: "11px",
+                fontStyle: "italic",
+                color: "#777777",
+              }}
+            >
+              <span>{itemDepositReference.label}</span>
+              <span>{formatInvoiceSummaryRowValue(itemDepositReference.value)}</span>
+            </div>
+          )}
         </div>
       </div>
 

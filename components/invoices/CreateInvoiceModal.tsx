@@ -344,6 +344,7 @@ export default function CreateInvoiceModal({
   const [layawayBasisUnit, setLayawayBasisUnit] = useState("grams");
   const [layawayDownPayment, setLayawayDownPayment] = useState(0);
   const [layawayNotes, setLayawayNotes] = useState("");
+  const [waiveLayawayFee, setWaiveLayawayFee] = useState(false);
   const [termsOptions, setTermsOptions] = useState<TermOption[]>([]);
   const [selectedTermsId, setSelectedTermsId] = useState<
     number | "custom" | "none"
@@ -398,7 +399,7 @@ export default function CreateInvoiceModal({
   };
 
   const calculateLayawayFeeAmount = () => {
-    if (!isLayaway) return 0;
+    if (!isLayaway || waiveLayawayFee) return 0;
     return calculateLayawayFeeFromItems(
       items as any,
       layawayMonths || 3,
@@ -604,6 +605,7 @@ export default function CreateInvoiceModal({
     setLayawayFrequency("monthly");
     setLayawayDownPayment(0);
     setLayawayNotes("");
+    setWaiveLayawayFee(false);
     setSelectedTermsId("none");
     setCustomTerms([""]);
     setSelectedLiveTypeId("none");
@@ -754,6 +756,7 @@ export default function CreateInvoiceModal({
             : selectedShippingFeeRuleId,
         liveTypeId: selectedLiveTypeId === "none" ? null : selectedLiveTypeId,
         isLayaway,
+        waiveLayawayFee: isLayaway ? waiveLayawayFee : false,
         ...(isLayaway && {
           layawayPlan: {
             months: layawayMonths,
@@ -1466,6 +1469,22 @@ export default function CreateInvoiceModal({
                       </svg>
                       Layaway Plan Configuration
                     </h4>
+
+                    <div className="flex items-center">
+                      <input
+                        type="checkbox"
+                        id="waiveLayawayFee"
+                        checked={waiveLayawayFee}
+                        onChange={(e) => setWaiveLayawayFee(e.target.checked)}
+                        className="rounded border-gray-300 text-purple-600 focus:ring-purple-500 mr-2"
+                      />
+                      <label
+                        htmlFor="waiveLayawayFee"
+                        className="text-sm font-medium text-gray-700"
+                      >
+                        Waive layaway fee
+                      </label>
+                    </div>
 
                     <div className="grid grid-cols-2 gap-4">
                       <div>

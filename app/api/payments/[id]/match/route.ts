@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "../../../../../lib/prisma";
 import { requireAuth } from "../../../../../lib/auth";
 import { updateInvoiceAfterPayment } from "../../../../../lib/invoice-utils";
-import { createLateFeePayment } from "../../../../../lib/late-fee";
+import { applyLateFeeToInvoice } from "../../../../../lib/late-fee";
 
 interface MatchRequest {
   matches: Array<{
@@ -204,22 +204,11 @@ export async function POST(
       }
 
       if (normalizedLateFeeAmount > 0 && body.matches.length > 0) {
-        await createLateFeePayment(tx, {
+        await applyLateFeeToInvoice(tx, {
           invoiceId: body.matches[0].invoiceId,
-          methodId: payment.methodId,
-          paymentDate: payment.paymentDate,
           amount: normalizedLateFeeAmount,
           userId: user.id,
-          reason: normalizedLateFeeWaivedReason || null,
-        });
-
-        await tx.invoice.update({
-          where: { id: body.matches[0].invoiceId },
-          data: {
-            amount: {
-              increment: normalizedLateFeeAmount,
-            },
-          },
+          reason: null,
         });
       }
 

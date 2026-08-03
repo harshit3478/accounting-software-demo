@@ -8,8 +8,9 @@ import {
   getInvoicePaymentsForPdf,
   getInvoicePdfPaymentLabel,
   getInvoiceTotalForDisplay,
+  getAppliedRemovedItemDepositFeeEntries,
+  getItemDepositReferenceRow,
   getRecalculationFeeDisplayEntries,
-  getRemovedItemDepositFeeDisplayEntries,
   isAbandonedInvoice,
   isAbandonedLayawayInvoice,
   resolveInvoiceDate,
@@ -110,11 +111,24 @@ interface Invoice {
 
 const { colors } = BUSINESS_CONFIG;
 
-function getCurrentItemDepositFeeTotal(invoice: Invoice): number {
-  return (invoice.items || []).reduce(
-    (sum, item) => sum + Number(item.depositFee || 0),
-    0,
-  );
+function renderPdfItemDepositReference(
+  doc: jsPDF,
+  label: string,
+  value: number,
+  summaryLabelX: number,
+  rightEdge: number,
+  y: number,
+): number {
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "italic");
+  doc.setTextColor(120, 120, 120);
+  const labelLines = doc.splitTextToSize(label, rightEdge - summaryLabelX + 24);
+  doc.text(labelLines, summaryLabelX, y, { align: "right" });
+  doc.text(formatInvoiceSummaryRowValue(value), rightEdge, y, { align: "right" });
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(26, 26, 26);
+  return y + (labelLines.length > 1 ? labelLines.length * 5 + 1 : 6);
 }
 
 function drawInvoiceStatusWatermark(doc: jsPDF, text: "CANCELLED" | "ABANDONED") {
@@ -501,9 +515,9 @@ export async function generateSingleInvoicePDF(
     invoice.invoiceDate,
     invoice.createdAt,
   );
-  const removedItemDepositFeeEntries = getRemovedItemDepositFeeDisplayEntries(
-    invoice.editHistory || [],
-  );
+  const appliedRemovedItemDepositFeeEntries =
+    getAppliedRemovedItemDepositFeeEntries(invoice.editHistory || []);
+  const itemDepositReference = getItemDepositReferenceRow(invoice.items);
   const liveTypeLabel = resolveLiveTypeLabel(invoice);
   const amtDue = getInvoiceAmountDue(invoice);
   const invoiceTotal = getInvoiceTotalForDisplay(invoice);
@@ -712,11 +726,8 @@ export async function generateSingleInvoicePDF(
   });
 
   if (!isAbandonedInvoice(invoice)) {
-    removedItemDepositFeeEntries.forEach((entry) => {
-      const label =
-        entry.action === "skip"
-          ? `${entry.label}: ${entry.reason}`
-          : `${entry.label} (${formatBusinessDate(entry.date)})`;
+    appliedRemovedItemDepositFeeEntries.forEach((entry) => {
+      const label = `${entry.label} (${formatBusinessDate(entry.date)})`;
       const labelLines = doc.splitTextToSize(label, R - L - 35);
       doc.text(labelLines, summaryLabelX, y, { align: "right" });
       doc.text(`$${entry.amount.toFixed(2)}`, R, y, { align: "right" });
@@ -735,7 +746,20 @@ export async function generateSingleInvoicePDF(
   y += 6;
   doc.text("Amount Due:", summaryLabelX, y, { align: "right" });
   doc.text(`$${amtDue.toFixed(2)}`, R, y, { align: "right" });
-  y += 10;
+  y += 6;
+
+  if (itemDepositReference) {
+    y = renderPdfItemDepositReference(
+      doc,
+      itemDepositReference.label,
+      itemDepositReference.value,
+      summaryLabelX,
+      R,
+      y + 4,
+    );
+  }
+
+  y += 4;
 
   // ── 8. NOTES / TERMS ──────────────────────────────────────────────────────
   const hasDescription = !!invoice.description;
@@ -978,9 +1002,9 @@ export function buildSingleInvoicePdfBuffer(
       year: "numeric",
     },
   );
-  const removedItemDepositFeeEntries = getRemovedItemDepositFeeDisplayEntries(
-    invoice.editHistory || [],
-  );
+  const appliedRemovedItemDepositFeeEntries =
+    getAppliedRemovedItemDepositFeeEntries(invoice.editHistory || []);
+  const itemDepositReference = getItemDepositReferenceRow(invoice.items);
   const liveTypeLabel = resolveLiveTypeLabel(invoice);
   const amtDue = getInvoiceAmountDue(invoice);
   const invoiceTotal = getInvoiceTotalForDisplay(invoice);
@@ -1127,11 +1151,8 @@ export function buildSingleInvoicePdfBuffer(
   });
 
   if (!isAbandonedInvoice(invoice)) {
-    removedItemDepositFeeEntries.forEach((entry) => {
-      const label =
-        entry.action === "skip"
-          ? `${entry.label}: ${entry.reason}`
-          : `${entry.label} (${formatBusinessDate(entry.date)})`;
+    appliedRemovedItemDepositFeeEntries.forEach((entry) => {
+      const label = `${entry.label} (${formatBusinessDate(entry.date)})`;
       const labelLines = doc.splitTextToSize(label, 115);
       doc.text(labelLines, 130, y, { align: "right" });
       doc.text(`$${entry.amount.toFixed(2)}`, R, y, { align: "right" });
@@ -1149,7 +1170,20 @@ export function buildSingleInvoicePdfBuffer(
   y += 6;
   doc.text("Amount Due:", 130, y, { align: "right" });
   doc.text(`$${amtDue.toFixed(2)}`, R, y, { align: "right" });
-  y += 10;
+  y += 6;
+
+  if (itemDepositReference) {
+    y = renderPdfItemDepositReference(
+      doc,
+      itemDepositReference.label,
+      itemDepositReference.value,
+      130,
+      R,
+      y + 4,
+    );
+  }
+
+  y += 4;
 
   const hasDescription = !!invoice.description;
   const hasLayaway =

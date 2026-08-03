@@ -4,7 +4,7 @@ import { requireAuth } from "../../../../lib/auth";
 import { updateInvoiceAfterPayment } from "../../../../lib/invoice-utils";
 import { Prisma } from "@prisma/client";
 import { stampPaymentCode } from "../../../../lib/payment-code";
-import { createLateFeePayment } from "../../../../lib/late-fee";
+import { applyLateFeeToInvoice } from "../../../../lib/late-fee";
 import { recordStoreCreditApplication } from "../../../../lib/store-credit-apply";
 
 export async function POST(request: NextRequest) {
@@ -160,22 +160,11 @@ export async function POST(request: NextRequest) {
       }
 
       if (normalizedLateFeeAmount > 0) {
-        await createLateFeePayment(tx, {
+        await applyLateFeeToInvoice(tx, {
           invoiceId,
-          methodId: payment.methodId,
-          paymentDate: payment.paymentDate,
           amount: normalizedLateFeeAmount,
           userId: user.id,
           reason: normalizedLateFeeReason || null,
-        });
-
-        await tx.invoice.update({
-          where: { id: invoiceId },
-          data: {
-            amount: {
-              increment: normalizedLateFeeAmount,
-            },
-          },
         });
       }
 

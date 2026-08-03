@@ -423,6 +423,10 @@ export async function GET(request: NextRequest) {
       layawayFee: invoice.layawayFee?.toNumber
         ? invoice.layawayFee.toNumber()
         : invoice.layawayFee,
+      waiveLayawayFee: Boolean(invoice.waiveLayawayFee),
+      lateFee: invoice.lateFee?.toNumber
+        ? invoice.lateFee.toNumber()
+        : (invoice.lateFee ?? 0),
       processingFee: invoice.processingFee?.toNumber
         ? invoice.processingFee.toNumber()
         : (invoice.processingFee ?? 0),
@@ -517,6 +521,7 @@ export async function POST(request: NextRequest) {
       dueDateReason,
       description,
       isLayaway,
+      waiveLayawayFee,
       layawayPlan,
       useDefaultTerms,
       termsId,
@@ -692,13 +697,15 @@ export async function POST(request: NextRequest) {
     const layawayFeeRates = await getConfiguredLayawayFeeRates();
     const depositFeeRules = await getConfiguredDepositFeeRules();
     const layawayMonths = Number(layawayPlan?.months || 0);
-    const layawayFeeAmount = isLayaway
-      ? calculateLayawayFeeFromItems(
-          items as any,
-          layawayMonths || 3,
-          layawayFeeRates,
-        )
-      : 0;
+    const shouldWaiveLayawayFee = Boolean(waiveLayawayFee);
+    const layawayFeeAmount =
+      isLayaway && !shouldWaiveLayawayFee
+        ? calculateLayawayFeeFromItems(
+            items as any,
+            layawayMonths || 3,
+            layawayFeeRates,
+          )
+        : 0;
     const normalizedItems = Array.isArray(items)
       ? items.map((item: any) => ({
           ...item,
@@ -788,6 +795,7 @@ export async function POST(request: NextRequest) {
         dueDateReason: requiresDueDateReason ? normalizedDueDateReason : null,
         status: "pending",
         isLayaway: isLayaway || false,
+        waiveLayawayFee: isLayaway ? shouldWaiveLayawayFee : false,
         description,
         customerId: resolvedCustomerId,
         externalInvoiceNumber: externalInvoiceNumber || null,
@@ -910,6 +918,10 @@ export async function POST(request: NextRequest) {
       layawayFee: invAny.layawayFee?.toNumber
         ? invAny.layawayFee.toNumber()
         : invAny.layawayFee,
+      waiveLayawayFee: Boolean(invAny.waiveLayawayFee),
+      lateFee: invAny.lateFee?.toNumber
+        ? invAny.lateFee.toNumber()
+        : (invAny.lateFee ?? 0),
       insuranceBaseAmount:
         normalizedInsuranceBaseAmount ??
         (invAny.insuranceBaseAmount?.toNumber

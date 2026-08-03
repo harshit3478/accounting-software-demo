@@ -120,7 +120,11 @@ export async function updateInvoiceAfterPayment(
     invoice.payments.map((payment) => payment.id),
   );
   const directPayments = invoice.payments
-    .filter((payment) => payment.source !== "store_credit_applied")
+    .filter(
+      (payment) =>
+        payment.source !== "store_credit_applied" &&
+        payment.source !== "late_fee",
+    )
     .reduce((sum, p) => sum + Number(p.amount), 0);
   const matchedPayments = invoice.paymentMatches
     .filter((match) => !directPaymentIds.has(match.paymentId))
@@ -214,14 +218,18 @@ export async function updateInvoiceAfterPayment(
     const overpaymentAfterDiscount = roundMoney(totalPaid - finalInvoiceAmount);
     if (overpaymentAfterDiscount > 0.01 && invoice.customerId) {
       const latestPayment = [...invoice.payments]
-        .filter((payment) => payment.source !== "store_credit_applied")
+        .filter(
+          (payment) =>
+            payment.source !== "store_credit_applied" &&
+            payment.source !== "late_fee",
+        )
         .sort(
           (left, right) =>
             new Date(right.paymentDate).getTime() -
             new Date(left.paymentDate).getTime(),
         )[0];
 
-      let methodId = latestPayment?.methodId;
+      let methodId: number | undefined = latestPayment?.methodId;
       if (!methodId) {
         const fallbackMethod = await prisma.paymentMethodEntry.findFirst({
           where: { isActive: true },

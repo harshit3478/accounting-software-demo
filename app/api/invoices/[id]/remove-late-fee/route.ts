@@ -21,13 +21,14 @@ export async function POST(
       );
     }
 
-    const { paymentId, reason } = await request.json();
+    const { paymentId, historyEntryId, reason } = await request.json();
     const parsedPaymentId = Number(paymentId);
+    const parsedHistoryEntryId = Number(historyEntryId);
     const trimmedReason = typeof reason === "string" ? reason.trim() : "";
 
-    if (!Number.isFinite(parsedPaymentId)) {
+    if (!Number.isFinite(parsedPaymentId) && !Number.isFinite(parsedHistoryEntryId)) {
       return NextResponse.json(
-        { error: "Valid payment id is required" },
+        { error: "Valid history entry id or payment id is required" },
         { status: 400 },
       );
     }
@@ -42,7 +43,10 @@ export async function POST(
     const removal = await prisma.$transaction(async (tx) => {
       const result = await removeLateFeeFromInvoice(tx, {
         invoiceId,
-        paymentId: parsedPaymentId,
+        paymentId: Number.isFinite(parsedPaymentId) ? parsedPaymentId : undefined,
+        historyEntryId: Number.isFinite(parsedHistoryEntryId)
+          ? parsedHistoryEntryId
+          : undefined,
       });
 
       const historyEntry = await tx.invoiceEditHistory.create({
@@ -52,10 +56,13 @@ export async function POST(
           reason: `[Late fee removed] ${trimmedReason}`,
           changes: {
             lateFeeRemoved: {
-              paymentId: parsedPaymentId,
-              paymentCode: result.paymentCode,
+              historyEntryId: "historyEntryId" in result ? result.historyEntryId : null,
+              paymentId: "paymentId" in result ? result.paymentId : null,
+              paymentCode: "paymentCode" in result ? result.paymentCode : null,
               amount: result.feeAmount,
-              previousNotes: result.notes,
+              previousNotes:
+                ("notes" in result ? result.notes : null) ??
+                ("reason" in result ? result.reason : null),
               invoiceAmount: {
                 from: result.previousInvoiceAmount,
                 to: result.nextInvoiceAmount,
@@ -103,6 +110,7 @@ export async function POST(
       invoice: {
         id: updatedInvoice.id,
         amount: updatedInvoice.amount.toNumber(),
+        lateFee: Number((updatedInvoice as any).lateFee?.toNumber?.() ?? 0),
         paidAmount: updatedInvoice.paidAmount.toNumber(),
         status: updatedInvoice.status,
         layawayPlan: updatedInvoice.layawayPlan

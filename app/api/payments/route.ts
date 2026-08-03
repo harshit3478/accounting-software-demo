@@ -6,7 +6,7 @@ import { invalidateDashboard } from "../../../lib/cache-helpers";
 import { serializeInvoiceEditHistoryEntry } from "../../../lib/user-display";
 import { sendPaymentConfirmation } from "../../../lib/email";
 import { stampPaymentCode } from "../../../lib/payment-code";
-import { createLateFeePayment } from "../../../lib/late-fee";
+import { applyLateFeeToInvoice } from "../../../lib/late-fee";
 import { endOfBusinessDay, startOfBusinessDay } from "../../../lib/business-date";
 import {
   buildPaymentStatusWhere,
@@ -292,23 +292,12 @@ export async function POST(request: NextRequest) {
           await stampPaymentCode(tx, mainPayment.id);
         }
 
-        if (mainPayment && normalizedLateFeeAmount > 0) {
-          await createLateFeePayment(tx, {
+        if (normalizedLateFeeAmount > 0) {
+          await applyLateFeeToInvoice(tx, {
             invoiceId: parsedInvoiceId,
-            methodId: parseInt(methodId),
-            paymentDate: paymentDate ? new Date(paymentDate) : new Date(),
             amount: normalizedLateFeeAmount,
             userId: user.id,
             reason: normalizedLateFeeReason || null,
-          });
-
-          await (tx as any).invoice.update({
-            where: { id: parsedInvoiceId },
-            data: {
-              amount: {
-                increment: normalizedLateFeeAmount,
-              },
-            },
           });
         }
 

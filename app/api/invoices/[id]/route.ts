@@ -35,6 +35,7 @@ import { calculateRestockingFeeAmount } from "../../../../lib/restocking-fee";
 import { buildLayawayInstallmentSchedule } from "../../../../lib/layaway-installments";
 import { uploadToR2 } from "../../../../lib/r2-client";
 import { allocatePaymentAmounts } from "../../../../lib/allocate-payment-amounts";
+import { resolveAppliedRemovedItemDepositFeeAmount } from "../../../../lib/invoice-display";
 
 async function getConfiguredLayawayFeeRates() {
   const rateModel = (prisma as any)?.layawayFeeSetting;
@@ -127,6 +128,7 @@ export async function PUT(
       dueDateReason,
       description,
       isLayaway,
+      waiveLayawayFee,
       layawayPlan,
       termsId,
       newTerms,
@@ -166,6 +168,12 @@ export async function PUT(
     // Check if invoice exists
     const existingInvoice = await prisma.invoice.findUnique({
       where: { id: invoiceId },
+      include: {
+        editHistory: {
+          select: { changes: true },
+          orderBy: { createdAt: "asc" },
+        },
+      },
     });
 
     if (!existingInvoice) {
@@ -303,11 +311,15 @@ export async function PUT(
     const existingLayawayFee = Number(
       existingInvoiceAny.layawayFee?.toNumber?.() ?? 0,
     );
+    const resolvedWaiveLayawayFee =
+      typeof waiveLayawayFee === "boolean"
+        ? waiveLayawayFee
+        : Boolean(existingInvoiceAny.waiveLayawayFee);
     const layawayFeeAmount = isMigratedInvoiceEdit
       ? isLayaway
         ? existingLayawayFee
         : 0
-      : isLayaway
+      : isLayaway && !resolvedWaiveLayawayFee
         ? calculateLayawayFeeFromItems(
             items as any,
             layawayMonths || 3,
@@ -404,12 +416,17 @@ export async function PUT(
       );
     }
 
-    const appliedRemovedItemDepositFee = isMigratedInvoiceEdit
-      ? 0
-      : normalizedRemovedDepositFeeAction === "apply"
-        ? removedItemDepositFeeAmount
-        : 0;
+    const appliedRemovedItemDepositFee =
+      resolveAppliedRemovedItemDepositFeeAmount({
+        isMigratedInvoiceEdit,
+        removedItemDepositFeeAmount,
+        removedItemDepositFeeAction: normalizedRemovedDepositFeeAction,
+        existingEditHistory: existingInvoice.editHistory,
+      });
 
+    const existingLateFee = Number(
+      existingInvoiceAny.lateFee?.toNumber?.() ?? existingInvoiceAny.lateFee ?? 0,
+    );
     const totalAmount =
       parseFloat(subtotal) +
       parseFloat(taxAmount) -
@@ -417,7 +434,8 @@ export async function PUT(
       shippingFeeAmount +
       insuranceFeeAmount +
       layawayFeeAmount +
-      appliedRemovedItemDepositFee;
+      appliedRemovedItemDepositFee +
+      existingLateFee;
     const paidAmount = Number(existingInvoiceAny.paidAmount?.toNumber?.() ?? 0);
 
     let resolvedTermsId: number | null = existingTermsId;
@@ -554,6 +572,7 @@ export async function PUT(
       dueDateReason: requiresDueDateReason ? normalizedDueDateReason : null,
       description,
       isLayaway: isLayaway || false,
+      waiveLayawayFee: isLayaway ? resolvedWaiveLayawayFee : false,
       isHold:
         typeof isHold === "boolean" ? isHold : !!existingInvoiceAny.isHold,
       termsId: resolvedTermsId,
@@ -642,6 +661,11 @@ export async function PUT(
       nextData.description || null,
     );
     trackChange("isLayaway", existingInvoice.isLayaway, nextData.isLayaway);
+    trackChange(
+      "waiveLayawayFee",
+      Boolean(existingInvoiceAny.waiveLayawayFee),
+      nextData.waiveLayawayFee,
+    );
     trackChange("isHold", !!existingInvoiceAny.isHold, nextData.isHold);
     trackChange("termsId", existingInvoice.termsId || null, nextData.termsId);
     trackChange("liveTypeId", existingLiveTypeId || null, nextData.liveTypeId);
@@ -889,6 +913,8 @@ export async function PUT(
         (invoice as any).insuranceAmount?.toNumber?.() ?? 0,
       ),
       layawayFee: Number((invoice as any).layawayFee?.toNumber?.() ?? 0),
+      waiveLayawayFee: Boolean((invoice as any).waiveLayawayFee),
+      lateFee: Number((invoice as any).lateFee?.toNumber?.() ?? 0),
       amount: invoice.amount.toNumber(),
       paidAmount: invoice.paidAmount.toNumber(),
     };

@@ -130,3 +130,90 @@ export function buildLateFeeReason(
     installment.dueDate,
   )})`;
 }
+
+export interface LateFeeApplicationEntry {
+  id: number;
+  amount: number;
+  reason: string;
+  createdAt: string;
+  isLegacyPayment?: boolean;
+  paymentCode?: string;
+}
+
+export function getActiveLateFeeApplications(input: {
+  editHistory?: Array<{
+    id: number;
+    createdAt: string;
+    reason?: string;
+    changes?: unknown;
+  }> | null;
+  payments?: Array<{
+    id: number;
+    amount?: number | string;
+    source?: string;
+    notes?: string | null;
+    paymentCode?: string | null;
+    paymentDate?: string | Date;
+    createdAt?: string | Date;
+  }> | null;
+}): LateFeeApplicationEntry[] {
+  const history = input.editHistory || [];
+  const removedHistoryEntryIds = new Set<number>();
+
+  for (const entry of history) {
+    const changes = readLateFeeHistoryChanges(entry.changes);
+    const removedEntryId = Number(changes?.lateFeeRemoved?.historyEntryId ?? 0);
+    if (removedEntryId > 0) {
+      removedHistoryEntryIds.add(removedEntryId);
+    }
+  }
+
+  const applicationEntries: LateFeeApplicationEntry[] = history
+    .map((entry) => {
+      const changes = readLateFeeHistoryChanges(entry.changes);
+      const applied = changes?.lateFeeApplied;
+      const amount = Number(applied?.amount ?? 0);
+      if (!applied || amount <= 0 || removedHistoryEntryIds.has(entry.id)) {
+        return null;
+      }
+
+      return {
+        id: entry.id,
+        amount,
+        reason: String(applied.reason || entry.reason || "Late fee applied"),
+        createdAt: entry.createdAt,
+      };
+    })
+    .filter(Boolean) as LateFeeApplicationEntry[];
+
+  const legacyPayments = (input.payments || [])
+    .filter((payment) => payment.source === "late_fee")
+    .map((payment) => ({
+      id: payment.id,
+      amount: Number(payment.amount || 0),
+      reason: String(payment.notes || "Late fee applied"),
+      createdAt: String(payment.paymentDate || payment.createdAt || ""),
+      isLegacyPayment: true,
+      paymentCode: payment.paymentCode || undefined,
+    }))
+    .filter((entry) => entry.amount > 0);
+
+  return [...applicationEntries, ...legacyPayments];
+}
+
+function readLateFeeHistoryChanges(changes: unknown): {
+  lateFeeApplied?: { amount?: number; reason?: string };
+  lateFeeRemoved?: { historyEntryId?: number; paymentId?: number; amount?: number };
+} | null {
+  if (!changes || typeof changes !== "object" || Array.isArray(changes)) {
+    return null;
+  }
+  return changes as {
+    lateFeeApplied?: { amount?: number; reason?: string };
+    lateFeeRemoved?: {
+      historyEntryId?: number;
+      paymentId?: number;
+      amount?: number;
+    };
+  };
+}

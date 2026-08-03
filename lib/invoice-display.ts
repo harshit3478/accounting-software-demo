@@ -3,6 +3,7 @@ import { formatBusinessDate } from "./business-date";
 export interface InvoiceDisplayLike {
   isLayaway?: boolean;
   layawayFee?: number | null;
+  lateFee?: number | null;
   subtotal?: number | null;
   tax?: number | null;
   discount?: number | null;
@@ -51,6 +52,22 @@ export function getVisibleLayawayFee(invoice: InvoiceDisplayLike): number {
   return calculated > 0 ? Number(calculated.toFixed(2)) : 0;
 }
 
+export function getVisibleLateFee(invoice: {
+  lateFee?: number | null;
+  payments?: Array<{ source?: string; amount?: number | string | null }> | null;
+}): number {
+  const storedLateFee = Number(invoice.lateFee ?? 0);
+  if (storedLateFee > 0) {
+    return Number(storedLateFee.toFixed(2));
+  }
+
+  const legacyTotal = (invoice.payments || [])
+    .filter((payment) => payment.source === "late_fee")
+    .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+
+  return legacyTotal > 0 ? Number(legacyTotal.toFixed(2)) : 0;
+}
+
 export function resolveLiveTypeLabel(
   invoice: InvoiceDisplayLike,
 ): string | null {
@@ -75,15 +92,31 @@ export function resolveLiveTypeLabel(
 export interface InvoiceEditHistoryLike {
   createdAt: string;
   reason: string;
-  changes?: {
-    recalculationFee?: { amount?: number } | null;
-    removedItemDepositFee?: {
-      action?: "apply" | "skip";
-      amount?: number;
-      availableAmount?: number;
-      reason?: string;
-    } | null;
+  changes?: InvoiceEditHistoryChanges | null;
+}
+
+export type InvoiceEditHistoryChanges = {
+  recalculationFee?: { amount?: number } | null;
+  removedItemDepositFee?: {
+    action?: "apply" | "skip";
+    amount?: number;
+    availableAmount?: number;
+    reason?: string;
   } | null;
+};
+
+/** Minimal edit-history shape for amount calculations (changes only). */
+export type InvoiceEditHistoryChangesLike = {
+  changes?: unknown;
+};
+
+function readEditHistoryChanges(
+  changes: unknown,
+): InvoiceEditHistoryChanges | null {
+  if (!changes || typeof changes !== "object" || Array.isArray(changes)) {
+    return null;
+  }
+  return changes as InvoiceEditHistoryChanges;
 }
 
 export interface RecalculationFeeDisplayEntry {
@@ -101,8 +134,9 @@ export function getRecalculationFeeDisplayEntries(
 
   return editHistory
     .map((entry) => {
+      const changes = readEditHistoryChanges(entry.changes);
       const explicitAmount = Number(
-        entry.changes?.recalculationFee?.amount || 0,
+        changes?.recalculationFee?.amount || 0,
       );
       const amount = explicitAmount;
 
@@ -141,20 +175,88 @@ export function getCurrentItemDepositFeeTotal(
 }
 
 export function getAppliedRemovedItemDepositFeeTotal(
-  editHistory?: InvoiceEditHistoryLike[] | null,
+  editHistory?: InvoiceEditHistoryChangesLike[] | null,
 ): number {
   if (!Array.isArray(editHistory)) return 0;
 
   return Number(
     editHistory
       .reduce((sum, entry) => {
-        const removedFee = entry.changes?.removedItemDepositFee;
+        const removedFee =
+          readEditHistoryChanges(entry.changes)?.removedItemDepositFee;
         if (removedFee?.action === "apply") {
           return sum + Number(removedFee.amount || 0);
         }
         return sum;
       }, 0)
       .toFixed(2),
+  );
+}
+
+export function getRecalculationFeeTotal(
+  editHistory?: InvoiceEditHistoryChangesLike[] | null,
+): number {
+  if (!Array.isArray(editHistory)) return 0;
+
+  return Number(
+    editHistory
+      .reduce((sum, entry) => {
+        const amount = Number(
+          readEditHistoryChanges(entry.changes)?.recalculationFee?.amount || 0,
+        );
+        return amount > 0 ? sum + amount : sum;
+      }, 0)
+      .toFixed(2),
+  );
+}
+
+export function resolveAppliedRemovedItemDepositFeeAmount(options: {
+  isMigratedInvoiceEdit: boolean;
+  removedItemDepositFeeAmount: number;
+  removedItemDepositFeeAction: "apply" | "skip" | "none";
+  existingEditHistory?: InvoiceEditHistoryChangesLike[] | null;
+}): number {
+  if (options.isMigratedInvoiceEdit) {
+    return 0;
+  }
+
+  const historicalApplied = getAppliedRemovedItemDepositFeeTotal(
+    options.existingEditHistory,
+  );
+  const newlyApplied =
+    options.removedItemDepositFeeAmount > 0 &&
+    options.removedItemDepositFeeAction === "apply"
+      ? options.removedItemDepositFeeAmount
+      : 0;
+
+  return Number((historicalApplied + newlyApplied).toFixed(2));
+}
+
+export function computeInvoiceAmountFromComponents(invoice: {
+  subtotal?: number | null;
+  tax?: number | null;
+  discount?: number | null;
+  shippingFee?: number | null;
+  insuranceAmount?: number | null;
+  layawayFee?: number | null;
+  editHistory?: InvoiceEditHistoryChangesLike[] | null;
+}): number {
+  const appliedRemovedDepositFee = getAppliedRemovedItemDepositFeeTotal(
+    invoice.editHistory,
+  );
+  const recalculationFee = getRecalculationFeeTotal(invoice.editHistory);
+
+  return Number(
+    (
+      Number(invoice.subtotal || 0) +
+      Number(invoice.tax || 0) -
+      Number(invoice.discount || 0) +
+      Number(invoice.shippingFee || 0) +
+      Number(invoice.insuranceAmount || 0) +
+      Number(invoice.layawayFee || 0) +
+      appliedRemovedDepositFee +
+      recalculationFee
+    ).toFixed(2),
   );
 }
 
@@ -236,24 +338,80 @@ export function getInvoiceAmountDue(invoice: {
   status?: string;
   amount?: number | null;
   paidAmount?: number | null;
+  lateFee?: number | null;
+  payments?: Array<{ source?: string; amount?: number | string | null }> | null;
+  subtotal?: number | null;
+  tax?: number | null;
+  discount?: number | null;
+  earlyPaymentDiscount?: number | null;
+  shippingFee?: number | null;
+  insuranceAmount?: number | null;
+  layawayFee?: number | null;
+  processingFee?: number | null;
+  isLayaway?: boolean;
 }): number {
   if (isAbandonedInvoice(invoice)) {
     return 0;
   }
   return Math.max(
-    Number(invoice.amount || 0) - Number(invoice.paidAmount || 0),
+    getInvoiceTotalForDisplay(invoice) - Number(invoice.paidAmount || 0),
     0,
   );
 }
 
-export function getInvoiceTotalForDisplay(invoice: {
-  status?: string;
-  amount?: number | null;
-}): number {
+/** Sum of standard invoice line items, including late fees. */
+export function computeInvoiceLineItemTotal(
+  invoice: InvoiceDisplayLike & {
+    lateFee?: number | null;
+    processingFee?: number | null;
+    payments?: Array<{ source?: string; amount?: number | string | null }> | null;
+  },
+): number {
+  const total =
+    Number(invoice.subtotal || 0) +
+    Number(invoice.tax || 0) -
+    Number(invoice.discount || 0) -
+    Number(invoice.earlyPaymentDiscount || 0) +
+    Number(invoice.shippingFee || 0) +
+    Number(invoice.insuranceAmount || 0) +
+    getVisibleLayawayFee(invoice) +
+    getVisibleLateFee(invoice) +
+    Number(invoice.processingFee || 0);
+
+  return Number(Math.max(total, 0).toFixed(2));
+}
+
+export function getInvoiceTotalForDisplay(
+  invoice: {
+    status?: string;
+    amount?: number | null;
+    lateFee?: number | null;
+    payments?: Array<{ source?: string; amount?: number | string | null }> | null;
+    subtotal?: number | null;
+    tax?: number | null;
+    discount?: number | null;
+    earlyPaymentDiscount?: number | null;
+    shippingFee?: number | null;
+    insuranceAmount?: number | null;
+    layawayFee?: number | null;
+    processingFee?: number | null;
+    isLayaway?: boolean;
+  },
+): number {
   if (isAbandonedInvoice(invoice)) {
     return 0;
   }
-  return Number(invoice.amount || 0);
+
+  const storedAmount = Number(invoice.amount || 0);
+  const lineItemTotal = computeInvoiceLineItemTotal(invoice);
+
+  // Late fees are part of the invoice total. If amount was recalculated without
+  // lateFee (e.g. during an invoice edit), include it in the displayed total.
+  if (lineItemTotal > storedAmount + 0.009) {
+    return lineItemTotal;
+  }
+
+  return storedAmount;
 }
 
 function getPaymentSourceTotal(
@@ -384,7 +542,7 @@ export function buildInvoicePdfSummaryRows(
     items?: Array<{ depositFee?: number | null }> | null;
   },
   options?: { includeSubtotal?: boolean },
-): Array<{ label: string; value: number }> {
+): InvoicePdfSummaryRow[] {
   if (isAbandonedInvoice(invoice)) {
     const restockingFee = getPaymentSourceTotal(
       invoice.payments,
@@ -423,7 +581,6 @@ export function buildInvoicePdfSummaryRows(
   }
 
   const layawayFee = getVisibleLayawayFee(invoice);
-  const totalDepositAmount = getCurrentItemDepositFeeTotal(invoice.items);
 
   const rows = [
     ...(options?.includeSubtotal
@@ -451,10 +608,9 @@ export function buildInvoicePdfSummaryRows(
     { label: "Shipping Fee:", value: Number(invoice.shippingFee || 0) },
     { label: "Insurance:", value: Number(invoice.insuranceAmount || 0) },
     { label: "Layaway Fee:", value: layawayFee },
-    { label: "Total Deposit Amount:", value: totalDepositAmount },
     {
       label: "Late Fee:",
-      value: getPaymentSourceTotal(invoice.payments, "late_fee"),
+      value: getVisibleLateFee(invoice),
     },
     {
       label: "Deposit Fee:",
@@ -568,6 +724,25 @@ export function getInvoicePdfPaymentLabel(payment: {
   return `Payment on ${dateStr} using ${methodName.toLowerCase()}:`;
 }
 
+export type InvoicePdfSummaryRow = {
+  label: string;
+  value: number;
+};
+
+export function getItemDepositReferenceRow(
+  items?: Array<{ depositFee?: number | null }> | null,
+): InvoicePdfSummaryRow | null {
+  const total = getCurrentItemDepositFeeTotal(items);
+  if (total <= 0) {
+    return null;
+  }
+
+  return {
+    label: "Item deposit (not included in total):",
+    value: total,
+  };
+}
+
 export function getRemovedItemDepositFeeDisplayEntries(
   editHistory?: InvoiceEditHistoryLike[] | null,
 ): RemovedItemDepositFeeDisplayEntry[] {
@@ -597,10 +772,18 @@ export function getRemovedItemDepositFeeDisplayEntries(
         label:
           action === "skip"
             ? "Removed item deposit fee skipped"
-            : "Removed item deposit fee",
+            : "Removed item deposit fee (in total)",
       };
     })
     .filter(
       (entry): entry is RemovedItemDepositFeeDisplayEntry => entry !== null,
     );
+}
+
+export function getAppliedRemovedItemDepositFeeEntries(
+  editHistory?: InvoiceEditHistoryLike[] | null,
+): RemovedItemDepositFeeDisplayEntry[] {
+  return getRemovedItemDepositFeeDisplayEntries(editHistory).filter(
+    (entry) => entry.action === "apply" && entry.amount > 0,
+  );
 }
