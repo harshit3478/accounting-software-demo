@@ -5,7 +5,10 @@ import { updateInvoiceAfterPayment } from "../../../lib/invoice-utils";
 import { invalidateDashboard } from "../../../lib/cache-helpers";
 import { serializeInvoiceEditHistoryEntry } from "../../../lib/user-display";
 import { sendPaymentConfirmation } from "../../../lib/email";
-import { stampPaymentCode } from "../../../lib/payment-code";
+import {
+  buildPaymentSearchConditions,
+  stampPaymentCode,
+} from "../../../lib/payment-code";
 import { applyLateFeeToInvoice } from "../../../lib/late-fee";
 import { endOfBusinessDay, startOfBusinessDay } from "../../../lib/business-date";
 import {
@@ -41,18 +44,9 @@ export async function GET(request: NextRequest) {
     }
 
     // Search filter
-    if (search) {
-      where.OR = [
-        { notes: { contains: search } },
-        {
-          invoice: {
-            OR: [
-              { invoiceNumber: { contains: search } },
-              { clientName: { contains: search } },
-            ],
-          },
-        },
-      ];
+    const searchConditions = buildPaymentSearchConditions(search);
+    if (searchConditions) {
+      where.OR = searchConditions;
     }
 
     // Method filter (now by methodId)

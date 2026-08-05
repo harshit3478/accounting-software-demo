@@ -59,7 +59,7 @@ export default function PaymentFilters({
               id="search"
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
-              placeholder="Search by client, invoice, or notes..."
+              placeholder="Payment ID (PAY-092716), client, invoice, or notes..."
               className="w-full px-4 py-2 pl-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 bg-white"
             />
             <svg
@@ -85,7 +85,13 @@ export default function PaymentFilters({
           </label>
           <DateRangePicker
             value={
-              dateRange || { startDate: "", endDate: "", preset: undefined }
+              dateRange
+                ? {
+                    startDate: dateRange.startDate,
+                    endDate: dateRange.endDate,
+                    preset: dateRange.preset ?? "all",
+                  }
+                : { startDate: "", endDate: "", preset: "all" }
             }
             onChange={onDateRangeChange}
           />

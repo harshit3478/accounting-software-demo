@@ -246,7 +246,7 @@ export default function PaymentFiltersNew({
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 type="text"
-                placeholder="Client, invoice, or notes..."
+                placeholder="Payment ID (PAY-092716), client, invoice, or notes..."
                 value={searchQuery}
                 onChange={(e) => onSearchChange(e.target.value)}
                 className="pl-10 pr-10"

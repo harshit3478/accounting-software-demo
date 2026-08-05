@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "../../../../lib/prisma";
 import { requireAuth } from "../../../../lib/auth";
+import {
+  buildPaymentSearchConditions,
+} from "../../../../lib/payment-code";
 import { buildPaymentStatusWhere } from "../../../../lib/payment-display-status";
 import {
   endOfBusinessDay,
@@ -26,18 +29,9 @@ export async function GET(request: NextRequest) {
     };
 
     // Search filter
-    if (search) {
-      where.OR = [
-        { notes: { contains: search } },
-        {
-          invoice: {
-            OR: [
-              { invoiceNumber: { contains: search } },
-              { clientName: { contains: search } },
-            ],
-          },
-        },
-      ];
+    const searchConditions = buildPaymentSearchConditions(search);
+    if (searchConditions) {
+      where.OR = searchConditions;
     }
 
     // Method filter
@@ -74,6 +68,7 @@ export async function GET(request: NextRequest) {
         user: {
           select: {
             name: true,
+            email: true,
           },
         },
         paymentMatches: {
