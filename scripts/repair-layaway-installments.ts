@@ -3,6 +3,8 @@ import { PrismaClient } from "@prisma/client";
 import {
   previewLayawayInstallmentRepair,
   repairLayawayInstallmentsForInvoice,
+  shouldRepairLayawayInstallments,
+  SKIPPED_LAYAWAY_REPAIR_STATUSES,
   type LayawayInstallmentRepairPreview,
 } from "../lib/repair-layaway-installments";
 
@@ -16,6 +18,8 @@ const BATCH_SIZE = 100;
  * - Recalculates installment amounts from invoice.amount + plan settings
  * - Reconciles isPaid / paidAmount from invoice.paidAmount (due-date order)
  * - Creates missing unpaid installments and removes extra unpaid rows
+ *
+ * Skips abandoned/inactive invoices and $0 invoice totals.
  *
  * Run:  npx tsx scripts/repair-layaway-installments.ts
  * Apply: npx tsx scripts/repair-layaway-installments.ts --apply
@@ -49,7 +53,28 @@ async function main() {
 
   const previews: LayawayInstallmentRepairPreview[] = [];
   let scanned = 0;
+  let skippedInactive = 0;
+  let skippedZeroAmount = 0;
+  let skippedHealthy = 0;
   let cursor: number | undefined;
+
+  const baseWhere = {
+    isLayaway: true,
+    ...(invoiceFilter ? { id: invoiceFilter } : {}),
+    ...(invoiceFilter
+      ? {}
+      : {
+          status: { notIn: [...SKIPPED_LAYAWAY_REPAIR_STATUSES] },
+          amount: { gt: 0 },
+        }),
+    layawayPlan: {
+      is: {
+        installments: {
+          some: {},
+        },
+      },
+    },
+  } as const;
 
   while (true) {
     console.log(
@@ -59,17 +84,7 @@ async function main() {
     );
 
     const invoices = await prisma.invoice.findMany({
-      where: {
-        isLayaway: true,
-        ...(invoiceFilter ? { id: invoiceFilter } : {}),
-        layawayPlan: {
-          is: {
-            installments: {
-              some: {},
-            },
-          },
-        },
-      },
+      where: baseWhere,
       select: {
         id: true,
         invoiceNumber: true,
@@ -105,6 +120,38 @@ async function main() {
       const plan = invoice.layawayPlan;
       if (!plan) continue;
 
+      if (
+        SKIPPED_LAYAWAY_REPAIR_STATUSES.includes(invoice.status as any)
+      ) {
+        skippedInactive += 1;
+        if (invoiceFilter) {
+          console.log(
+            `Skipped ${invoice.invoiceNumber}: status is ${invoice.status}`,
+          );
+        }
+        continue;
+      }
+
+      if (Number(invoice.amount) <= 0) {
+        skippedZeroAmount += 1;
+        if (invoiceFilter) {
+          console.log(
+            `Skipped ${invoice.invoiceNumber}: invoice amount is $0`,
+          );
+        }
+        continue;
+      }
+
+      if (!shouldRepairLayawayInstallments(invoice, plan, plan.installments)) {
+        skippedHealthy += 1;
+        if (invoiceFilter) {
+          console.log(
+            `Skipped ${invoice.invoiceNumber}: layaway schedule already matches invoice total`,
+          );
+        }
+        continue;
+      }
+
       const preview = previewLayawayInstallmentRepair(
         invoice,
         plan,
@@ -113,6 +160,8 @@ async function main() {
 
       if (preview) {
         previews.push(preview);
+      } else {
+        skippedHealthy += 1;
       }
     }
 
@@ -130,6 +179,11 @@ async function main() {
   console.log(
     `\nScanned ${scanned} layaway invoice(s); ${previews.length} need repair.`,
   );
+  if (!invoiceFilter) {
+    console.log(
+      `Skipped: ${skippedInactive} abandoned/inactive, ${skippedZeroAmount} zero-amount, ${skippedHealthy} already correct.`,
+    );
+  }
 
   if (previews.length === 0) {
     return;

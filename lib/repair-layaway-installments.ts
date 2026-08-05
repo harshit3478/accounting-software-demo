@@ -6,7 +6,14 @@ import {
 } from "./layaway-installments";
 
 const AMOUNT_TOLERANCE = 0.02;
-const SUM_TOLERANCE = 0.05;
+/** Ignore schedule totals within $1 or 1% of invoice — normal rounding. */
+const SIGNIFICANT_MISMATCH_RATIO = 0.01;
+const SIGNIFICANT_MISMATCH_MIN = 1;
+/** Installment amounts below 85% of expected indicate the remaining-balance bug. */
+const SHRUNKEN_INSTALLMENT_RATIO = 0.85;
+const INFLATED_INSTALLMENT_RATIO = 1.15;
+
+export const SKIPPED_LAYAWAY_REPAIR_STATUSES = ["abandoned", "inactive"] as const;
 
 type TxClient = Prisma.TransactionClient;
 
@@ -80,8 +87,75 @@ function normalizeFrequency(value: string): LayawayPaymentFrequency {
   return "monthly";
 }
 
-function amountsDiffer(a: number, b: number) {
-  return Math.abs(a - b) > AMOUNT_TOLERANCE;
+function significantMismatchThreshold(invoiceAmount: number) {
+  return Math.max(
+    SIGNIFICANT_MISMATCH_MIN,
+    roundMoney(invoiceAmount * SIGNIFICANT_MISMATCH_RATIO),
+  );
+}
+
+export function shouldRepairLayawayInstallments(
+  invoice: LayawayInvoiceRow,
+  plan: LayawayPlanRow,
+  installments: LayawayInstallmentRow[],
+): boolean {
+  if (!invoice.isLayaway || installments.length === 0) {
+    return false;
+  }
+
+  if (SKIPPED_LAYAWAY_REPAIR_STATUSES.includes(invoice.status as any)) {
+    return false;
+  }
+
+  const invoiceAmount = toNumber(invoice.amount);
+  if (invoiceAmount <= AMOUNT_TOLERANCE) {
+    return false;
+  }
+
+  const scheduleSumBefore = roundMoney(
+    installments.reduce((sum, inst) => sum + toNumber(inst.amount), 0),
+  );
+
+  const expectedRegularAmount = calculateLayawayInstallmentAmount({
+    totalAmount: invoiceAmount,
+    downPayment: toNumber(plan.downPayment),
+    months: plan.months,
+    frequency: normalizeFrequency(plan.paymentFrequency),
+  });
+
+  const regularInstallments = installments.filter(
+    (inst) => !isDownPaymentLabel(inst.label),
+  );
+
+  const hasShrunkenInstallments =
+    expectedRegularAmount > AMOUNT_TOLERANCE &&
+    regularInstallments.some((inst) => {
+      const amount = toNumber(inst.amount);
+      return (
+        amount > AMOUNT_TOLERANCE &&
+        amount < expectedRegularAmount * SHRUNKEN_INSTALLMENT_RATIO
+      );
+    });
+
+  const hasInflatedInstallments =
+    expectedRegularAmount > AMOUNT_TOLERANCE &&
+    regularInstallments.some((inst) => {
+      const amount = toNumber(inst.amount);
+      return amount > expectedRegularAmount * INFLATED_INSTALLMENT_RATIO;
+    });
+
+  const mismatchThreshold = significantMismatchThreshold(invoiceAmount);
+  const scheduleSumWayTooLow =
+    scheduleSumBefore < invoiceAmount - mismatchThreshold;
+  const scheduleSumWayTooHigh =
+    scheduleSumBefore > invoiceAmount + mismatchThreshold;
+
+  return (
+    hasShrunkenInstallments ||
+    hasInflatedInstallments ||
+    scheduleSumWayTooLow ||
+    scheduleSumWayTooHigh
+  );
 }
 
 export function buildExpectedLayawaySchedule(
@@ -171,12 +245,31 @@ function reconcilePaidInstallments(
   return updates;
 }
 
+function amountsDiffer(a: number, b: number) {
+  return Math.abs(a - b) > AMOUNT_TOLERANCE;
+}
+
+function upsertChange(
+  changes: LayawayInstallmentRepairChange[],
+  draft: LayawayInstallmentRepairChange,
+) {
+  const existing = changes.find(
+    (entry) => entry.installmentId === draft.installmentId,
+  );
+  if (existing) {
+    Object.assign(existing, draft);
+    return existing;
+  }
+  changes.push(draft);
+  return draft;
+}
+
 export function previewLayawayInstallmentRepair(
   invoice: LayawayInvoiceRow,
   plan: LayawayPlanRow,
   installments: LayawayInstallmentRow[],
 ): LayawayInstallmentRepairPreview | null {
-  if (!invoice.isLayaway || installments.length === 0) {
+  if (!shouldRepairLayawayInstallments(invoice, plan, installments)) {
     return null;
   }
 
@@ -189,26 +282,6 @@ export function previewLayawayInstallmentRepair(
   );
   const invoiceAmount = toNumber(invoice.amount);
   const paidAmount = toNumber(invoice.paidAmount);
-
-  const expectedRegularAmount = calculateLayawayInstallmentAmount({
-    totalAmount: invoiceAmount,
-    downPayment: toNumber(plan.downPayment),
-    months: plan.months,
-    frequency: normalizeFrequency(plan.paymentFrequency),
-  });
-
-  const regularInstallments = installments.filter(
-    (inst) => !isDownPaymentLabel(inst.label),
-  );
-  const hasShrunkenInstallments = regularInstallments.some((inst) => {
-    const amount = toNumber(inst.amount);
-    return amount > 0 && amount < expectedRegularAmount - AMOUNT_TOLERANCE;
-  });
-  const scheduleSumMismatch = amountsDiffer(scheduleSumBefore, invoiceAmount);
-
-  if (!hasShrunkenInstallments && !scheduleSumMismatch) {
-    return null;
-  }
 
   const { pairs, unmatchedExisting } = matchInstallmentsToSchedule(
     installments,
@@ -261,6 +334,27 @@ export function previewLayawayInstallmentRepair(
     });
   }
 
+  const createdInstallments = pairs
+    .filter((pair) => !pair.existing)
+    .map((pair) => ({
+      label: pair.expected.label,
+      amount: roundMoney(pair.expected.amount),
+      dueDate: pair.expected.dueDate,
+    }));
+
+  const removedInstallmentIds = unmatchedExisting
+    .filter((inst) => !inst.isPaid)
+    .map((inst) => inst.id);
+
+  const hasAmountRepairs =
+    changes.length > 0 ||
+    createdInstallments.length > 0 ||
+    removedInstallmentIds.length > 0;
+
+  if (!hasAmountRepairs) {
+    return null;
+  }
+
   const paidUpdates = reconcilePaidInstallments(correctedRows, paidAmount);
 
   for (const row of correctedRows) {
@@ -274,80 +368,38 @@ export function previewLayawayInstallmentRepair(
     const existingPaidAmount = existing.paidAmount
       ? toNumber(existing.paidAmount)
       : null;
+    const baseChange = {
+      installmentId: row.id,
+      label: row.label,
+      amount: { from: toNumber(existing.amount), to: row.amount },
+    };
 
     if (existing.isPaid !== nextPaid.isPaid) {
-      const change =
-        changes.find((entry) => entry.installmentId === row.id) ??
-        ({
-          installmentId: row.id,
-          label: row.label,
-          amount: { from: toNumber(existing.amount), to: row.amount },
-        } satisfies LayawayInstallmentRepairChange);
-
-      if (!changes.includes(change)) {
-        changes.push(change);
-      }
-
-      change.isPaid = { from: existing.isPaid, to: nextPaid.isPaid };
+      upsertChange(changes, {
+        ...baseChange,
+        isPaid: { from: existing.isPaid, to: nextPaid.isPaid },
+      });
     }
 
     if (existingPaidAmount !== nextPaid.paidAmount) {
-      const change =
-        changes.find((entry) => entry.installmentId === row.id) ??
-        ({
-          installmentId: row.id,
-          label: row.label,
-          amount: { from: toNumber(existing.amount), to: row.amount },
-        } satisfies LayawayInstallmentRepairChange);
-
-      if (!changes.includes(change)) {
-        changes.push(change);
-      }
-
-      change.paidAmount = {
-        from: existingPaidAmount,
-        to: nextPaid.paidAmount,
-      };
+      upsertChange(changes, {
+        ...baseChange,
+        paidAmount: {
+          from: existingPaidAmount,
+          to: nextPaid.paidAmount,
+        },
+      });
     }
 
     if (existing.paymentId !== nextPaid.paymentId) {
-      const change =
-        changes.find((entry) => entry.installmentId === row.id) ??
-        ({
-          installmentId: row.id,
-          label: row.label,
-          amount: { from: toNumber(existing.amount), to: row.amount },
-        } satisfies LayawayInstallmentRepairChange);
-
-      if (!changes.includes(change)) {
-        changes.push(change);
-      }
-
-      change.paymentId = {
-        from: existing.paymentId,
-        to: nextPaid.paymentId,
-      };
+      upsertChange(changes, {
+        ...baseChange,
+        paymentId: {
+          from: existing.paymentId,
+          to: nextPaid.paymentId,
+        },
+      });
     }
-  }
-
-  const createdInstallments = pairs
-    .filter((pair) => !pair.existing)
-    .map((pair) => ({
-      label: pair.expected.label,
-      amount: roundMoney(pair.expected.amount),
-      dueDate: pair.expected.dueDate,
-    }));
-
-  const removedInstallmentIds = unmatchedExisting
-    .filter((inst) => !inst.isPaid)
-    .map((inst) => inst.id);
-
-  if (
-    changes.length === 0 &&
-    createdInstallments.length === 0 &&
-    removedInstallmentIds.length === 0
-  ) {
-    return null;
   }
 
   return {
