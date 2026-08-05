@@ -1,11 +1,17 @@
 export type PaymentDisplayStatus =
   | "active"
+  | "abandoned"
   | "refund"
   | "deposit_fee"
   | "retained_fee"
   | "restocking_fee";
 
-export type PaymentStatusFilter = "active" | "refund" | "deposit_fee" | "all";
+export type PaymentStatusFilter =
+  | "active"
+  | "abandoned"
+  | "refund"
+  | "deposit_fee"
+  | "all";
 
 export function getPaymentDisplayStatus(payment: {
   isAbandoned?: boolean;
@@ -16,6 +22,7 @@ export function getPaymentDisplayStatus(payment: {
   if (payment.source === "retained_fee") return "retained_fee";
   if (payment.source === "restocking_fee") return "restocking_fee";
   if (payment.isAbandoned && payment.refundProofUrl) return "refund";
+  if (payment.isAbandoned) return "abandoned";
   return "active";
 }
 
@@ -25,6 +32,8 @@ export function getPaymentDisplayStatusLabel(
   switch (status) {
     case "refund":
       return "Refund";
+    case "abandoned":
+      return "Abandoned";
     case "deposit_fee":
       return "Deposit Fee";
     case "retained_fee":
@@ -44,6 +53,12 @@ export function buildPaymentStatusWhere(
     return {
       isAbandoned: true,
       refundProofUrl: { not: null },
+    };
+  }
+  if (status === "abandoned") {
+    return {
+      isAbandoned: true,
+      refundProofUrl: null,
     };
   }
   if (status === "deposit_fee") {

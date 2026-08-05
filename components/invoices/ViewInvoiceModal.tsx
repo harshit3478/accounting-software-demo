@@ -746,16 +746,7 @@ export default function ViewInvoiceModal({
           : data.abandonmentRefunds || [];
         setPayments(paymentList);
         setAbandonmentRefunds(refundList);
-        if (invoice.status === "abandoned") {
-          setLocalPaidAmount(Number(invoice.paidAmount || 0));
-        } else {
-          const totalPaid = paymentList.reduce(
-            (sum: number, payment: Payment) =>
-              sum + Number(payment.amount || 0),
-            0,
-          );
-          setLocalPaidAmount(totalPaid);
-        }
+        setLocalPaidAmount(Number(invoice.paidAmount || 0));
       }
     } catch (error) {
       console.error("Failed to fetch payments:", error);

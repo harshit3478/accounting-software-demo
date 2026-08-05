@@ -5,6 +5,7 @@ import {
   assertCustomerEmailAvailable,
   customerEmailErrorResponse,
 } from "../../../../lib/customer-email";
+import { enrichCreditTransactions } from "../../../../lib/store-credit-display";
 
 function isStoreCreditCompatibilityError(error: any): boolean {
   const message = String(error?.message || "");
@@ -51,6 +52,13 @@ export async function GET(
               paymentId: true,
               invoiceId: true,
               createdAt: true,
+              payment: {
+                select: {
+                  id: true,
+                  isAbandoned: true,
+                  paymentCode: true,
+                },
+              },
             },
             orderBy: { createdAt: "desc" },
           },
@@ -103,6 +111,13 @@ export async function GET(
               paymentId: true,
               invoiceId: true,
               createdAt: true,
+              payment: {
+                select: {
+                  id: true,
+                  isAbandoned: true,
+                  paymentCode: true,
+                },
+              },
             },
             orderBy: { createdAt: "desc" },
           },
@@ -200,15 +215,7 @@ export async function GET(
       storeCredit: (customer as any).storeCredit?.toNumber
         ? (customer as any).storeCredit.toNumber()
         : ((customer as any).storeCredit ?? 0),
-      creditTransactions: (customer.creditTransactions || []).map(
-        (tx: any) => ({
-          ...tx,
-          amount: tx.amount?.toNumber ? tx.amount.toNumber() : tx.amount,
-          createdAt: tx.createdAt?.toISOString
-            ? tx.createdAt.toISOString()
-            : tx.createdAt,
-        }),
-      ),
+      creditTransactions: enrichCreditTransactions(customer.creditTransactions || []),
       refundHistory: (customer.invoices || []).flatMap((invoice: any) =>
         (invoice.editHistory || [])
           .filter((entry: any) => entry.changes?.refundProof?.url)

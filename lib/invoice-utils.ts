@@ -102,6 +102,7 @@ export async function updateInvoiceAfterPayment(
           payment: {
             select: {
               paymentDate: true,
+              isAbandoned: true,
             },
           },
         },
@@ -114,6 +115,19 @@ export async function updateInvoiceAfterPayment(
     return { earlyDiscountStoreCredit: 0 };
   }
 
+  // Remove stale matches left on abandoned payments (e.g. re-linked after abandon).
+  const invalidMatchIds = invoice.paymentMatches
+    .filter((match) => match.payment.isAbandoned)
+    .map((match) => match.id);
+  if (invalidMatchIds.length > 0) {
+    await prisma.paymentInvoiceMatch.deleteMany({
+      where: { id: { in: invalidMatchIds } },
+    });
+    invoice.paymentMatches = invoice.paymentMatches.filter(
+      (match) => !match.payment.isAbandoned,
+    );
+  }
+
   // Calculate total paid amount from direct payments and payment matches.
   // Prefer the direct payment row when a payment is represented in both forms.
   const directPaymentIds = new Set(
@@ -122,12 +136,16 @@ export async function updateInvoiceAfterPayment(
   const directPayments = invoice.payments
     .filter(
       (payment) =>
+        !payment.isAbandoned &&
         payment.source !== "store_credit_applied" &&
         payment.source !== "late_fee",
     )
     .reduce((sum, p) => sum + Number(p.amount), 0);
   const matchedPayments = invoice.paymentMatches
-    .filter((match) => !directPaymentIds.has(match.paymentId))
+    .filter(
+      (match) =>
+        !match.payment.isAbandoned && !directPaymentIds.has(match.paymentId),
+    )
     .reduce((sum, m) => sum + Number(m.amount), 0);
   const totalPaid = directPayments + matchedPayments;
 

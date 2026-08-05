@@ -53,6 +53,10 @@ export async function POST(request: NextRequest) {
         throw new Error("Payment not found");
       }
 
+      if (payment.isAbandoned) {
+        throw new Error("Cannot link an abandoned payment to an invoice");
+      }
+
       // Safeguard: If payment is directly linked via invoiceId column, it considers fully used by that invoice
       if (payment.invoiceId) {
         throw new Error(

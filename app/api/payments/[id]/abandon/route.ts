@@ -3,6 +3,10 @@ import prisma from "../../../../../lib/prisma";
 import { requireAuth } from "../../../../../lib/auth";
 import { invalidateDashboard } from "../../../../../lib/cache-helpers";
 import { updateInvoiceAfterPayment } from "../../../../../lib/invoice-utils";
+import {
+  cleanupAbandonedStoreCreditPayment,
+  collectInvoiceIdsAffectedByPaymentAbandon,
+} from "../../../../../lib/abandoned-store-credit-cleanup";
 
 export async function PUT(
   request: NextRequest,
@@ -49,22 +53,17 @@ export async function PUT(
       );
     }
 
-    const affectedInvoiceIds = new Set<number>();
-    if (existingPayment.invoiceId) {
-      affectedInvoiceIds.add(existingPayment.invoiceId);
-    }
-    for (const match of existingPayment.paymentMatches || []) {
-      affectedInvoiceIds.add(match.invoiceId);
-    }
+    const affectedInvoiceIds = collectInvoiceIdsAffectedByPaymentAbandon(
+      existingPayment,
+    );
 
     // Start transaction to ensure consistency
     const result = await prisma.$transaction(async (tx) => {
-      // 1. Mark payment as abandoned with tracking info
       const updatedPayment = await tx.payment.update({
         where: { id: paymentId },
         data: {
           isAbandoned: true,
-          invoiceId: null, // Remove from invoice
+          invoiceId: null,
           abandonedAt: new Date(),
           abandonedBy: user.id,
           abandonReason: reason.trim(),
@@ -75,56 +74,17 @@ export async function PUT(
         },
       });
 
-      // 2. If payment was linked to an invoice, remove all payment matches
-      if (
-        existingPayment.paymentMatches &&
-        existingPayment.paymentMatches.length > 0
-      ) {
-        for (const match of existingPayment.paymentMatches) {
-          // Delete the match
-          await tx.paymentInvoiceMatch.delete({
-            where: { id: match.id },
-          });
-        }
-      }
+      const cleanup = await cleanupAbandonedStoreCreditPayment(tx, {
+        paymentId,
+        paymentCode: existingPayment.paymentCode,
+        reason: reason.trim(),
+        userId: user.id,
+        creditTransactions: existingPayment.creditTransactions,
+        paymentMatches: existingPayment.paymentMatches,
+      });
 
-      // 3. If payment has credit transactions, reverse them
-      if (
-        existingPayment.creditTransactions &&
-        existingPayment.creditTransactions.length > 0
-      ) {
-        for (const creditTx of existingPayment.creditTransactions) {
-          if (creditTx.type === "credit") {
-            // Create a debit transaction to reverse the credit
-            await tx.customerCreditTransaction.create({
-              data: {
-                customerId: creditTx.customerId,
-                amount: creditTx.amount,
-                type: "debit",
-                reason: "Payment abandoned - reversing credit",
-                paymentId: null,
-                createdById: user.id,
-              },
-            });
-
-            // Update customer's storeCredit
-            const customer = await tx.customer.findUnique({
-              where: { id: creditTx.customerId },
-            });
-            if (customer) {
-              await tx.customer.update({
-                where: { id: creditTx.customerId },
-                data: {
-                  storeCredit: Math.max(
-                    0,
-                    customer.storeCredit.toNumber() -
-                      creditTx.amount.toNumber(),
-                  ),
-                },
-              });
-            }
-          }
-        }
+      for (const invoiceId of cleanup.affectedInvoiceIds) {
+        affectedInvoiceIds.add(invoiceId);
       }
 
       return updatedPayment;

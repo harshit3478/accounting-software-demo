@@ -58,6 +58,11 @@ interface CustomerFull extends CustomerDetail {
     paymentId: number | null;
     invoiceId: number | null;
     createdAt: string;
+    paymentIsAbandoned?: boolean;
+    appliedAmount?: number;
+    availableAmount?: number;
+    isVoid?: boolean;
+    isAbandonReversal?: boolean;
   }[];
   refundHistory?: {
     id: number;
@@ -967,26 +972,56 @@ export default function CustomersTab({
                             </thead>
                             <tbody className="divide-y divide-gray-100">
                               {viewingCustomer.creditTransactions.map((tx) => (
-                                <tr key={tx.id} className="hover:bg-gray-50">
+                                <tr
+                                  key={tx.id}
+                                  className={`hover:bg-gray-50 ${tx.isVoid ? "opacity-60" : ""}`}
+                                >
                                   <td className="px-3 py-2 text-gray-600 whitespace-nowrap">
                                     {formatBusinessDate(tx.createdAt)}
                                   </td>
                                   <td className="px-3 py-2">
                                     <span
-                                      className={`px-2 py-0.5 text-xs font-semibold rounded-full ${tx.type === "credit" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}
+                                      className={`px-2 py-0.5 text-xs font-semibold rounded-full ${
+                                        tx.isAbandonReversal
+                                          ? "bg-gray-100 text-gray-700"
+                                          : tx.isVoid
+                                            ? "bg-gray-100 text-gray-600 line-through"
+                                            : tx.type === "credit"
+                                              ? "bg-green-100 text-green-800"
+                                              : "bg-red-100 text-red-800"
+                                      }`}
                                     >
-                                      {tx.type}
+                                      {tx.isAbandonReversal
+                                        ? "reversed"
+                                        : tx.isVoid && tx.type === "credit"
+                                          ? "void"
+                                          : tx.type}
                                     </span>
                                   </td>
                                   <td className="px-3 py-2 text-right text-gray-900 font-medium">
                                     {formatCurrency(Number(tx.amount))}
+                                    {tx.type === "credit" &&
+                                      !tx.isVoid &&
+                                      tx.availableAmount !== undefined &&
+                                      tx.availableAmount < tx.amount && (
+                                        <p className="text-[11px] text-gray-500 font-normal">
+                                          {formatCurrency(tx.availableAmount)}{" "}
+                                          available
+                                        </p>
+                                      )}
                                   </td>
                                   <td className="px-3 py-2 text-gray-600">
                                     {tx.reason || "-"}
+                                    {tx.paymentIsAbandoned && (
+                                      <p className="text-[11px] text-red-600 mt-0.5">
+                                        Source payment abandoned
+                                      </p>
+                                    )}
                                   </td>
                                   <td className="px-3 py-2 text-right">
                                     {tx.type === "credit" &&
-                                      (viewingCustomer.storeCredit || 0) >
+                                      !tx.isVoid &&
+                                      (tx.availableAmount ?? tx.amount) >
                                         0 && (
                                         <button
                                           type="button"

@@ -95,6 +95,8 @@ export default function PaymentTableRow({
     switch (displayStatus) {
       case "refund":
         return "bg-orange-100 text-orange-800";
+      case "abandoned":
+        return "bg-red-100 text-red-800";
       case "deposit_fee":
         return "bg-purple-100 text-purple-800";
       case "retained_fee":

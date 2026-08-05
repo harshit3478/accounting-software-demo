@@ -40,6 +40,13 @@ export async function POST(
       return NextResponse.json({ error: "Payment not found" }, { status: 404 });
     }
 
+    if (payment.isAbandoned) {
+      return NextResponse.json(
+        { error: "Cannot match an abandoned payment to an invoice" },
+        { status: 400 },
+      );
+    }
+
     // Calculate already allocated amount
     const alreadyAllocated = payment.paymentMatches.reduce((sum, match) => {
       return sum + match.amount.toNumber();
@@ -102,8 +109,16 @@ export async function POST(
       const invoice = await prisma.invoice.findUnique({
         where: { id: match.invoiceId },
         include: {
-          payments: true,
-          paymentMatches: true,
+          payments: {
+            where: { isAbandoned: false },
+          },
+          paymentMatches: {
+            include: {
+              payment: {
+                select: { isAbandoned: true },
+              },
+            },
+          },
         },
       });
 
@@ -134,10 +149,9 @@ export async function POST(
         (sum, p) => sum + p.amount.toNumber(),
         0,
       );
-      const matchedPayments = invoice.paymentMatches.reduce(
-        (sum, m) => sum + m.amount.toNumber(),
-        0,
-      );
+      const matchedPayments = invoice.paymentMatches
+        .filter((m) => !m.payment.isAbandoned)
+        .reduce((sum, m) => sum + m.amount.toNumber(), 0);
       const totalPaid = directPayments + matchedPayments;
       const invoiceAmount = invoice.amount.toNumber();
       const remaining = invoiceAmount - totalPaid;

@@ -70,6 +70,7 @@ export async function GET(
     const directPayments = await prisma.payment.findMany({
       where: {
         invoiceId,
+        isAbandoned: false,
       },
       include: {
         method: true,
@@ -122,6 +123,10 @@ export async function GET(
 
     for (const match of matchedPayments) {
       if (allPaymentsMap.has(match.payment.id)) {
+        continue;
+      }
+
+      if (match.payment.isAbandoned) {
         continue;
       }
 

@@ -26,6 +26,10 @@ export async function recordStoreCreditApplication(
     throw new Error("Store credit payment not found");
   }
 
+  if (payment.isAbandoned) {
+    throw new Error("Cannot apply store credit from an abandoned payment");
+  }
+
   if (payment.source !== "store_credit_excess") {
     throw new Error("Payment is not a store credit payment");
   }
@@ -91,6 +95,10 @@ export async function linkStoreCreditPaymentToInvoice(
 
   if (!payment) {
     throw new Error("Store credit payment not found");
+  }
+
+  if (payment.isAbandoned) {
+    throw new Error("Cannot apply store credit from an abandoned payment");
   }
 
   if (payment.source !== "store_credit_excess") {

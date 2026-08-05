@@ -115,6 +115,8 @@ export default function PaymentToolbar({
 
   const getStatusLabel = (status: PaymentStatusFilter) => {
     if (status === "all") return "All Payments";
+    if (status === "active") return "Active";
+    if (status === "abandoned") return "Abandoned";
     if (status === "refund") return "Refund";
     if (status === "deposit_fee") return "Deposit Fee";
     return getPaymentDisplayStatusLabel("active");
@@ -213,6 +215,7 @@ export default function PaymentToolbar({
                   [
                     "all",
                     "active",
+                    "abandoned",
                     "refund",
                     "deposit_fee",
                   ] as PaymentStatusFilter[]
