@@ -1,10 +1,13 @@
+import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 import {
   previewLayawayInstallmentRepair,
   repairLayawayInstallmentsForInvoice,
+  type LayawayInstallmentRepairPreview,
 } from "../lib/repair-layaway-installments";
 
 const prisma = new PrismaClient();
+const BATCH_SIZE = 100;
 
 /**
  * Repair layaway installment rows that were built from remaining balance
@@ -29,57 +32,103 @@ async function main() {
     throw new Error("Invalid --invoice value. Example: --invoice=17307");
   }
 
-  const invoices = await prisma.invoice.findMany({
-    where: {
-      isLayaway: true,
-      ...(invoiceFilter ? { id: invoiceFilter } : {}),
-      layawayPlan: {
-        is: {
-          installments: {
-            some: {},
-          },
-        },
-      },
-    },
-    select: {
-      id: true,
-      invoiceNumber: true,
-      amount: true,
-      paidAmount: true,
-      invoiceDate: true,
-      isLayaway: true,
-      status: true,
-      layawayPlan: {
-        select: {
-          id: true,
-          months: true,
-          paymentFrequency: true,
-          downPayment: true,
-          isCancelled: true,
-          installments: {
-            orderBy: { dueDate: "asc" },
-          },
-        },
-      },
-    },
-    orderBy: { id: "asc" },
-  });
+  console.log("Repair layaway installments — starting...");
+  console.log(
+    apply
+      ? "Mode: APPLY (will write changes)"
+      : "Mode: dry run (no writes)",
+  );
 
-  const previews = invoices.flatMap((invoice) => {
-    const plan = invoice.layawayPlan;
-    if (!plan) return [];
+  console.log("Connecting to database...");
+  await prisma.$connect();
+  console.log("Connected.");
 
-    const preview = previewLayawayInstallmentRepair(
-      invoice,
-      plan,
-      plan.installments,
+  if (invoiceFilter) {
+    console.log(`Filtering to invoice id ${invoiceFilter}.`);
+  }
+
+  const previews: LayawayInstallmentRepairPreview[] = [];
+  let scanned = 0;
+  let cursor: number | undefined;
+
+  while (true) {
+    console.log(
+      cursor
+        ? `Fetching layaway invoices after id ${cursor}...`
+        : "Fetching layaway invoices...",
     );
 
-    return preview ? [preview] : [];
-  });
+    const invoices = await prisma.invoice.findMany({
+      where: {
+        isLayaway: true,
+        ...(invoiceFilter ? { id: invoiceFilter } : {}),
+        layawayPlan: {
+          is: {
+            installments: {
+              some: {},
+            },
+          },
+        },
+      },
+      select: {
+        id: true,
+        invoiceNumber: true,
+        amount: true,
+        paidAmount: true,
+        invoiceDate: true,
+        isLayaway: true,
+        status: true,
+        layawayPlan: {
+          select: {
+            id: true,
+            months: true,
+            paymentFrequency: true,
+            downPayment: true,
+            isCancelled: true,
+            installments: {
+              orderBy: { dueDate: "asc" },
+            },
+          },
+        },
+      },
+      orderBy: { id: "asc" },
+      take: invoiceFilter ? 1 : BATCH_SIZE,
+      ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+    });
+
+    if (invoices.length === 0) {
+      break;
+    }
+
+    for (const invoice of invoices) {
+      scanned += 1;
+      const plan = invoice.layawayPlan;
+      if (!plan) continue;
+
+      const preview = previewLayawayInstallmentRepair(
+        invoice,
+        plan,
+        plan.installments,
+      );
+
+      if (preview) {
+        previews.push(preview);
+      }
+    }
+
+    console.log(
+      `  scanned ${scanned} invoice(s), ${previews.length} need repair so far`,
+    );
+
+    cursor = invoices[invoices.length - 1]?.id;
+
+    if (invoiceFilter || invoices.length < BATCH_SIZE) {
+      break;
+    }
+  }
 
   console.log(
-    `Scanned ${invoices.length} layaway invoice(s); ${previews.length} need repair.`,
+    `\nScanned ${scanned} layaway invoice(s); ${previews.length} need repair.`,
   );
 
   if (previews.length === 0) {
@@ -128,6 +177,7 @@ async function main() {
   let repaired = 0;
 
   for (const preview of previews) {
+    console.log(`Applying repair for ${preview.invoiceNumber}...`);
     await prisma.$transaction(async (tx) => {
       await repairLayawayInstallmentsForInvoice(tx, preview.invoiceId);
     });
@@ -139,7 +189,7 @@ async function main() {
 
 main()
   .catch((error) => {
-    console.error(error);
+    console.error("Repair failed:", error);
     process.exit(1);
   })
   .finally(async () => {
