@@ -91,7 +91,12 @@ export function calculateDepositFeeFromRules(
     const minOk = rule.minUnit == null || quantity >= Number(rule.minUnit);
     const maxOk = rule.maxUnit == null || quantity <= Number(rule.maxUnit);
     if (minOk && maxOk) {
-      return Number(Number(rule.fee || 0).toFixed(2));
+      const fee = Number(rule.fee || 0);
+      if (rule.isPercentage) {
+        const lineTotal = Number(unitPrice || 0) * quantity;
+        return Number(((lineTotal * fee) / 100).toFixed(2));
+      }
+      return Number(fee.toFixed(2));
     }
   }
 
@@ -122,8 +127,17 @@ export function formatDepositFeeRuleSummary(rule: DepositFeeRuleLike): string {
 
   const min = rule.minUnit;
   const max = rule.maxUnit;
-  if (min == null && max == null) return `All ${unit} quantities`;
-  if (min != null && max == null) return `${unit} >= ${min}`;
-  if (min == null && max != null) return `${unit} <= ${max}`;
-  return `${unit} ${min} - ${max}`;
+  const rangeLabel =
+    min == null && max == null
+      ? `All ${unit} quantities`
+      : min != null && max == null
+        ? `${unit} >= ${min}`
+        : min == null && max != null
+          ? `${unit} <= ${max}`
+          : `${unit} ${min} - ${max}`;
+
+  if (rule.isPercentage) {
+    return `${rangeLabel} · ${Number(rule.fee || 0)}% of line total`;
+  }
+  return `${rangeLabel} · $${Number(rule.fee || 0).toFixed(2)} flat fee`;
 }

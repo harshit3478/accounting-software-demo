@@ -6,6 +6,7 @@ import { Prisma } from "@prisma/client";
 import { stampPaymentCode } from "../../../../lib/payment-code";
 import { applyLateFeeToInvoice } from "../../../../lib/late-fee";
 import { recordStoreCreditApplication } from "../../../../lib/store-credit-apply";
+import { createOrIncrementPaymentInvoiceMatch } from "../../../../lib/payment-invoice-match";
 
 export async function POST(request: NextRequest) {
   try {
@@ -139,14 +140,12 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // 3. Create the Match
-      const match = await tx.paymentInvoiceMatch.create({
-        data: {
-          paymentId,
-          invoiceId,
-          amount: amountToLink,
-          userId: user.id,
-        },
+      // 3. Create or extend the match (partial links to the same invoice reuse one row)
+      const match = await createOrIncrementPaymentInvoiceMatch(tx, {
+        paymentId,
+        invoiceId,
+        amount: amountToLink,
+        userId: user.id,
       });
 
       if (normalizedLateFeeWaivedReason) {
@@ -286,6 +285,17 @@ export async function POST(request: NextRequest) {
     });
   } catch (error: any) {
     console.error("Error linking payment:", error);
+
+    if (error?.code === "P2002") {
+      return NextResponse.json(
+        {
+          error:
+            "This payment is already linked to this invoice. Refresh the page and try again.",
+        },
+        { status: 409 },
+      );
+    }
+
     return NextResponse.json(
       { error: error.message || "Failed to link payment" },
       { status: 500 },

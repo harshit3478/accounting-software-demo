@@ -3,6 +3,7 @@ import prisma from "../../../../../lib/prisma";
 import { requireAuth } from "../../../../../lib/auth";
 import { updateInvoiceAfterPayment } from "../../../../../lib/invoice-utils";
 import { applyLateFeeToInvoice } from "../../../../../lib/late-fee";
+import { createOrIncrementPaymentInvoiceMatch } from "../../../../../lib/payment-invoice-match";
 
 interface MatchRequest {
   matches: Array<{
@@ -172,14 +173,16 @@ export async function POST(
     // Create all matches in a transaction
     const createdMatches = await prisma.$transaction(async (tx) => {
       const matches = await Promise.all(
-        body.matches.map((match) =>
-          tx.paymentInvoiceMatch.create({
-            data: {
-              paymentId,
-              invoiceId: match.invoiceId,
-              amount: match.amount,
-              userId: user.id,
-            },
+        body.matches.map(async (match) => {
+          const record = await createOrIncrementPaymentInvoiceMatch(tx, {
+            paymentId,
+            invoiceId: match.invoiceId,
+            amount: match.amount,
+            userId: user.id,
+          });
+
+          return tx.paymentInvoiceMatch.findUniqueOrThrow({
+            where: { id: record.id },
             include: {
               invoice: {
                 select: {
@@ -192,8 +195,8 @@ export async function POST(
                 },
               },
             },
-          }),
-        ),
+          });
+        }),
       );
 
       // Update payment isMatched status if fully allocated

@@ -171,7 +171,7 @@ async function validateRuleCompatibility(
   }
 }
 
-function validateFlatRuleFields({
+function normalizeRuleFields({
   ruleType,
   minUnit,
   maxUnit,
@@ -182,23 +182,23 @@ function validateFlatRuleFields({
   maxUnit: number | null;
   isPercentage: boolean;
 }) {
-  if (ruleType !== "flat") {
+  if (ruleType === "flat") {
+    if (minUnit !== null || maxUnit !== null) {
+      throw new Error(
+        "Flat deposit fee rules cannot use minimum or maximum units",
+      );
+    }
+
     return {
-      minUnit,
-      maxUnit,
-      isPercentage: false,
+      minUnit: null,
+      maxUnit: null,
+      isPercentage,
     };
   }
 
-  if (minUnit !== null || maxUnit !== null) {
-    throw new Error(
-      "Flat deposit fee rules cannot use minimum or maximum units",
-    );
-  }
-
   return {
-    minUnit: null,
-    maxUnit: null,
+    minUnit,
+    maxUnit,
     isPercentage,
   };
 }
@@ -281,7 +281,7 @@ export async function POST(request: NextRequest) {
     const parsedMax = parseOptionalUnit(maxUnit);
     validateUnitRange(parsedMin, parsedMax);
 
-    const flatFields = validateFlatRuleFields({
+    const normalizedFields = normalizeRuleFields({
       ruleType: parsedRuleType,
       minUnit: parsedMin,
       maxUnit: parsedMax,
@@ -319,10 +319,10 @@ export async function POST(request: NextRequest) {
           name: String(name).trim(),
           unitName: parsedUnitName,
           ruleType: parsedRuleType,
-          minUnit: flatFields.minUnit,
-          maxUnit: flatFields.maxUnit,
+          minUnit: normalizedFields.minUnit,
+          maxUnit: normalizedFields.maxUnit,
           fee: parsedFee,
-          isPercentage: flatFields.isPercentage,
+          isPercentage: normalizedFields.isPercentage,
           isActive: willBeActive,
           sortOrder: Number.isFinite(Number(sortOrder)) ? Number(sortOrder) : 0,
           createdBy: user.id,
@@ -444,7 +444,7 @@ export async function PUT(request: NextRequest) {
 
     validateUnitRange(nextMin, nextMax);
 
-    const flatFields = validateFlatRuleFields({
+    const normalizedFields = normalizeRuleFields({
       ruleType: nextRuleType,
       minUnit: nextMin,
       maxUnit: nextMax,
@@ -452,9 +452,9 @@ export async function PUT(request: NextRequest) {
     });
 
     data.ruleType = nextRuleType;
-    data.minUnit = flatFields.minUnit;
-    data.maxUnit = flatFields.maxUnit;
-    data.isPercentage = flatFields.isPercentage;
+    data.minUnit = normalizedFields.minUnit;
+    data.maxUnit = normalizedFields.maxUnit;
+    data.isPercentage = normalizedFields.isPercentage;
 
     const nextIsActive =
       data.isActive !== undefined ? data.isActive : !!existing.isActive;

@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { stampPaymentCode } from "./payment-code";
+import { createOrIncrementPaymentInvoiceMatch } from "./payment-invoice-match";
 
 function roundMoney(value: number): number {
   return Math.round(value * 100) / 100;
@@ -122,13 +123,11 @@ export async function linkStoreCreditPaymentToInvoice(
     );
   }
 
-  await tx.paymentInvoiceMatch.create({
-    data: {
-      paymentId: input.paymentId,
-      invoiceId: input.invoiceId,
-      amount: amountToLink,
-      userId: input.userId,
-    },
+  await createOrIncrementPaymentInvoiceMatch(tx, {
+    paymentId: input.paymentId,
+    invoiceId: input.invoiceId,
+    amount: amountToLink,
+    userId: input.userId,
   });
 
   const newMatchedTotal = matchedAmount.add(amountToLink);

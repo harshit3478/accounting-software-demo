@@ -125,7 +125,7 @@ export default function DepositFeeRulesTab({
           ? null
           : Number(form.maxUnit),
     fee: Number(form.fee),
-    isPercentage: form.ruleType === "flat" ? form.isPercentage : false,
+    isPercentage: form.isPercentage,
     sortOrder: Number(form.sortOrder || 0),
     isActive: form.isActive,
   });
@@ -336,7 +336,8 @@ export default function DepositFeeRulesTab({
           </h2>
           <p className="text-gray-600 text-sm">
             Use a single flat rule per unit (fixed amount or percentage), or
-            create multiple quantity range bands with min/max units.
+            create multiple quantity range bands with min/max units (fixed fee or
+            percentage of line total).
           </p>
         </div>
         <button
@@ -399,8 +400,6 @@ export default function DepositFeeRulesTab({
                     ruleType: e.target.value as DepositFeeRuleType,
                     minUnit: e.target.value === "flat" ? "" : prev.minUnit,
                     maxUnit: e.target.value === "flat" ? "" : prev.maxUnit,
-                    isPercentage:
-                      e.target.value === "flat" ? prev.isPercentage : false,
                   }))
                 }
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
@@ -449,11 +448,11 @@ export default function DepositFeeRulesTab({
 
             <div>
               <label className="block text-sm text-gray-600 mb-1">
-                {isFlatRule
-                  ? form.isPercentage
-                    ? "Deposit fee (%)"
-                    : "Deposit fee per unit ($)"
-                  : "Deposit fee ($)"}
+                {form.isPercentage
+                  ? "Deposit fee (%)"
+                  : isFlatRule
+                    ? "Deposit fee per unit ($)"
+                    : "Deposit fee ($)"}
               </label>
               <input
                 type="number"
@@ -467,23 +466,21 @@ export default function DepositFeeRulesTab({
               />
             </div>
 
-            {isFlatRule && (
-              <div className="flex items-end">
-                <label className="inline-flex items-center gap-2 text-sm text-gray-700">
-                  <input
-                    type="checkbox"
-                    checked={form.isPercentage}
-                    onChange={(e) =>
-                      setForm((prev) => ({
-                        ...prev,
-                        isPercentage: e.target.checked,
-                      }))
-                    }
-                  />
-                  Percentage of line total
-                </label>
-              </div>
-            )}
+            <div className="flex items-end">
+              <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={form.isPercentage}
+                  onChange={(e) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      isPercentage: e.target.checked,
+                    }))
+                  }
+                />
+                Percentage of line total
+              </label>
+            </div>
 
             <div>
               <label className="block text-sm text-gray-600 mb-1">
@@ -627,7 +624,7 @@ export default function DepositFeeRulesTab({
                     Fee
                   </p>
                   <p className="text-sm font-semibold text-gray-900 mt-1">
-                    {rule.ruleType === "flat" && rule.isPercentage
+                    {rule.isPercentage
                       ? `${rule.fee}%`
                       : `$${rule.fee.toFixed(2)}`}
                   </p>
