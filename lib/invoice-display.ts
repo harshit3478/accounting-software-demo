@@ -68,6 +68,22 @@ export function getVisibleLateFee(invoice: {
   return legacyTotal > 0 ? Number(legacyTotal.toFixed(2)) : 0;
 }
 
+export function getVisibleProcessingFee(invoice: {
+  processingFee?: number | null;
+  payments?: Array<{ source?: string; amount?: number | string | null }> | null;
+}): number {
+  const storedProcessingFee = Number(invoice.processingFee ?? 0);
+  if (storedProcessingFee > 0) {
+    return Number(storedProcessingFee.toFixed(2));
+  }
+
+  const legacyTotal = (invoice.payments || [])
+    .filter((payment) => payment.source === "processing_fee")
+    .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+
+  return legacyTotal > 0 ? Number(legacyTotal.toFixed(2)) : 0;
+}
+
 export function resolveLiveTypeLabel(
   invoice: InvoiceDisplayLike,
 ): string | null {
@@ -537,6 +553,7 @@ export function formatInvoiceSummaryRowValue(value: number): string {
 export function buildInvoicePdfSummaryRows(
   invoice: InvoiceDisplayLike & {
     status?: string;
+    processingFee?: number | null;
     payments?: Array<{ source?: string; amount?: number }> | null;
     editHistory?: InvoiceEditHistoryLike[] | null;
     items?: Array<{ depositFee?: number | null }> | null;
@@ -611,6 +628,10 @@ export function buildInvoicePdfSummaryRows(
     {
       label: "Late Fee:",
       value: getVisibleLateFee(invoice),
+    },
+    {
+      label: "Processing Fee (QuickBooks payment):",
+      value: getVisibleProcessingFee(invoice),
     },
     {
       label: "Deposit Fee:",
@@ -699,6 +720,19 @@ export function getInvoicePdfPaymentLabel(payment: {
   }
   if (payment.source === "restocking_fee") {
     return "Restocking fee retained:";
+  }
+  if (payment.source === "processing_fee") {
+    const dateStr = formatBusinessDate(
+      payment.paymentDate || payment.date || "",
+      {
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+      },
+    );
+    return dateStr
+      ? `Processing fee from QuickBooks payment on ${dateStr}:`
+      : "Processing fee from QuickBooks payment:";
   }
   if (isRefundPayment(payment)) {
     const dateStr = formatBusinessDate(

@@ -975,7 +975,8 @@ export default function ViewInvoiceModal({
     | "deposit_fee"
     | "restocking_fee"
     | "retained_fee"
-    | "late_fee";
+    | "late_fee"
+    | "processing_fee";
 
   const paymentHistoryDisplay = (() => {
     if (invoice.status !== "abandoned") {
@@ -989,6 +990,8 @@ export default function ViewInvoiceModal({
               ? "retained_fee"
             : payment.source === "restocking_fee"
               ? "restocking_fee"
+              : payment.source === "processing_fee"
+                ? "processing_fee"
               : "payment") as PaymentHistoryRole,
       }));
     }
@@ -1126,6 +1129,8 @@ export default function ViewInvoiceModal({
         return "Non-Refundable";
       case "restocking_fee":
         return "Restocking Fee";
+      case "processing_fee":
+        return "Processing Fee (QB)";
       default:
         return "Payment";
     }
@@ -1143,6 +1148,8 @@ export default function ViewInvoiceModal({
         return "bg-rose-100 text-rose-800";
       case "restocking_fee":
         return "bg-indigo-100 text-indigo-800";
+      case "processing_fee":
+        return "bg-sky-100 text-sky-800";
       default:
         return "bg-gray-100 text-gray-700";
     }
@@ -1729,7 +1736,9 @@ export default function ViewInvoiceModal({
               )}
               {processingFee > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Processing Fee:</span>
+                  <span className="text-gray-600">
+                    Processing Fee (QuickBooks payment):
+                  </span>
                   <span className="font-medium text-gray-900">
                     {formatCurrency(processingFee)}
                   </span>
