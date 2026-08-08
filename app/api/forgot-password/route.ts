@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
     const { email } = await request.json();
 
     const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) {
+    if (!user || user.isDeleted) {
       return NextResponse.json({
         message: "If the email exists, a reset link has been sent.",
       });

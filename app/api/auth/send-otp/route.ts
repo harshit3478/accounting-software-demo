@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
 
     // Security: Don't reveal if user exists or not, but for this internal tool implies we might want to know.
     // However, if we want to be nice, we only send if user exists.
-    if (!user) {
+    if (!user || user.isDeleted) {
       // Return 200 to genericize, or 404 if we want to be explicit.
       // Given the small userbase (20-30), explicit errors are helpful.
       return NextResponse.json({ error: "User not found" }, { status: 404 });

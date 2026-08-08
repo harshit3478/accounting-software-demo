@@ -18,6 +18,7 @@ export async function getUserFromToken() {
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
     });
+    if (!user || user.isDeleted) return null;
     return user;
   } catch {
     return null;

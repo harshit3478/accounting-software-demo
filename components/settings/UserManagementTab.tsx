@@ -877,7 +877,7 @@ export default function UserManagementTab({
       <ConfirmModal
         isOpen={!!deleteConfirm}
         title="Delete User"
-        message={`Are you sure you want to delete user "${deleteConfirm?.name}"? This action cannot be undone.`}
+        message={`Are you sure you want to delete user "${deleteConfirm?.name}"? They will no longer be able to sign in and will be removed from the user list. Their invoices and payments will be kept.`}
         confirmText="Continue"
         cancelText="Cancel"
         onConfirm={confirmDelete}

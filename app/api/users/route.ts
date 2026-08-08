@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcrypt";
+import type { Prisma, Role } from "@prisma/client";
 import prisma from "../../../lib/prisma";
 import { isSuperAdmin, requireSettingPermission } from "../../../lib/auth";
 import {
@@ -43,6 +44,7 @@ function buildManageableUsersWhere(
   }
 
   const AND: Record<string, unknown>[] = [
+    { isDeleted: false },
     { NOT: { id: currentUser.id } },
     { NOT: { OR: superAdminMatch } },
   ];
@@ -112,6 +114,7 @@ export async function GET(request: NextRequest) {
       }
 
       const users = await prisma.user.findMany({
+        where: { isDeleted: false },
         select: userListSelect,
       });
 
@@ -186,11 +189,15 @@ export async function POST(request: NextRequest) {
 
     const existingUser = await prisma.user.findUnique({
       where: { email: normalizedEmail },
-      select: { id: true },
+      select: { id: true, isDeleted: true },
     });
     if (existingUser) {
       return NextResponse.json(
-        { error: "A user with this email already exists" },
+        {
+          error: existingUser.isDeleted
+            ? "A deleted user with this email still exists. Contact support to restore or reuse it."
+            : "A user with this email already exists",
+        },
         { status: 409 },
       );
     }
@@ -250,9 +257,9 @@ export async function PUT(request: NextRequest) {
 
     const targetUser = await prisma.user.findUnique({
       where: { id },
-      select: { id: true, role: true, email: true },
+      select: { id: true, role: true, email: true, isDeleted: true },
     });
-    if (!targetUser) {
+    if (!targetUser || targetUser.isDeleted) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
@@ -312,16 +319,19 @@ export async function PUT(request: NextRequest) {
     const updateData: {
       email: string;
       name: string;
-      role: string;
-      privileges?: unknown;
+      role: Role;
+      privileges?: Prisma.InputJsonValue;
       passwordHash?: string;
     } = {
       email: normalizedEmail,
       name: name.trim(),
-      role,
+      role: role as Role,
     };
     if (privileges) {
-      updateData.privileges = sanitizePrivilegesForRole(role, privileges);
+      updateData.privileges = sanitizePrivilegesForRole(
+        role,
+        privileges,
+      ) as Prisma.InputJsonValue;
     }
 
     // Hash and update password if provided
@@ -361,10 +371,10 @@ export async function DELETE(request: NextRequest) {
 
     const targetUser = await prisma.user.findUnique({
       where: { id },
-      select: { id: true, email: true },
+      select: { id: true, email: true, isDeleted: true },
     });
 
-    if (!targetUser) {
+    if (!targetUser || targetUser.isDeleted) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
@@ -382,7 +392,19 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    await prisma.user.delete({ where: { id } });
+    // Soft delete: keep the user row so invoices/payments/matches retain audit ownership.
+    await prisma.user.update({
+      where: { id },
+      data: {
+        isDeleted: true,
+        deletedAt: new Date(),
+        otpCode: null,
+        otpExpiresAt: null,
+        actionOtpCode: null,
+        actionOtpExpiresAt: null,
+        resetToken: null,
+      },
+    });
 
     // Invalidate user list cache
     invalidateUsers();

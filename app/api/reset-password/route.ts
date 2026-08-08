@@ -7,7 +7,7 @@ export async function POST(request: NextRequest) {
     const { token, newPassword } = await request.json();
 
     const user = await prisma.user.findFirst({ where: { resetToken: token } });
-    if (!user) {
+    if (!user || user.isDeleted) {
       return NextResponse.json({ error: "Invalid token" }, { status: 400 });
     }
 
