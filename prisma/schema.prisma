@@ -325,6 +325,11 @@ model Document {
   parent   Document?  @relation("DocumentHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
   children Document[] @relation("DocumentHierarchy")
 
+  // Soft delete (trash)
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
+  deletedBy Int?
+
   // Timestamps
   uploadedAt DateTime @default(now())
   updatedAt  DateTime @updatedAt
@@ -333,6 +338,7 @@ model Document {
 
   @@index([parentId], name: "idx_parent")
   @@index([type, parentId], name: "idx_type_parent")
+  @@index([isDeleted])
   @@map("documents")
 }
 
@@ -412,6 +418,7 @@ model Term {
   // Up to 5 numbered points stored as JSON array of strings
   lines     Json
   isDefault Boolean  @default(false)
+  isActive  Boolean  @default(true)
   createdBy Int
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -419,6 +426,7 @@ model Term {
   creator  User      @relation(fields: [createdBy], references: [id], onDelete: Cascade)
   invoices Invoice[]
 
+  @@index([isActive])
   @@map("terms")
 }
 
@@ -435,7 +443,7 @@ model QuickBooksWebhookLog {
   createdPaymentId Int? // Reference to created payment in our system
   createdAt        DateTime  @default(now())
 
-  connection QuickBooksConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  connection QuickBooksConnection @relation(fields: [connectionId], references: [id], onDelete: Restrict)
 
   @@map("quickbooks_webhook_logs")
 }
@@ -464,12 +472,15 @@ model Customer {
   address     String?  @db.Text
   notes       String?  @db.Text
   storeCredit Decimal  @default(0) @db.Decimal(10, 2)
+  isDeleted   Boolean  @default(false)
+  deletedAt   DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   invoices           Invoice[]
   creditTransactions CustomerCreditTransaction[]
 
+  @@index([isDeleted])
   @@map("customers")
 }
 
@@ -728,6 +739,8 @@ model ChequeVault {
   invoicesLinkedById      Int?
   invoicesLinkedAt        DateTime?
   submittedAt             DateTime?
+  isDeleted               Boolean      @default(false)
+  deletedAt               DateTime?
   createdAt               DateTime     @default(now())
   updatedAt               DateTime     @updatedAt
 
@@ -742,6 +755,7 @@ model ChequeVault {
   @@index([status])
   @@index([documentType])
   @@index([uploadedById, status])
+  @@index([isDeleted])
   @@map("cheque_vault")
 }
 
@@ -751,7 +765,7 @@ model ChequeVaultInvoice {
   invoiceId       Int
   allocatedAmount Decimal @db.Decimal(10, 2)
 
-  chequeVault ChequeVault @relation(fields: [chequeVaultId], references: [id], onDelete: Cascade)
+  chequeVault ChequeVault @relation(fields: [chequeVaultId], references: [id], onDelete: Restrict)
   invoice     Invoice     @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
   @@unique([chequeVaultId, invoiceId])

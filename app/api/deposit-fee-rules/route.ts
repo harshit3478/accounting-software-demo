@@ -505,9 +505,12 @@ export async function DELETE(request: NextRequest) {
       throw new Error("Invalid rule id");
     }
 
-    await (prisma as any).depositFeeRule.delete({ where: { id: ruleId } });
+    await (prisma as any).depositFeeRule.update({
+      where: { id: ruleId },
+      data: { isActive: false },
+    });
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, deactivated: true });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

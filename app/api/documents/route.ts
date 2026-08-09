@@ -41,6 +41,7 @@ export async function GET(request: NextRequest) {
     const documents = await prisma.document.findMany({
       where: {
         parentId: folderId === 0 ? null : folderId,
+        isDeleted: false,
         // NO userId filter - shared storage!
       },
       include: {

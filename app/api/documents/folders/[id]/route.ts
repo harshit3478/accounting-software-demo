@@ -220,14 +220,14 @@ export async function DELETE(
       },
     });
 
-    if (!folder || folder.type !== DocumentType.folder) {
+    if (!folder || folder.isDeleted || folder.type !== DocumentType.folder) {
       return NextResponse.json({ error: "Folder not found" }, { status: 404 });
     }
 
-    // Get all descendants (files and folders)
+    // Get all non-deleted descendants (files and folders)
     const getAllDescendants = async (parentId: number): Promise<any[]> => {
       const children = await prisma.document.findMany({
-        where: { parentId },
+        where: { parentId, isDeleted: false },
         include: { children: true },
       });
 
@@ -259,7 +259,6 @@ export async function DELETE(
         name: d.name,
         type: d.type,
         parentId: d.parentId,
-        // File-specific metadata (needed for restoration)
         fileName: d.fileName || null,
         fileSize: d.fileSize ? d.fileSize.toString() : null,
         fileType: d.fileType || null,
@@ -268,9 +267,10 @@ export async function DELETE(
       })),
     };
 
-    // Move to trash
+    const now = new Date();
+    const idsToSoftDelete = [folder.id, ...allDescendants.map((d) => d.id)];
+
     await prisma.$transaction([
-      // Create deleted document record
       prisma.deletedDocument.create({
         data: {
           userId: user.id,
@@ -281,29 +281,32 @@ export async function DELETE(
           folderContents: folderContents as any,
           deletedBy: user.id,
           uploadedAt: folder.uploadedAt,
-          // File fields null for folders
           fileName: null,
           fileSize: null,
           fileType: null,
           fileUrl: null,
         },
       }),
-      // Delete folder (CASCADE will delete all descendants)
-      prisma.document.delete({
-        where: { id: folderId },
+      prisma.document.updateMany({
+        where: { id: { in: idsToSoftDelete } },
+        data: {
+          isDeleted: true,
+          deletedAt: now,
+          deletedBy: user.id,
+        },
       }),
     ]);
 
     console.log(
-      `✅ Folder deleted: "${folder.name}" (${fileCount} files, ${folderCount} folders) by ${user.name}`,
+      `✅ Folder soft-deleted: "${folder.name}" (${fileCount} files, ${folderCount} folders) by ${user.name}`,
     );
 
-    // Invalidate document tree cache
     invalidateDocuments();
 
     return NextResponse.json({
       message: "Folder moved to trash",
-      deletedCount: allDescendants.length + 1, // +1 for the folder itself
+      deletedCount: allDescendants.length + 1,
+      deactivated: true,
       details: {
         folderName: folder.name,
         files: fileCount,

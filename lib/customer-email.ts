@@ -51,6 +51,7 @@ export async function assertCustomerEmailAvailable(
   const normalized = normalizeCustomerEmail(email);
   if (!normalized) return null;
 
+  // Include soft-deleted rows — email uniqueness still applies.
   const existing = await prismaClient.customer.findFirst({
     where: {
       email: normalized,
@@ -77,7 +78,7 @@ export async function findCustomerByEmail(
   if (!normalized) return null;
 
   return prismaClient.customer.findFirst({
-    where: { email: normalized },
+    where: { email: normalized, isDeleted: false },
     select: select ?? { id: true, name: true, email: true },
   });
 }

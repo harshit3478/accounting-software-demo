@@ -41,6 +41,7 @@ export async function GET(
           address: true,
           notes: true,
           storeCredit: true,
+          isDeleted: true,
           createdAt: true,
           updatedAt: true,
           creditTransactions: {
@@ -100,6 +101,7 @@ export async function GET(
           address: true,
           notes: true,
           storeCredit: true,
+          isDeleted: true,
           createdAt: true,
           updatedAt: true,
           creditTransactions: {
@@ -147,7 +149,7 @@ export async function GET(
       });
     }
 
-    if (!customer) {
+    if (!customer || customer.isDeleted) {
       return NextResponse.json(
         { error: "Customer not found" },
         { status: 404 },
@@ -406,15 +408,21 @@ export async function DELETE(
       return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
     }
 
-    // Nullify customerId on linked invoices first
-    await prisma.invoice.updateMany({
-      where: { customerId: id },
-      data: { customerId: null },
+    const existing = await prisma.customer.findUnique({
+      where: { id },
+      select: { id: true, isDeleted: true },
+    });
+    if (!existing || existing.isDeleted) {
+      return NextResponse.json({ error: "Customer not found" }, { status: 404 });
+    }
+
+    // Soft delete — keep invoice.customerId links for history.
+    await prisma.customer.update({
+      where: { id },
+      data: { isDeleted: true, deletedAt: new Date() },
     });
 
-    await prisma.customer.delete({ where: { id } });
-
-    return NextResponse.json({ message: "Customer deleted" });
+    return NextResponse.json({ message: "Customer deleted", deactivated: true });
   } catch (error: any) {
     if (error.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

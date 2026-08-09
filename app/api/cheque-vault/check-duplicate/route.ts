@@ -15,8 +15,9 @@ export async function GET(request: NextRequest) {
 
     const where: {
       chequeNumber: string;
+      isDeleted: boolean;
       documentType?: "CHEQUE" | "MEMO";
-    } = { chequeNumber: chequeNumber.trim() };
+    } = { chequeNumber: chequeNumber.trim(), isDeleted: false };
     if (documentType === "CHEQUE" || documentType === "MEMO") {
       where.documentType = documentType;
     }

@@ -715,17 +715,18 @@ export async function PUT(
           );
           const hasPaidInstallments = paidInstallments.length > 0;
 
-          if (!isLayaway && existingPlan) {
+          if (!isLayaway && existingPlan && !existingPlan.isCancelled) {
             if (hasPaidInstallments) {
               throw new Error(
                 "Cannot disable layaway after installment payments have been recorded.",
               );
             }
 
-            await tx.layawayInstallment.deleteMany({
-              where: { layawayPlanId: existingPlan.id },
+            // Soft-cancel plan; keep installment history rows.
+            await tx.layawayPlan.update({
+              where: { invoiceId },
+              data: { isCancelled: true },
             });
-            await tx.layawayPlan.delete({ where: { invoiceId } });
           } else if (normalizedLayawayPlan) {
             const totalForPlan = Math.max(
               Number(updated.amount) - paidAmount,
@@ -819,6 +820,7 @@ export async function PUT(
                     ? existingPlan.downPayment
                     : normalizedLayawayPlan.downPayment,
                   notes: normalizedLayawayPlan.notes,
+                  isCancelled: false,
                 },
               });
             } else {
@@ -829,6 +831,7 @@ export async function PUT(
                   paymentFrequency: normalizedLayawayPlan.paymentFrequency,
                   downPayment: normalizedLayawayPlan.downPayment,
                   notes: normalizedLayawayPlan.notes,
+                  isCancelled: false,
                 },
               });
             }

@@ -127,9 +127,12 @@ export async function DELETE(request: NextRequest) {
       throw new Error("Invalid reason id");
     }
 
-    await (prisma as any).dueDateReason.delete({ where: { id: reasonId } });
+    await (prisma as any).dueDateReason.update({
+      where: { id: reasonId },
+      data: { isActive: false },
+    });
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, deactivated: true });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

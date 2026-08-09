@@ -79,7 +79,7 @@ export async function GET(
       },
     });
 
-    if (!cheque) {
+    if (!cheque || cheque.isDeleted) {
       return NextResponse.json({ error: "Cheque not found" }, { status: 404 });
     }
 
@@ -125,7 +125,7 @@ export async function PATCH(
     const cheque = await prisma.chequeVault.findUnique({
       where: { id: chequeId },
     });
-    if (!cheque) {
+    if (!cheque || cheque.isDeleted) {
       return NextResponse.json({ error: "Cheque not found" }, { status: 404 });
     }
 
@@ -320,11 +320,11 @@ export async function DELETE(
         id: true,
         status: true,
         uploadedById: true,
-        imageFileName: true,
+        isDeleted: true,
       },
     });
 
-    if (!cheque) {
+    if (!cheque || cheque.isDeleted) {
       return NextResponse.json({ error: "Cheque not found" }, { status: 404 });
     }
 
@@ -344,15 +344,16 @@ export async function DELETE(
       );
     }
 
-    await prisma.chequeVault.delete({ where: { id: chequeId } });
+    // Soft delete — keep image + invoice allocation history.
+    await prisma.chequeVault.update({
+      where: { id: chequeId },
+      data: { isDeleted: true, deletedAt: new Date() },
+    });
 
-    if (cheque.imageFileName) {
-      deleteFromR2(cheque.imageFileName).catch((err) =>
-        console.error("[cheque-vault/[id] DELETE] R2 cleanup failed:", err),
-      );
-    }
-
-    return NextResponse.json({ message: "Cheque request deleted" });
+    return NextResponse.json({
+      message: "Cheque request deleted",
+      deactivated: true,
+    });
   } catch (error: any) {
     if (error.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

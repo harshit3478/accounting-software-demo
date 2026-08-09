@@ -177,24 +177,15 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // Check if any payments use this method
-    const paymentCount = await prisma.payment.count({
-      where: { methodId: id },
+    // Always soft-delete so payment history keeps a valid method reference.
+    await prisma.paymentMethodEntry.update({
+      where: { id },
+      data: { isActive: false },
     });
-    if (paymentCount > 0) {
-      // Soft delete instead
-      await prisma.paymentMethodEntry.update({
-        where: { id },
-        data: { isActive: false },
-      });
-      return NextResponse.json({
-        message: "Payment method deactivated (has existing payments)",
-        deactivated: true,
-      });
-    }
-
-    await prisma.paymentMethodEntry.delete({ where: { id } });
-    return NextResponse.json({ message: "Payment method deleted" });
+    return NextResponse.json({
+      message: "Payment method deactivated",
+      deactivated: true,
+    });
   } catch (error: any) {
     if (error.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

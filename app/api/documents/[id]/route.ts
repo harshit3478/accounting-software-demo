@@ -1,19 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { requireAdmin, requirePermission } from "@/lib/auth";
-import { deleteFromR2, extractFileNameFromUrl } from "@/lib/r2-client";
+import { requirePermission, getUserFromToken } from "@/lib/auth";
 import { DocumentType } from "@prisma/client";
 
-// Helper to recursively get all descendants of a folder
+// Helper to recursively get all non-deleted descendants of a folder
 async function getFolderDescendants(folderId: number) {
   const descendants = [];
   const queue = [folderId];
 
   while (queue.length > 0) {
     const currentId = queue.shift();
-    // Get immediate children
     const children = await prisma.document.findMany({
-      where: { parentId: currentId },
+      where: { parentId: currentId, isDeleted: false },
     });
 
     for (const child of children) {
@@ -31,11 +29,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    // Check if user has delete permission
     await requirePermission("documents.delete");
-
-    // Get current user for tracking who deleted it
-    const { getUserFromToken } = await import("@/lib/auth");
     const currentUser = await getUserFromToken();
 
     const { id } = await params;
@@ -48,59 +42,79 @@ export async function DELETE(
       );
     }
 
-    // Find the document
     const document = await prisma.document.findUnique({
       where: { id: documentId },
     });
 
-    if (!document) {
+    if (!document || document.isDeleted) {
       return NextResponse.json(
         { error: "Document not found" },
         { status: 404 },
       );
     }
 
-    // If it's a folder, get all contents before they are cascaded deleted
+    const now = new Date();
+    const deletedBy = currentUser!.id;
+
     let folderContents = null;
+    let descendantIds: number[] = [];
     if (document.type === DocumentType.folder) {
       const descendants = await getFolderDescendants(document.id);
+      descendantIds = descendants.map((d) => d.id);
       folderContents = {
         totalItems: descendants.length,
-        descendants: descendants,
+        files: descendants.filter((d) => d.type === DocumentType.file).length,
+        folders: descendants.filter((d) => d.type === DocumentType.folder)
+          .length,
+        descendants: descendants.map((d) => ({
+          id: d.id,
+          name: d.name,
+          type: d.type,
+          parentId: d.parentId,
+          fileName: d.fileName || null,
+          fileSize: d.fileSize ? d.fileSize.toString() : null,
+          fileType: d.fileType || null,
+          fileUrl: d.fileUrl || null,
+          uploadedAt: d.uploadedAt.toISOString(),
+        })),
       };
     }
 
-    // Move to DeletedDocument table (soft delete - file stays in R2)
-    await prisma.deletedDocument.create({
-      data: {
-        originalDocId: document.id,
-        userId: document.userId,
-        type: document.type,
-        name: document.name,
-        folderContents: folderContents ? (folderContents as any) : undefined,
-        originalParentId: document.parentId,
-        fileName: document.fileName,
-        fileSize: document.fileSize,
-        fileType: document.fileType,
-        fileUrl: document.fileUrl,
-        uploadedAt: document.uploadedAt,
-        deletedBy: currentUser!.id,
-        deletedAt: new Date(),
-        deleteReason: null,
-      },
-    });
+    await prisma.$transaction(async (tx) => {
+      await tx.deletedDocument.create({
+        data: {
+          originalDocId: document.id,
+          userId: document.userId,
+          type: document.type,
+          name: document.name,
+          folderContents: folderContents ? (folderContents as any) : undefined,
+          originalParentId: document.parentId,
+          fileName: document.fileName,
+          fileSize: document.fileSize,
+          fileType: document.fileType,
+          fileUrl: document.fileUrl,
+          uploadedAt: document.uploadedAt,
+          deletedBy,
+          deletedAt: now,
+          deleteReason: null,
+        },
+      });
 
-    // Delete from Document table (but file stays in R2 storage!)
-    await prisma.document.delete({
-      where: { id: documentId },
+      const idsToSoftDelete = [document.id, ...descendantIds];
+      await tx.document.updateMany({
+        where: { id: { in: idsToSoftDelete } },
+        data: {
+          isDeleted: true,
+          deletedAt: now,
+          deletedBy,
+        },
+      });
     });
-
-    // Do NOT call deleteFromR2() anymore - file stays in storage for recovery
 
     return NextResponse.json({
       success: true,
-      message:
-        "Document moved to trash. It will be permanently deleted after 30 days.",
+      message: "Document moved to trash.",
+      deactivated: true,
     });
   } catch (error: any) {
     console.error("Error deleting document:", error);
@@ -116,7 +130,6 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    // Check if user has rename permission
     await requirePermission("documents.rename");
 
     const { id } = await params;
@@ -131,7 +144,7 @@ export async function PATCH(
 
     const body = await request.json();
     const { name, newName } = body;
-    const nameToUse = name || newName; // Support both 'name' and 'newName' for backwards compatibility
+    const nameToUse = name || newName;
 
     if (
       !nameToUse ||
@@ -141,19 +154,17 @@ export async function PATCH(
       return NextResponse.json({ error: "Invalid file name" }, { status: 400 });
     }
 
-    // Find the document
     const document = await prisma.document.findUnique({
       where: { id: documentId },
     });
 
-    if (!document) {
+    if (!document || document.isDeleted) {
       return NextResponse.json(
         { error: "Document not found" },
         { status: 404 },
       );
     }
 
-    // Update the name in database
     const updatedDocument = await prisma.document.update({
       where: { id: documentId },
       data: {
@@ -212,7 +223,6 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    // Check if user has rename permission
     await requirePermission("documents.rename");
 
     const { id } = await params;
@@ -231,6 +241,17 @@ export async function PUT(
       return NextResponse.json(
         { error: "New name is required" },
         { status: 400 },
+      );
+    }
+
+    const existing = await prisma.document.findUnique({
+      where: { id: documentId },
+      select: { id: true, isDeleted: true },
+    });
+    if (!existing || existing.isDeleted) {
+      return NextResponse.json(
+        { error: "Document not found" },
+        { status: 404 },
       );
     }
 

@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
     const uploadedBy = searchParams.get("uploadedBy");
     const documentType = searchParams.get("documentType");
 
-    const where: any = {};
+    const where: any = { isDeleted: false };
 
     // Admins can filter by uploader; all users can browse the full list (read-only for non-admins).
     if ((user.role === "admin" || isSuperAdmin(user)) && uploadedBy) {

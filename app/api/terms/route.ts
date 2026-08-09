@@ -18,6 +18,7 @@ export async function GET() {
     }
 
     const terms = await termModel.findMany({
+      where: { isActive: true },
       orderBy: { updatedAt: "desc" },
       include: { creator: { select: { id: true, name: true, email: true } } },
     });
@@ -125,9 +126,12 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    await termModel.delete({ where: { id } });
+    await termModel.update({
+      where: { id },
+      data: { isActive: false, isDefault: false },
+    });
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, deactivated: true });
   } catch (error: any) {
     console.error("Delete term error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });

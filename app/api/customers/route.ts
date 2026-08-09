@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
     const skip = (page - 1) * limit;
     const all = searchParams.get("all") === "true";
 
-    const where: any = {};
+    const where: any = { isDeleted: false };
     if (search) {
       where.OR = [
         { name: { contains: search } },

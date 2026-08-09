@@ -20,13 +20,14 @@ async function buildFolderTree(
     where: {
       type: DocumentType.folder,
       parentId: parentId,
+      isDeleted: false,
       // NO userId filter - shared storage!
     },
     orderBy: { name: "asc" },
     include: {
       _count: {
         select: {
-          children: true,
+          children: { where: { isDeleted: false } },
         },
       },
     },

@@ -181,8 +181,11 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    await (prisma as any).invoiceUnit.delete({ where: { id: unitId } });
-    return NextResponse.json({ success: true });
+    await (prisma as any).invoiceUnit.update({
+      where: { id: unitId },
+      data: { isActive: false },
+    });
+    return NextResponse.json({ success: true, deactivated: true });
   } catch (error: any) {
     if (error.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
