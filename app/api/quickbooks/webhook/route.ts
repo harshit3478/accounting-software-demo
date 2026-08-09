@@ -3,6 +3,7 @@ import crypto from "crypto";
 import prisma from "../../../../lib/prisma";
 import {
   createQuickBooksClient,
+  fetchLinkedQuickBooksInvoiceMemo,
   mapQuickBooksPaymentMethod,
 } from "../../../../lib/quickbooks";
 import { stampPaymentCode } from "../../../../lib/payment-code";
@@ -176,6 +177,7 @@ async function processPaymentEvent(entity: any, event: any) {
           notes: paymentData.notes,
           quickbooksId: qbPaymentId,
           quickbooksSyncedAt: new Date(),
+          quickbooksInvoiceMemo: paymentData.quickbooksInvoiceMemo,
           isMatched: false, // Will need manual matching
           invoiceId: null, // Not linked to any invoice yet
         },
@@ -239,41 +241,48 @@ async function fetchPaymentFromQuickBooks(
   methodName: string;
   date: Date;
   notes: string;
+  quickbooksInvoiceMemo: string | null;
 }> {
-  return new Promise((resolve, reject) => {
-    qbo.getPayment(paymentId, (err: any, payment: any) => {
+  const payment = await new Promise<any>((resolve, reject) => {
+    qbo.getPayment(paymentId, (err: any, result: any) => {
       if (err) {
         reject(err);
         return;
       }
-
-      const amount = parseFloat(payment.TotalAmt || "0");
-      const methodStr =
-        payment.PaymentMethodRef?.name || payment.PaymentType || "unknown";
-      const date = payment.TxnDate ? new Date(payment.TxnDate) : new Date();
-
-      // Extract customer and reference info
-      const customerName = payment.CustomerRef?.name || "Unknown Customer";
-      const refNumber = payment.PaymentRefNum || payment.DocNumber || "";
-      const memo = payment.PrivateNote || "";
-
-      const notes = [
-        `QuickBooks Payment`,
-        `Customer: ${customerName}`,
-        refNumber ? `Ref: ${refNumber}` : "",
-        memo ? `Memo: ${memo}` : "",
-      ]
-        .filter(Boolean)
-        .join(" - ");
-
-      resolve({
-        amount,
-        methodName: mapQuickBooksPaymentMethod(methodStr),
-        date,
-        notes,
-      });
+      resolve(result);
     });
   });
+
+  const amount = parseFloat(payment.TotalAmt || "0");
+  const methodStr =
+    payment.PaymentMethodRef?.name || payment.PaymentType || "unknown";
+  const date = payment.TxnDate ? new Date(payment.TxnDate) : new Date();
+
+  const customerName = payment.CustomerRef?.name || "Unknown Customer";
+  const refNumber = payment.PaymentRefNum || payment.DocNumber || "";
+  const memo = payment.PrivateNote || "";
+
+  const notes = [
+    `QuickBooks Payment`,
+    `Customer: ${customerName}`,
+    refNumber ? `Ref: ${refNumber}` : "",
+    memo ? `Memo: ${memo}` : "",
+  ]
+    .filter(Boolean)
+    .join(" - ");
+
+  const quickbooksInvoiceMemo = await fetchLinkedQuickBooksInvoiceMemo(
+    qbo,
+    payment,
+  );
+
+  return {
+    amount,
+    methodName: mapQuickBooksPaymentMethod(methodStr),
+    date,
+    notes,
+    quickbooksInvoiceMemo,
+  };
 }
 
 function extractPaymentDataFromWebhook(
@@ -284,6 +293,7 @@ function extractPaymentDataFromWebhook(
   methodName: string;
   date: Date;
   notes: string;
+  quickbooksInvoiceMemo: string | null;
 } {
   // Extract data from webhook payload (fallback when API call fails)
   const amount = parseFloat(entity.amount || "0");
@@ -301,6 +311,7 @@ function extractPaymentDataFromWebhook(
     methodName: mapQuickBooksPaymentMethod(methodStr),
     date,
     notes,
+    quickbooksInvoiceMemo: null,
   };
 }
 

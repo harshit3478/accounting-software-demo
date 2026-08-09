@@ -209,12 +209,25 @@ export default function PaymentTableRow({
         </span>
       </td>
       <td className="px-4 py-3 text-sm text-gray-600">
-        <span
-          className="break-words line-clamp-3"
-          title={payment.notes || undefined}
-        >
-          {payment.notes || <span className="text-gray-400">-</span>}
-        </span>
+        <div className="space-y-1">
+          {payment.quickbooksInvoiceMemo && (
+            <span
+              className="block break-words line-clamp-2 text-emerald-700 font-medium"
+              title={`QB Invoice Memo: ${payment.quickbooksInvoiceMemo}`}
+            >
+              QB: {payment.quickbooksInvoiceMemo}
+            </span>
+          )}
+          <span
+            className="break-words line-clamp-3"
+            title={payment.notes || undefined}
+          >
+            {payment.notes ||
+              (!payment.quickbooksInvoiceMemo ? (
+                <span className="text-gray-400">-</span>
+              ) : null)}
+          </span>
+        </div>
       </td>
       <td className="px-4 py-3 text-right text-sm font-medium">
         <Popover open={showActionsMenu} onOpenChange={setShowActionsMenu}>

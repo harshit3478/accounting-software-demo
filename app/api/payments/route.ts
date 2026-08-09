@@ -96,6 +96,13 @@ export async function GET(request: NextRequest) {
       where,
       include: {
         invoice: true,
+        customer: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
         method: true,
         abandonedByUser: {
           select: {
@@ -179,6 +186,7 @@ export async function POST(request: NextRequest) {
     const user = await requireAuth();
     const {
       invoiceId,
+      customerId,
       amount,
       paymentDate,
       methodId,
@@ -211,6 +219,10 @@ export async function POST(request: NextRequest) {
       typeof lateFeeWaivedReason === "string" ? lateFeeWaivedReason.trim() : "";
 
     const roundMoney = (value: number) => Math.round(value * 100) / 100;
+    const parsedCustomerId =
+      customerId !== undefined && customerId !== null && customerId !== ""
+        ? Number(customerId)
+        : null;
 
     let payment: any = null;
     let storeCreditAdded = 0;
@@ -238,6 +250,28 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      const resolvedCustomerId =
+        parsedCustomerId && Number.isFinite(parsedCustomerId)
+          ? parsedCustomerId
+          : invoice.customerId || null;
+
+      if (!resolvedCustomerId) {
+        return NextResponse.json(
+          { error: "Customer is required" },
+          { status: 400 },
+        );
+      }
+
+      if (invoice.customerId && invoice.customerId !== resolvedCustomerId) {
+        return NextResponse.json(
+          {
+            error:
+              "Selected customer does not match the invoice customer",
+          },
+          { status: 400 },
+        );
+      }
+
       const remaining = roundMoney(
         Number(invoice.amount) - Number(invoice.paidAmount),
       );
@@ -246,7 +280,7 @@ export async function POST(request: NextRequest) {
       );
       const excessAmount = roundMoney(requestedAmount - appliedAmount);
 
-      if (excessAmount > 0 && !invoice.customerId) {
+      if (excessAmount > 0 && !resolvedCustomerId) {
         return NextResponse.json(
           {
             error:
@@ -272,6 +306,7 @@ export async function POST(request: NextRequest) {
           mainPayment = await tx.payment.create({
             data: {
               invoiceId: parsedInvoiceId,
+              customerId: resolvedCustomerId,
               amount: appliedAmount,
               paymentDate: paymentDate ? new Date(paymentDate) : new Date(),
               methodId: parseInt(methodId),
@@ -299,6 +334,7 @@ export async function POST(request: NextRequest) {
           const creditPayment = await tx.payment.create({
             data: {
               invoiceId: null,
+              customerId: resolvedCustomerId,
               amount: excessAmount,
               paymentDate: paymentDate ? new Date(paymentDate) : new Date(),
               methodId: parseInt(methodId),
@@ -312,7 +348,7 @@ export async function POST(request: NextRequest) {
           await stampPaymentCode(tx, creditPayment.id);
 
           await (tx as any).customer.update({
-            where: { id: invoice.customerId },
+            where: { id: resolvedCustomerId },
             data: {
               storeCredit: {
                 increment: excessAmount,
@@ -322,7 +358,7 @@ export async function POST(request: NextRequest) {
 
           await (tx as any).customerCreditTransaction.create({
             data: {
-              customerId: invoice.customerId,
+              customerId: resolvedCustomerId,
               amount: excessAmount,
               type: "credit",
               reason: `Excess payment captured as store credit from ${invoice.invoiceNumber}`,
@@ -368,9 +404,28 @@ export async function POST(request: NextRequest) {
         );
       }
     } else {
+      if (!parsedCustomerId || !Number.isFinite(parsedCustomerId)) {
+        return NextResponse.json(
+          { error: "Customer is required" },
+          { status: 400 },
+        );
+      }
+
+      const customer = await prisma.customer.findFirst({
+        where: { id: parsedCustomerId, isDeleted: false },
+        select: { id: true },
+      });
+      if (!customer) {
+        return NextResponse.json(
+          { error: "Customer not found" },
+          { status: 404 },
+        );
+      }
+
       payment = await prisma.payment.create({
         data: {
           invoiceId: null,
+          customerId: parsedCustomerId,
           amount: requestedAmount,
           paymentDate: paymentDate ? new Date(paymentDate) : new Date(),
           methodId: parseInt(methodId),

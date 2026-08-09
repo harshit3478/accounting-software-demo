@@ -74,6 +74,7 @@ export async function POST(request: NextRequest) {
         }
 
         let invoiceId = null;
+        let customerId: number | null = null;
         let isMatched = false;
 
         if (row.invoiceNumber && row.clientName) {
@@ -88,6 +89,7 @@ export async function POST(request: NextRequest) {
 
           if (invoice) {
             invoiceId = invoice.id;
+            customerId = invoice.customerId;
             isMatched = true;
           }
         }
@@ -100,6 +102,7 @@ export async function POST(request: NextRequest) {
             notes: row.notes?.trim() || null,
             userId: user.id,
             invoiceId,
+            customerId,
             isMatched,
             source: "csv_upload",
           },

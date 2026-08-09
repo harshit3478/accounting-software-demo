@@ -14,6 +14,10 @@ import {
 } from "../../lib/early-payment-discount-client";
 import EarlyPaymentDiscountNotice from "../invoices/EarlyPaymentDiscountNotice";
 import { formatBusinessDate } from "../../lib/business-date";
+import {
+  extractInvoiceNumbersFromMemo,
+  invoiceMatchesMemoSuggestion,
+} from "../../lib/quickbooks-invoice-memo";
 
 interface Payment {
   id: number;
@@ -22,6 +26,9 @@ interface Payment {
   method: { id: number; name: string; icon?: string; color?: string } | string;
   notes?: string;
   isMatched: boolean;
+  customerId?: number | null;
+  quickbooksId?: string | null;
+  quickbooksInvoiceMemo?: string | null;
   paymentMatches: { amount: string | number }[];
 }
 
@@ -106,7 +113,11 @@ export default function LinkInvoiceModal({
           }
         })
         .catch(() => {});
-      fetch("/api/invoices/unpaid")
+      const unpaidUrl = payment.customerId
+        ? `/api/invoices/unpaid?customerId=${payment.customerId}&includeUnassigned=true`
+        : "/api/invoices/unpaid";
+
+      fetch(unpaidUrl)
         .then((res) => res.json())
         .then((data) => {
           if (Array.isArray(data)) {
@@ -140,6 +151,14 @@ export default function LinkInvoiceModal({
     return totalAmount - usedAmount;
   };
 
+  const memoSuggestedNumbers = useMemo(
+    () =>
+      payment?.quickbooksId || payment?.quickbooksInvoiceMemo
+        ? extractInvoiceNumbersFromMemo(payment.quickbooksInvoiceMemo)
+        : [],
+    [payment],
+  );
+
   const filteredInvoices = useMemo(() => {
     return invoices
       .filter((invoice) => {
@@ -156,6 +175,19 @@ export default function LinkInvoiceModal({
       })
       .sort((a, b) => {
         if (!payment) return 0;
+
+        const aSuggested = invoiceMatchesMemoSuggestion(
+          a.invoiceNumber,
+          memoSuggestedNumbers,
+        );
+        const bSuggested = invoiceMatchesMemoSuggestion(
+          b.invoiceNumber,
+          memoSuggestedNumbers,
+        );
+        // Soft-suggest from QB memo: pin matches to top, do not hide others
+        if (aSuggested && !bSuggested) return -1;
+        if (bSuggested && !aSuggested) return 1;
+
         const available = getPaymentBalance(payment);
 
         const remainingA = Number(a.amount) - Number(a.paidAmount);
@@ -170,7 +202,15 @@ export default function LinkInvoiceModal({
 
         return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
       });
-  }, [invoices, searchTerm, payment]);
+  }, [invoices, searchTerm, payment, memoSuggestedNumbers]);
+
+  const suggestedInvoices = useMemo(
+    () =>
+      filteredInvoices.filter((inv) =>
+        invoiceMatchesMemoSuggestion(inv.invoiceNumber, memoSuggestedNumbers),
+      ),
+    [filteredInvoices, memoSuggestedNumbers],
+  );
 
   const getInvoiceEarlyDiscountEligibility = (invoice: Invoice) => {
     if (!payment || !isEarlyPaymentDiscountConfigured(earlyDiscountSetting)) {
@@ -258,6 +298,7 @@ export default function LinkInvoiceModal({
   if (!payment) return null;
 
   const paymentBalance = getPaymentBalance(payment);
+  const scopedToCustomer = Boolean(payment.customerId);
   const selectedInvoice = invoices.find((i) => i.id === selectedInvoiceId);
   const overdueInstallment =
     selectedInvoice && payment.paymentDate
@@ -346,6 +387,37 @@ export default function LinkInvoiceModal({
             </span>
           </div>
         </div>
+
+        {payment.quickbooksInvoiceMemo && (
+          <p className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2 mb-2">
+            <span className="font-semibold">QB Invoice Memo:</span>{" "}
+            {payment.quickbooksInvoiceMemo}
+            {memoSuggestedNumbers.length > 0 && (
+              <span className="block mt-1 text-emerald-700">
+                Suggested from memo: {memoSuggestedNumbers.join(", ")} (optional
+                — you can still pick any invoice)
+              </span>
+            )}
+            {memoSuggestedNumbers.length > 0 &&
+              suggestedInvoices.length === 0 && (
+                <span className="block mt-1 text-amber-700">
+                  No unpaid invoice matched those numbers in the current list.
+                </span>
+              )}
+          </p>
+        )}
+
+        {scopedToCustomer ? (
+          <p className="text-xs text-purple-700 bg-purple-50 border border-purple-100 rounded-lg px-3 py-2 mb-2">
+            Showing this customer&apos;s pending invoices, plus invoices with no
+            customer linked yet.
+          </p>
+        ) : (
+          <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 mb-2">
+            This payment has no customer yet. Showing all unpaid invoices —
+            linking will assign the invoice&apos;s customer to the payment.
+          </p>
+        )}
 
         {/* Minimal Search */}
         <div className="relative mb-2">
@@ -472,11 +544,21 @@ export default function LinkInvoiceModal({
                   inv,
                   invoiceEarlyDiscount,
                 );
+                const isMemoSuggested = invoiceMatchesMemoSuggestion(
+                  inv.invoiceNumber,
+                  memoSuggestedNumbers,
+                );
                 return (
                   <div
                     key={inv.id}
                     onClick={() => handleSelectInvoice(inv)}
-                    className={`group flex items-center justify-between p-3 rounded-lg cursor-pointer transition-all border ${selectedInvoiceId === inv.id ? "bg-purple-50 border-purple-200 shadow-sm ring-1 ring-purple-100" : "bg-white border-transparent hover:bg-gray-50 hover:border-gray-200"}`}
+                    className={`group flex items-center justify-between p-3 rounded-lg cursor-pointer transition-all border ${
+                      selectedInvoiceId === inv.id
+                        ? "bg-purple-50 border-purple-200 shadow-sm ring-1 ring-purple-100"
+                        : isMemoSuggested
+                          ? "bg-emerald-50/70 border-emerald-200 hover:bg-emerald-50"
+                          : "bg-white border-transparent hover:bg-gray-50 hover:border-gray-200"
+                    }`}
                   >
                     <div className="flex flex-col min-w-0 pr-4">
                       <div className="flex items-center gap-2 mb-0.5">
@@ -485,6 +567,11 @@ export default function LinkInvoiceModal({
                         >
                           {inv.invoiceNumber}
                         </span>
+                        {isMemoSuggested && (
+                          <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200">
+                            Suggested
+                          </span>
+                        )}
                         {invoiceEarlyDiscount && (
                           <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 border border-emerald-200">
                             Early discount

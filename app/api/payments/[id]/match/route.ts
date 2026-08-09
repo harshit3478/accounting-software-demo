@@ -61,8 +61,12 @@ export async function POST(
     const totalAllocation = alreadyAllocated + newAllocation;
     const paymentAmount = payment.amount.toNumber();
 
-    let storeCreditOwnerCustomerId: number | null = null;
-    if (payment.source === "store_credit_excess") {
+    let ownerCustomerId: number | null =
+      (payment as any).customerId != null
+        ? Number((payment as any).customerId)
+        : null;
+
+    if (payment.source === "store_credit_excess" && !ownerCustomerId) {
       const creditTx = await (
         prisma as any
       ).customerCreditTransaction.findFirst({
@@ -82,7 +86,7 @@ export async function POST(
         );
       }
 
-      storeCreditOwnerCustomerId = creditTx.customerId;
+      ownerCustomerId = creditTx.customerId;
     }
 
     // Validate: total allocation cannot exceed payment amount
@@ -133,13 +137,13 @@ export async function POST(
       }
 
       if (
-        storeCreditOwnerCustomerId !== null &&
-        (!invoice.customerId ||
-          invoice.customerId !== storeCreditOwnerCustomerId)
+        ownerCustomerId !== null &&
+        (!invoice.customerId || invoice.customerId !== ownerCustomerId)
       ) {
         return NextResponse.json(
           {
-            error: `This store credit payment can only be matched to invoices for customer ${storeCreditOwnerCustomerId}`,
+            error:
+              "This payment can only be matched to invoices for the same customer",
           },
           { status: 400 },
         );
@@ -201,9 +205,22 @@ export async function POST(
 
       // Update payment isMatched status if fully allocated
       const isFullyMatched = totalAllocation >= paymentAmount;
+      const inheritCustomerId =
+        !ownerCustomerId && matches[0]?.invoice
+          ? (
+              await tx.invoice.findUnique({
+                where: { id: matches[0].invoice.id },
+                select: { customerId: true },
+              })
+            )?.customerId
+          : null;
+
       await tx.payment.update({
         where: { id: paymentId },
-        data: { isMatched: isFullyMatched },
+        data: {
+          isMatched: isFullyMatched,
+          ...(inheritCustomerId ? { customerId: inheritCustomerId } : {}),
+        },
       });
 
       if (normalizedLateFeeWaivedReason) {

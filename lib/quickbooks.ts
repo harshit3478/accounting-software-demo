@@ -154,3 +154,87 @@ export function mapQuickBooksPaymentMethod(qbMethod: string): string {
   // Default to Cash for unknown methods
   return "Cash";
 }
+
+/** Linked QB invoice TxnIds from a Payment (applied / payment-link). */
+export function getLinkedInvoiceIdsFromPayment(qbPayment: any): string[] {
+  const lines = Array.isArray(qbPayment?.Line)
+    ? qbPayment.Line
+    : qbPayment?.Line
+      ? [qbPayment.Line]
+      : [];
+
+  const ids = new Set<string>();
+  for (const line of lines) {
+    const linked = Array.isArray(line?.LinkedTxn)
+      ? line.LinkedTxn
+      : line?.LinkedTxn
+        ? [line.LinkedTxn]
+        : [];
+    for (const txn of linked) {
+      if (
+        txn?.TxnType === "Invoice" &&
+        txn?.TxnId != null &&
+        String(txn.TxnId).trim()
+      ) {
+        ids.add(String(txn.TxnId));
+      }
+    }
+  }
+  return Array.from(ids);
+}
+
+function fetchQuickBooksInvoice(qbo: any, invoiceId: string): Promise<any> {
+  return new Promise((resolve, reject) => {
+    qbo.getInvoice(invoiceId, (err: any, invoice: any) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+      resolve(invoice);
+    });
+  });
+}
+
+function extractInvoiceMemo(invoice: any): string | null {
+  const privateNote =
+    typeof invoice?.PrivateNote === "string" ? invoice.PrivateNote.trim() : "";
+  if (privateNote) return privateNote;
+
+  const customerMemo =
+    typeof invoice?.CustomerMemo?.value === "string"
+      ? invoice.CustomerMemo.value.trim()
+      : typeof invoice?.CustomerMemo === "string"
+        ? invoice.CustomerMemo.trim()
+        : "";
+  return customerMemo || null;
+}
+
+/**
+ * For QB payment-link / applied payments: read memo from the linked invoice(s).
+ * Stored separately from Payment.notes.
+ */
+export async function fetchLinkedQuickBooksInvoiceMemo(
+  qbo: any,
+  qbPayment: any,
+): Promise<string | null> {
+  const invoiceIds = getLinkedInvoiceIdsFromPayment(qbPayment);
+  if (!qbo || invoiceIds.length === 0) return null;
+
+  const memos: string[] = [];
+  for (const qbInvoiceId of invoiceIds) {
+    try {
+      const invoice = await fetchQuickBooksInvoice(qbo, qbInvoiceId);
+      const memo = extractInvoiceMemo(invoice);
+      if (memo && !memos.includes(memo)) {
+        memos.push(memo);
+      }
+    } catch (error) {
+      console.warn(
+        `Failed to fetch linked QB invoice ${qbInvoiceId} for memo:`,
+        error instanceof Error ? error.message : error,
+      );
+    }
+  }
+
+  return memos.length > 0 ? memos.join(" | ") : null;
+}

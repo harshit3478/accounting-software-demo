@@ -47,9 +47,12 @@ interface Payment {
   id: number;
   amount: string | number;
   paymentDate: string;
-  method: string;
+  method: string | { id: number; name: string };
   notes?: string;
   paymentCode?: string;
+  customerId?: number | null;
+  quickbooksId?: string | null;
+  quickbooksInvoiceMemo?: string | null;
   user?: { name: string };
   paymentMatches: { amount: string | number }[];
 }
@@ -116,7 +119,12 @@ export default function LinkPaymentModal({
           }
         })
         .catch(() => {});
-      fetch("/api/payments/unmatched")
+      const params = new URLSearchParams({ includeUnassigned: "true" });
+      if (invoice.customerId) {
+        params.set("customerId", String(invoice.customerId));
+      }
+
+      fetch(`/api/payments/unmatched?${params.toString()}`)
         .then((res) => res.json())
         .then((data) => {
           if (data && Array.isArray(data.payments)) {
@@ -433,6 +441,11 @@ export default function LinkPaymentModal({
             />
           )}
 
+          <p className="text-xs text-blue-700 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 mb-2">
+            Showing this customer&apos;s unmatched payments, plus unmatched
+            payments with no customer yet (legacy / QuickBooks).
+          </p>
+
           {/* Minimal Search */}
           <div className="relative mb-2">
             <svg
@@ -580,14 +593,23 @@ export default function LinkPaymentModal({
                         </span>
                         <span className="w-1 h-1 rounded-full bg-gray-300"></span>
                         <span className="truncate max-w-[140px] opacity-80">
-                          {payment.notes || "No notes"}
+                          {payment.quickbooksInvoiceMemo ||
+                            payment.notes ||
+                            "No notes"}
                         </span>
+                        {payment.quickbooksId && (
+                          <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-700 bg-emerald-50 border border-emerald-100 px-1.5 py-0.5 rounded">
+                            QB
+                          </span>
+                        )}
                       </div>
                     </div>
                     <span
                       className={`text-[10px] font-bold tracking-wide px-2 py-1 rounded-md uppercase border transition-colors ${selectedPaymentId === payment.id ? "bg-white text-blue-600 border-blue-100" : "bg-gray-100 text-gray-500 border-gray-200 group-hover:border-gray-300"}`}
                     >
-                      {payment.method}
+                      {typeof payment.method === "string"
+                        ? payment.method
+                        : payment.method?.name || "Payment"}
                     </span>
                   </div>
                 ))}

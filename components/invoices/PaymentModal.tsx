@@ -215,6 +215,13 @@ export default function PaymentModal({
       };
     }
 
+    if (!invoice.customer?.id) {
+      return {
+        success: false,
+        error: "Link a customer to this invoice before recording a payment",
+      };
+    }
+
     setIsRecording(true);
     try {
       const res = await fetch("/api/payments", {
@@ -222,6 +229,7 @@ export default function PaymentModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           invoiceId: invoice.id,
+          customerId: invoice.customer.id,
           amount: paymentAmount,
           methodId: selectedMethodId,
           paymentDate,

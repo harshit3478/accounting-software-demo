@@ -30,6 +30,7 @@ declare module "node-quickbooks" {
 
     // Add other methods as needed
     getPayment(id: string, callback: (err: any, payment: any) => void): void;
+    getInvoice(id: string, callback: (err: any, invoice: any) => void): void;
     findPayments(
       criteria: any,
       callback: (err: any, payments: any) => void,

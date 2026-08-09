@@ -102,9 +102,15 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Store-credit excess payments are customer-scoped and must only apply
-      // to invoices belonging to the same customer.
-      if (payment.source === "store_credit_excess") {
+      // Customer-scoped payments (manual + store credit) must only link to
+      // invoices for the same customer. QuickBooks payments may start without
+      // customerId and inherit it from the invoice on first link.
+      let paymentCustomerId =
+        (payment as any).customerId != null
+          ? Number((payment as any).customerId)
+          : null;
+
+      if (payment.source === "store_credit_excess" && !paymentCustomerId) {
         const creditTx = await (tx as any).customerCreditTransaction.findFirst({
           where: {
             paymentId: payment.id,
@@ -119,11 +125,21 @@ export async function POST(request: NextRequest) {
           );
         }
 
-        if (!invoice.customerId || invoice.customerId !== creditTx.customerId) {
+        paymentCustomerId = creditTx.customerId;
+      }
+
+      if (paymentCustomerId) {
+        if (!invoice.customerId || invoice.customerId !== paymentCustomerId) {
           throw new Error(
-            "This store credit can only be linked to invoices of the original customer",
+            "This payment can only be linked to invoices of the same customer",
           );
         }
+      } else if (invoice.customerId) {
+        await tx.payment.update({
+          where: { id: paymentId },
+          data: { customerId: invoice.customerId },
+        });
+        paymentCustomerId = invoice.customerId;
       }
 
       // Calculate remaining balance on invoice
@@ -186,6 +202,7 @@ export async function POST(request: NextRequest) {
         const creditPayment = await tx.payment.create({
           data: {
             invoiceId: null,
+            customerId: invoice.customerId,
             amount: remainingAfterLink,
             paymentDate: payment.paymentDate,
             methodId: payment.methodId,

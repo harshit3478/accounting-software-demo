@@ -9,30 +9,54 @@ export async function GET(request: NextRequest) {
     const url = new URL(request.url);
     const customerIdParam = url.searchParams.get("customerId");
     const customerId = customerIdParam ? Number(customerIdParam) : undefined;
+    // Legacy + QB payments often have no customerId yet — include those when linking.
+    const includeUnassigned =
+      url.searchParams.get("includeUnassigned") === "true" ||
+      url.searchParams.get("includeQuickbooks") === "true";
 
-    // Build where clause: optionally limit to a specific customer. When
-    // customerId is provided we include payments that belong to that
-    // customer's invoices or are store-credit payments owned by that
-    // customer (via customerCreditTransaction relation).
     const whereClause: any = {
       isMatched: false,
       isAbandoned: false,
     };
 
-    if (customerId) {
-      whereClause.OR = [
+    if (customerId && Number.isFinite(customerId)) {
+      const customerScoped: any[] = [
+        { customerId },
         { invoice: { customerId } },
         {
           source: "store_credit_excess",
           creditTransactions: { some: { customerId } },
         },
       ];
+
+      if (includeUnassigned) {
+        customerScoped.push({ customerId: null });
+      }
+
+      whereClause.OR = customerScoped;
+    } else if (includeUnassigned) {
+      // Invoice has no customer yet — show unmatched payments without a customer
+      whereClause.customerId = null;
     }
 
-    // Fetch payments that are not fully matched
     const allPayments = await prisma.payment.findMany({
       where: whereClause,
       include: {
+        customer: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        method: {
+          select: {
+            id: true,
+            name: true,
+            icon: true,
+            color: true,
+          },
+        },
         user: {
           select: {
             id: true,
@@ -62,23 +86,18 @@ export async function GET(request: NextRequest) {
         },
       },
       orderBy: {
-        paymentDate: "asc", // Oldest first
+        paymentDate: "asc",
       },
     });
 
-    // Double-check and filter to only include payments with remaining unallocated amount
     const payments = allPayments.filter((payment) => {
       const paymentAmount = payment.amount.toNumber();
       const allocatedAmount = payment.paymentMatches.reduce((sum, match) => {
         return sum + match.amount.toNumber();
       }, 0);
-      const remainingAmount = paymentAmount - allocatedAmount;
-
-      // Include if has remaining amount (not fully allocated)
-      return remainingAmount > 0;
+      return paymentAmount - allocatedAmount > 0;
     });
 
-    // Calculate summary statistics (only for unallocated amounts)
     const totalAmount = payments.reduce((sum, payment) => {
       const paymentAmount = payment.amount.toNumber();
       const allocatedAmount = payment.paymentMatches.reduce((sum, match) => {
@@ -87,7 +106,6 @@ export async function GET(request: NextRequest) {
       return sum + (paymentAmount - allocatedAmount);
     }, 0);
 
-    // Serialize Decimal values and add remaining amount
     const serializedPayments = payments.map((payment) => {
       const paymentAmount = payment.amount.toNumber();
       const allocatedAmount = payment.paymentMatches.reduce((sum, match) => {

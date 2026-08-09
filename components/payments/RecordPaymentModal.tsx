@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Modal from "../invoices/Modal";
 import LucideIcon from "../LucideIcon";
 import {
@@ -20,6 +20,13 @@ interface PaymentMethodType {
   isActive: boolean;
   isSystem: boolean;
   sortOrder: number;
+}
+
+interface CustomerOption {
+  id: number;
+  name: string;
+  email?: string | null;
+  storeCredit?: number;
 }
 
 interface RecordPaymentModalProps {
@@ -48,6 +55,9 @@ export default function RecordPaymentModal({
   onClose,
   onSuccess,
 }: RecordPaymentModalProps) {
+  const [customers, setCustomers] = useState<CustomerOption[]>([]);
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodType[]>([]);
   const [payment, setPayment] = useState({
@@ -56,6 +66,7 @@ export default function RecordPaymentModal({
     paymentDate: getBusinessTodayString(),
     notes: "",
     invoiceId: "",
+    customerId: "" as string,
   });
   const [lateFeeSetting, setLateFeeSetting] = useState({
     amount: 0,
@@ -68,7 +79,7 @@ export default function RecordPaymentModal({
 
   useEffect(() => {
     if (isOpen) {
-      fetchInvoices();
+      fetchCustomers();
       fetchPaymentMethods();
       fetch("/api/late-fee")
         .then((res) => (res.ok ? res.json() : null))
@@ -81,19 +92,45 @@ export default function RecordPaymentModal({
           }
         })
         .catch(() => {});
-      // Reset form when modal opens
       setPayment({
         amount: "",
         methodId: "",
         paymentDate: getBusinessTodayString(),
         notes: "",
         invoiceId: "",
+        customerId: "",
       });
+      setCustomerSearch("");
+      setShowCustomerDropdown(false);
+      setInvoices([]);
       setApplyLateFee(true);
       setLateFeeWaivedReason("");
       setError("");
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    if (payment.customerId) {
+      fetchInvoices(Number(payment.customerId));
+    } else {
+      setInvoices([]);
+      setPayment((prev) =>
+        prev.invoiceId ? { ...prev, invoiceId: "" } : prev,
+      );
+    }
+  }, [isOpen, payment.customerId]);
+
+  const fetchCustomers = async () => {
+    try {
+      const res = await fetch("/api/customers?all=true");
+      if (res.ok) {
+        setCustomers(await res.json());
+      }
+    } catch (err) {
+      console.error("Failed to fetch customers:", err);
+    }
+  };
 
   const fetchPaymentMethods = async () => {
     try {
@@ -109,32 +146,50 @@ export default function RecordPaymentModal({
           }));
         }
       }
-    } catch (error) {
-      console.error("Failed to fetch payment methods:", error);
+    } catch (err) {
+      console.error("Failed to fetch payment methods:", err);
     }
   };
 
-  const fetchInvoices = async () => {
+  const fetchInvoices = async (customerId: number) => {
     try {
-      const res = await fetch("/api/invoices");
+      const res = await fetch(`/api/invoices/unpaid?customerId=${customerId}`);
       if (res.ok) {
         const data = await res.json();
-        const invoiceList = data.invoices || data;
-        // Only show unpaid or partially paid invoices
-        const unpaidInvoices = (
-          Array.isArray(invoiceList) ? invoiceList : []
-        ).filter(
-          (inv: Invoice) =>
-            inv.status !== "paid" && inv.paidAmount < inv.amount,
-        );
-        setInvoices(unpaidInvoices);
+        setInvoices(Array.isArray(data) ? data : []);
+      } else {
+        setInvoices([]);
       }
-    } catch (error) {
-      console.error("Failed to fetch invoices:", error);
+    } catch (err) {
+      console.error("Failed to fetch invoices:", err);
+      setInvoices([]);
     }
   };
 
+  const selectedCustomer = useMemo(
+    () =>
+      customers.find((c) => String(c.id) === payment.customerId) || null,
+    [customers, payment.customerId],
+  );
+
+  const filteredCustomers = useMemo(() => {
+    const q = customerSearch.trim().toLowerCase();
+    if (!q) return customers.slice(0, 50);
+    return customers
+      .filter(
+        (c) =>
+          c.name.toLowerCase().includes(q) ||
+          (c.email || "").toLowerCase().includes(q),
+      )
+      .slice(0, 50);
+  }, [customers, customerSearch]);
+
   const handleSubmit = async () => {
+    if (!payment.customerId) {
+      setError("Customer is required");
+      return;
+    }
+
     if (!payment.amount || parseFloat(payment.amount) <= 0) {
       setError("Please enter a valid amount");
       return;
@@ -146,9 +201,6 @@ export default function RecordPaymentModal({
     }
 
     const amount = parseFloat(payment.amount);
-    const selectedInvoice = invoices.find(
-      (inv) => inv.id === parseInt(payment.invoiceId),
-    );
 
     setIsSubmitting(true);
     setError("");
@@ -159,6 +211,7 @@ export default function RecordPaymentModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           amount,
+          customerId: parseInt(payment.customerId),
           methodId: parseInt(payment.methodId),
           paymentDate: payment.paymentDate,
           notes: payment.notes || null,
@@ -185,8 +238,8 @@ export default function RecordPaymentModal({
         const errorData = await res.json();
         setError(errorData.error || "Failed to record payment");
       }
-    } catch (error) {
-      console.error("Failed to record payment:", error);
+    } catch (err) {
+      console.error("Failed to record payment:", err);
       setError("Failed to record payment. Please try again.");
     } finally {
       setIsSubmitting(false);
@@ -223,7 +276,7 @@ export default function RecordPaymentModal({
     selectedInvoice && payment.amount
       ? Math.max(0, parseFloat(payment.amount || "0") - remainingAmount)
       : 0;
-  const currentStoreCredit = selectedInvoice?.customer?.storeCredit || 0;
+  const currentStoreCredit = Number(selectedCustomer?.storeCredit || 0);
 
   return (
     <Modal
@@ -252,6 +305,86 @@ export default function RecordPaymentModal({
           </div>
         )}
 
+        {/* Customer (required) */}
+        <div className="relative">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Customer <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="text"
+            value={
+              selectedCustomer
+                ? selectedCustomer.name
+                : customerSearch
+            }
+            onChange={(e) => {
+              setCustomerSearch(e.target.value);
+              setShowCustomerDropdown(true);
+              if (payment.customerId) {
+                setPayment((prev) => ({
+                  ...prev,
+                  customerId: "",
+                  invoiceId: "",
+                }));
+              }
+            }}
+            onFocus={() => setShowCustomerDropdown(true)}
+            className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            placeholder="Search customer by name or email..."
+            required
+          />
+          {selectedCustomer && (
+            <button
+              type="button"
+              onClick={() => {
+                setPayment((prev) => ({
+                  ...prev,
+                  customerId: "",
+                  invoiceId: "",
+                }));
+                setCustomerSearch("");
+                setShowCustomerDropdown(true);
+              }}
+              className="absolute right-3 top-9 text-xs text-blue-600 hover:text-blue-700"
+            >
+              Change
+            </button>
+          )}
+          {showCustomerDropdown && !selectedCustomer && (
+            <div className="absolute z-20 mt-1 w-full max-h-56 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg">
+              {filteredCustomers.length === 0 ? (
+                <p className="px-4 py-3 text-sm text-gray-500">
+                  No customers found
+                </p>
+              ) : (
+                filteredCustomers.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => {
+                      setPayment((prev) => ({
+                        ...prev,
+                        customerId: String(c.id),
+                        invoiceId: "",
+                      }));
+                      setCustomerSearch(c.name);
+                      setShowCustomerDropdown(false);
+                    }}
+                    className="w-full text-left px-4 py-2 hover:bg-blue-50 text-sm text-gray-900 border-b border-gray-50 last:border-0"
+                  >
+                    <span className="font-medium">{c.name}</span>
+                    {c.email && (
+                      <div className="text-xs text-gray-500 mt-0.5">
+                        {c.email}
+                      </div>
+                    )}
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+
         {/* Invoice Selection */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -262,13 +395,19 @@ export default function RecordPaymentModal({
             onChange={(e) =>
               setPayment({ ...payment, invoiceId: e.target.value })
             }
-            className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            disabled={!payment.customerId}
+            className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-500"
           >
-            <option value="">No invoice (standalone payment)</option>
+            <option value="">
+              {payment.customerId
+                ? "No invoice (standalone payment)"
+                : "Select a customer first"}
+            </option>
             {invoices.map((invoice) => (
               <option key={invoice.id} value={invoice.id}>
                 {invoice.invoiceNumber} - {invoice.clientName}
-                (Remaining: ${(invoice.amount - invoice.paidAmount).toFixed(2)})
+                (Remaining: $
+                {(invoice.amount - invoice.paidAmount).toFixed(2)})
               </option>
             ))}
           </select>
@@ -281,7 +420,7 @@ export default function RecordPaymentModal({
               </span>
             </p>
           )}
-          {selectedInvoice && (
+          {selectedCustomer && (
             <p className="text-sm text-emerald-700 mt-1">
               Available Store Credit: ${currentStoreCredit.toFixed(2)}
             </p>
@@ -313,19 +452,6 @@ export default function RecordPaymentModal({
           </div>
           {selectedInvoice && parseFloat(payment.amount) > remainingAmount && (
             <p className="text-sm text-emerald-700 mt-1 flex items-center">
-              <svg
-                className="w-4 h-4 mr-1"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                />
-              </svg>
               Excess ${excessAmount.toFixed(2)} will be saved as Store Credit
             </p>
           )}
@@ -395,12 +521,13 @@ export default function RecordPaymentModal({
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-3">
             <div>
               <p className="text-sm font-semibold text-amber-900">
-                Late fee required for overdue installment — adds to invoice total
+                Late fee required for overdue installment — adds to invoice
+                total
               </p>
               <p className="text-xs text-amber-800 mt-1">
                 {overdueInstallment.label} was due on{" "}
-                {formatBusinessDate(overdueInstallment.dueDate)}.
-                Admin late fee: ${lateFeeSetting.amount.toFixed(2)}
+                {formatBusinessDate(overdueInstallment.dueDate)}. Admin late
+                fee: ${lateFeeSetting.amount.toFixed(2)}
               </p>
             </div>
             <div className="flex gap-3">
@@ -473,53 +600,14 @@ export default function RecordPaymentModal({
             onClick={handleSubmit}
             disabled={
               isSubmitting ||
+              !payment.customerId ||
               (shouldPromptLateFee &&
                 !applyLateFee &&
                 !lateFeeWaivedReason.trim())
             }
             className="px-6 py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center"
           >
-            {isSubmitting ? (
-              <>
-                <svg
-                  className="animate-spin h-5 w-5 mr-2"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  ></circle>
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  ></path>
-                </svg>
-                Recording...
-              </>
-            ) : (
-              <>
-                <svg
-                  className="w-5 h-5 mr-2"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M5 13l4 4L19 7"
-                  ></path>
-                </svg>
-                Record Payment
-              </>
-            )}
+            {isSubmitting ? "Recording..." : "Record Payment"}
           </button>
         </div>
       </div>

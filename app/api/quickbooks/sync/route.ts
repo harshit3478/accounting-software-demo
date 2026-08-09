@@ -3,6 +3,7 @@ import prisma from "../../../../lib/prisma";
 import { requireSettingPermission } from "../../../../lib/auth";
 import {
   createQuickBooksClient,
+  fetchLinkedQuickBooksInvoiceMemo,
   mapQuickBooksPaymentMethod,
   refreshQuickBooksToken,
 } from "../../../../lib/quickbooks";
@@ -170,6 +171,12 @@ export async function POST(request: NextRequest) {
           .filter(Boolean)
           .join(" - ");
 
+        // Invoice memo (where team can put our INV#) — separate QB-only field
+        const quickbooksInvoiceMemo = await fetchLinkedQuickBooksInvoiceMemo(
+          qbo,
+          qbPayment,
+        );
+
         // Create payment in our system
         try {
           const methodName = mapQuickBooksPaymentMethod(methodStr);
@@ -185,6 +192,7 @@ export async function POST(request: NextRequest) {
               notes,
               quickbooksId: qbPaymentId,
               quickbooksSyncedAt: new Date(),
+              quickbooksInvoiceMemo,
               isMatched: false,
               invoiceId: null,
             },

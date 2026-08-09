@@ -261,6 +261,7 @@ model Payment {
   id          Int      @id @default(autoincrement())
   paymentCode String?  @unique
   invoiceId   Int? // Nullable for unmatched payments
+  customerId  Int? // Required for new manual payments; null for legacy/QB until linked
   amount      Decimal  @db.Decimal(10, 2)
   paymentDate DateTime @default(now())
   methodId    Int // FK to PaymentMethodEntry table
@@ -269,8 +270,9 @@ model Payment {
   source String @default("manual") // "manual", "csv_upload", "quickbooks_import"
 
   // QuickBooks integration fields
-  quickbooksId       String?   @unique
-  quickbooksSyncedAt DateTime?
+  quickbooksId           String?   @unique
+  quickbooksSyncedAt     DateTime?
+  quickbooksInvoiceMemo  String?   @db.Text // Linked QB invoice memo (not mixed into notes)
 
   // Manual entry tracking
   userId Int // Who recorded this payment
@@ -291,6 +293,7 @@ model Payment {
   updatedAt DateTime @updatedAt
 
   invoice             Invoice?                    @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  customer            Customer?                   @relation(fields: [customerId], references: [id], onDelete: Restrict)
   user                User                        @relation(fields: [userId], references: [id], onDelete: Restrict)
   abandonedByUser     User?                       @relation("PaymentAbandonedBy", fields: [abandonedBy], references: [id], onDelete: SetNull)
   method              PaymentMethodEntry          @relation(fields: [methodId], references: [id])
@@ -299,6 +302,7 @@ model Payment {
   editHistory         PaymentEditHistory[]
   creditTransactions  CustomerCreditTransaction[]
 
+  @@index([customerId])
   @@map("payments")
 }
 
@@ -478,6 +482,7 @@ model Customer {
   updatedAt   DateTime @updatedAt
 
   invoices           Invoice[]
+  payments           Payment[]
   creditTransactions CustomerCreditTransaction[]
 
   @@index([isDeleted])

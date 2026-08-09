@@ -42,6 +42,7 @@ export async function recordStoreCreditApplication(
   const creditAppliedPayment = await tx.payment.create({
     data: {
       invoiceId: input.invoiceId,
+      customerId: input.customerId,
       amount: amountToLink,
       paymentDate: payment.paymentDate,
       methodId: payment.methodId,

@@ -6,6 +6,10 @@ import {
   startOfBusinessDay,
   toBusinessDateString,
 } from "../../../../../lib/business-date";
+import {
+  extractInvoiceNumbersFromMemo,
+  invoiceMatchesMemoSuggestion,
+} from "../../../../../lib/quickbooks-invoice-memo";
 
 interface Suggestion {
   invoice: {
@@ -72,12 +76,26 @@ export async function GET(
     );
     const remainingToAllocate = paymentAmount - alreadyAllocated;
 
-    // Get all unpaid/partially paid invoices
+    const paymentCustomerId =
+      (payment as any).customerId != null
+        ? Number((payment as any).customerId)
+        : null;
+
+    // Get unpaid/partially paid invoices (scoped to payment customer when set,
+    // and also invoices with no customer yet for legacy linking)
     const invoices = await prisma.invoice.findMany({
       where: {
         status: {
           in: ["pending", "partial", "overdue"],
         },
+        ...(paymentCustomerId
+          ? {
+              OR: [
+                { customerId: paymentCustomerId },
+                { customerId: null },
+              ],
+            }
+          : {}),
       },
       include: {
         payments: true,
@@ -149,8 +167,16 @@ export async function GET(
         }
       }
 
-      // Boost confidence if we have client name info (from manual entry or other sources)
-      // For now, we don't have client name in payment, but we can add this later
+      const memoInvoiceNumbers = extractInvoiceNumbersFromMemo(
+        (payment as any).quickbooksInvoiceMemo,
+      );
+      if (
+        memoInvoiceNumbers.length > 0 &&
+        invoiceMatchesMemoSuggestion(invoice.invoiceNumber, memoInvoiceNumbers)
+      ) {
+        confidence = Math.max(confidence, 98);
+        reason = "Matches QuickBooks invoice memo";
+      }
 
       if (confidence >= 50) {
         suggestions.push({

@@ -494,9 +494,16 @@ export default function ViewInvoiceModal({
       .catch(() => {});
 
     try {
+      const unmatchedParams = new URLSearchParams({
+        includeUnassigned: "true",
+      });
+      if (invoice?.customer?.id) {
+        unmatchedParams.set("customerId", String(invoice.customer.id));
+      }
+
       const [methodRes, unmatchedRes] = await Promise.all([
         fetch("/api/payment-methods"),
-        fetch("/api/payments/unmatched"),
+        fetch(`/api/payments/unmatched?${unmatchedParams.toString()}`),
       ]);
 
       if (methodRes.ok) {
@@ -562,11 +569,18 @@ export default function ViewInvoiceModal({
           return;
         }
 
+        if (!invoice.customer?.id) {
+          throw new Error(
+            "Link a customer to this invoice before recording a payment",
+          );
+        }
+
         const createRes = await fetch("/api/payments", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             invoiceId: invoice.id,
+            customerId: invoice.customer.id,
             amount: paymentAmount,
             methodId: selectedMethodId,
             paymentDate,

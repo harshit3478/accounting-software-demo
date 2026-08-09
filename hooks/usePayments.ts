@@ -35,6 +35,14 @@ export interface Payment {
   createdAt: string;
   source?: string;
   paymentCode?: string;
+  customerId?: number | null;
+  customer?: {
+    id: number;
+    name: string;
+    email?: string | null;
+  } | null;
+  quickbooksId?: string | null;
+  quickbooksInvoiceMemo?: string | null;
   isAbandoned?: boolean;
   abandonedAt?: string | null;
   abandonedBy?: number | null;

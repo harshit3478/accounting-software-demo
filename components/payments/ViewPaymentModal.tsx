@@ -21,6 +21,8 @@ interface ViewPaymentModalProps {
     };
     paymentDate: string;
     notes: string | null;
+    quickbooksId?: string | null;
+    quickbooksInvoiceMemo?: string | null;
     createdAt: string;
     isAbandoned?: boolean;
     abandonedAt?: string | null;
@@ -200,6 +202,18 @@ export default function ViewPaymentModal({
                   />
                 </svg>
                 No invoice associated with this payment (standalone payment)
+              </p>
+            </div>
+          )}
+
+          {/* QuickBooks invoice memo (team puts our INV# on the QB invoice) */}
+          {payment.quickbooksInvoiceMemo && (
+            <div className="border border-emerald-200 bg-emerald-50 rounded-lg p-5">
+              <h4 className="text-sm font-medium text-emerald-800 mb-2">
+                QuickBooks Invoice Memo
+              </h4>
+              <p className="text-sm text-emerald-900 whitespace-pre-wrap">
+                {payment.quickbooksInvoiceMemo}
               </p>
             </div>
           )}
