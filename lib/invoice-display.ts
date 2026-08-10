@@ -350,6 +350,18 @@ export function getInvoiceAbandonReasonPlaceholder(isLayaway?: boolean): string 
     : "Why are you canceling this invoice?";
 }
 
+export function getInvoicePaidAmountForDisplay(invoice: {
+  paidAmount?: number | null;
+  processingFee?: number | null;
+  payments?: Array<{ source?: string; amount?: number | string | null }> | null;
+}): number {
+  // Processing fees are store-credit only and must not inflate Amount Paid.
+  // Historically they were baked into paidAmount alongside invoice.processingFee.
+  const paid = Number(invoice.paidAmount || 0);
+  const processingFee = getVisibleProcessingFee(invoice);
+  return Number(Math.max(paid - processingFee, 0).toFixed(2));
+}
+
 export function getInvoiceAmountDue(invoice: {
   status?: string;
   amount?: number | null;
@@ -370,7 +382,7 @@ export function getInvoiceAmountDue(invoice: {
     return 0;
   }
   return Math.max(
-    getInvoiceTotalForDisplay(invoice) - Number(invoice.paidAmount || 0),
+    getInvoiceTotalForDisplay(invoice) - getInvoicePaidAmountForDisplay(invoice),
     0,
   );
 }
@@ -391,8 +403,7 @@ export function computeInvoiceLineItemTotal(
     Number(invoice.shippingFee || 0) +
     Number(invoice.insuranceAmount || 0) +
     getVisibleLayawayFee(invoice) +
-    getVisibleLateFee(invoice) +
-    Number(invoice.processingFee || 0);
+    getVisibleLateFee(invoice);
 
   return Number(Math.max(total, 0).toFixed(2));
 }
@@ -418,16 +429,30 @@ export function getInvoiceTotalForDisplay(
     return 0;
   }
 
-  const storedAmount = Number(invoice.amount || 0);
+  const processingFee = getVisibleProcessingFee(invoice);
+  const rawStoredAmount = Number(invoice.amount || 0);
   const lineItemTotal = computeInvoiceLineItemTotal(invoice);
+  const storedWithoutFee = Number(
+    Math.max(rawStoredAmount - processingFee, 0).toFixed(2),
+  );
 
-  // Late fees are part of the invoice total. If amount was recalculated without
-  // lateFee (e.g. during an invoice edit), include it in the displayed total.
-  if (lineItemTotal > storedAmount + 0.009) {
-    return lineItemTotal;
+  // Prefer the fee-free line-item total when it explains the stored amount
+  // (with or without a historically baked-in processing fee).
+  if (lineItemTotal > 0.009) {
+    const matchesWithFee =
+      Math.abs(rawStoredAmount - (lineItemTotal + processingFee)) <= 0.009;
+    const matchesWithoutFee =
+      Math.abs(rawStoredAmount - lineItemTotal) <= 0.009;
+    if (
+      matchesWithFee ||
+      matchesWithoutFee ||
+      lineItemTotal > storedWithoutFee + 0.009
+    ) {
+      return lineItemTotal;
+    }
   }
 
-  return storedAmount;
+  return storedWithoutFee;
 }
 
 function getPaymentSourceTotal(
@@ -630,10 +655,6 @@ export function buildInvoicePdfSummaryRows(
       value: getVisibleLateFee(invoice),
     },
     {
-      label: "Processing Fee (QuickBooks payment):",
-      value: getVisibleProcessingFee(invoice),
-    },
-    {
       label: "Deposit Fee:",
       value: getPaymentSourceTotal(invoice.payments, "deposit_fee"),
     },
@@ -674,7 +695,10 @@ export function getInvoicePaymentsForPdf(invoice: {
   payments?: InvoicePdfPayment[] | null;
   abandonmentRefunds?: InvoicePdfPayment[] | null;
 }): InvoicePdfPayment[] {
-  const payments = invoice.payments || [];
+  // Processing fees belong in store credit history only — never on invoice PDFs/images.
+  const payments = (invoice.payments || []).filter(
+    (payment) => payment.source !== "processing_fee",
+  );
   if (!isAbandonedInvoice(invoice)) {
     return payments;
   }

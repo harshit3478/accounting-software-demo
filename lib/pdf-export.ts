@@ -5,6 +5,7 @@ import {
   buildInvoicePdfSummaryRows,
   formatInvoiceSummaryRowValue,
   getInvoiceAmountDue,
+  getInvoicePaidAmountForDisplay,
   getInvoicePaymentsForPdf,
   getInvoicePdfPaymentLabel,
   getInvoiceTotalForDisplay,
@@ -284,7 +285,7 @@ export function generateInvoicesPDF(
     invoice.clientName,
     formatBusinessDate(invoice.createdAt),
     formatUsd(getInvoiceTotalForDisplay(invoice)),
-    `$${invoice.paidAmount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+    formatUsd(getInvoicePaidAmountForDisplay(invoice)),
     formatUsd(getInvoiceAmountDue(invoice)),
     invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1),
   ]);
@@ -676,9 +677,10 @@ export async function generateSingleInvoicePDF(
   const paymentsToShow = getInvoicePaymentsForPdf(invoice);
 
   if (paymentsToShow.length > 0) {
+    const paymentSortTime = (p: (typeof paymentsToShow)[number]) =>
+      new Date(p.paymentDate || p.date || p.createdAt || 0).getTime();
     const sortedPayments = [...paymentsToShow].sort(
-      (a, b) =>
-        new Date(a.paymentDate).getTime() - new Date(b.paymentDate).getTime(),
+      (a, b) => paymentSortTime(a) - paymentSortTime(b),
     );
     sortedPayments.forEach((p) => {
       const label = getInvoicePdfPaymentLabel(p);
@@ -1107,9 +1109,10 @@ export function buildSingleInvoicePdfBuffer(
   const paymentsToShow = getInvoicePaymentsForPdf(invoice);
 
   if (paymentsToShow.length > 0) {
+    const paymentSortTime = (p: (typeof paymentsToShow)[number]) =>
+      new Date(p.paymentDate || p.date || p.createdAt || 0).getTime();
     const sortedPayments = [...paymentsToShow].sort(
-      (a, b) =>
-        new Date(a.paymentDate).getTime() - new Date(b.paymentDate).getTime(),
+      (a, b) => paymentSortTime(a) - paymentSortTime(b),
     );
     sortedPayments.forEach((p) => {
       const label = getInvoicePdfPaymentLabel(p);

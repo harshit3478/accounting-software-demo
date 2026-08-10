@@ -17,6 +17,7 @@ import {
   getVisibleLayawayFee,
   getVisibleLateFee,
   getInvoiceTotalForDisplay,
+  getInvoicePaidAmountForDisplay,
   getInvoiceAmountDue,
 } from "../../lib/invoice-display";
 import {
@@ -904,7 +905,6 @@ export default function ViewInvoiceModal({
       : null);
   const shippingFee = Number(invoice.shippingFee || 0);
   const insuranceAmount = Number(invoice.insuranceAmount || 0);
-  const processingFee = Number(invoice.processingFee || 0);
   const earlyPaymentDiscount = Number(invoice.earlyPaymentDiscount || 0);
   const layawayFee = getVisibleLayawayFee(invoice);
   const depositFeeNotInTotal = getCurrentItemDepositFeeTotal(invoice.items);
@@ -989,13 +989,16 @@ export default function ViewInvoiceModal({
     | "deposit_fee"
     | "restocking_fee"
     | "retained_fee"
-    | "late_fee"
-    | "processing_fee";
+    | "late_fee";
 
   const paymentHistoryDisplay = (() => {
     if (invoice.status !== "abandoned") {
       return payments
-        .filter((payment) => payment.source !== "late_fee")
+        .filter(
+          (payment) =>
+            payment.source !== "late_fee" &&
+            payment.source !== "processing_fee",
+        )
         .map((payment) => ({
         payment,
         role: (payment.source === "deposit_fee"
@@ -1004,8 +1007,6 @@ export default function ViewInvoiceModal({
               ? "retained_fee"
             : payment.source === "restocking_fee"
               ? "restocking_fee"
-              : payment.source === "processing_fee"
-                ? "processing_fee"
               : "payment") as PaymentHistoryRole,
       }));
     }
@@ -1143,8 +1144,6 @@ export default function ViewInvoiceModal({
         return "Non-Refundable";
       case "restocking_fee":
         return "Restocking Fee";
-      case "processing_fee":
-        return "Processing Fee (QB)";
       default:
         return "Payment";
     }
@@ -1162,8 +1161,6 @@ export default function ViewInvoiceModal({
         return "bg-rose-100 text-rose-800";
       case "restocking_fee":
         return "bg-indigo-100 text-indigo-800";
-      case "processing_fee":
-        return "bg-sky-100 text-sky-800";
       default:
         return "bg-gray-100 text-gray-700";
     }
@@ -1231,6 +1228,9 @@ export default function ViewInvoiceModal({
     payments,
   };
   const displayInvoiceTotal = getInvoiceTotalForDisplay(displayInvoiceForTotals);
+  const displayPaidAmount = getInvoicePaidAmountForDisplay(
+    displayInvoiceForTotals,
+  );
   const amountDue = getInvoiceAmountDue(displayInvoiceForTotals);
   const overdueInstallmentToday = invoice
     ? resolveOverdueInstallment(new Date())
@@ -1261,7 +1261,7 @@ export default function ViewInvoiceModal({
       ? invoice.status
       : amountDue <= 0
         ? "paid"
-        : localPaidAmount > 0
+        : displayPaidAmount > 0
           ? "partial"
           : new Date(invoice.dueDate) < new Date()
             ? "overdue"
@@ -1434,7 +1434,7 @@ export default function ViewInvoiceModal({
                   Amount Paid
                 </p>
                 <p className="text-xl font-bold text-green-600">
-                  {formatCurrency(localPaidAmount)}
+                  {formatCurrency(displayPaidAmount)}
                 </p>
               </div>
               {amountDue > 0 && (
@@ -1748,16 +1748,6 @@ export default function ViewInvoiceModal({
                   </span>
                 </div>
               )}
-              {processingFee > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">
-                    Processing Fee (QuickBooks payment):
-                  </span>
-                  <span className="font-medium text-gray-900">
-                    {formatCurrency(processingFee)}
-                  </span>
-                </div>
-              )}
               {layawayFee > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Layaway Fee:</span>
@@ -1909,7 +1899,7 @@ export default function ViewInvoiceModal({
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">Amount Paid:</span>
                 <span className="font-medium text-green-600">
-                  {formatCurrency(localPaidAmount)}
+                  {formatCurrency(displayPaidAmount)}
                 </span>
               </div>
               {amountDue > 0 && (

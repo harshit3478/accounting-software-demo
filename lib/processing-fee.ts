@@ -1,45 +1,5 @@
 import { Prisma } from "@prisma/client";
 import prisma from "./prisma";
-import { stampPaymentCode } from "./payment-code";
-import { updateInvoiceAfterPayment } from "./invoice-utils";
-
-export async function createProcessingFeePayment(
-  tx: any,
-  input: {
-    invoiceId: number;
-    methodId: number;
-    paymentDate: Date;
-    amount: number;
-    userId: number;
-    notes?: string | null;
-  },
-) {
-  const safeAmount = Number(input.amount || 0);
-  if (!Number.isFinite(safeAmount) || safeAmount <= 0) {
-    return null;
-  }
-
-  const notes =
-    input.notes?.trim() ||
-    "Processing fee applied from QuickBooks payment overage";
-
-  const payment = await tx.payment.create({
-    data: {
-      invoiceId: input.invoiceId,
-      amount: safeAmount,
-      paymentDate: input.paymentDate,
-      methodId: input.methodId,
-      notes,
-      userId: input.userId,
-      isMatched: true,
-      source: "processing_fee",
-    },
-  });
-
-  await stampPaymentCode(tx, payment.id);
-
-  return payment;
-}
 
 export async function applyStoreCreditAsProcessingFee(
   tx: any,
@@ -98,8 +58,6 @@ export async function applyStoreCreditAsProcessingFee(
   }
 
   let creditPaymentId: number | null = null;
-  let methodId: number | null = null;
-  let paymentDate = new Date();
 
   if (input.creditTransactionId) {
     const creditTx = await tx.customerCreditTransaction.findFirst({
@@ -113,8 +71,6 @@ export async function applyStoreCreditAsProcessingFee(
           select: {
             id: true,
             amount: true,
-            methodId: true,
-            paymentDate: true,
             source: true,
             isAbandoned: true,
             notes: true,
@@ -149,8 +105,6 @@ export async function applyStoreCreditAsProcessingFee(
       }
 
       creditPaymentId = creditTx.payment.id;
-      methodId = creditTx.payment.methodId;
-      paymentDate = creditTx.payment.paymentDate;
 
       await tx.payment.update({
         where: { id: creditTx.payment.id },
@@ -167,37 +121,8 @@ export async function applyStoreCreditAsProcessingFee(
     }
   }
 
-  if (!methodId) {
-    const fallbackMethod = await tx.paymentMethodEntry.findFirst({
-      where: { isActive: true },
-      orderBy: { sortOrder: "asc" },
-      select: { id: true },
-    });
-
-    if (!fallbackMethod) {
-      throw new Error("No active payment method found");
-    }
-
-    methodId = fallbackMethod.id;
-  }
-
-  await createProcessingFeePayment(tx, {
-    invoiceId: input.invoiceId,
-    methodId,
-    paymentDate,
-    amount: safeAmount,
-    userId: input.userId,
-    notes: `Processing fee from store credit on ${invoice.invoiceNumber}`,
-  });
-
-  await tx.invoice.update({
-    where: { id: input.invoiceId },
-    data: {
-      processingFee: { increment: safeAmount },
-      amount: { increment: safeAmount },
-    },
-  });
-
+  // Processing fees are recorded only in customer store credit history.
+  // Do not create invoice payments or inflate invoice total / paid amount.
   await tx.customer.update({
     where: { id: input.customerId },
     data: {
@@ -227,11 +152,7 @@ export async function applyStoreCreditAsProcessingFee(
 export async function applyStoreCreditAsProcessingFeeAndSync(
   input: Parameters<typeof applyStoreCreditAsProcessingFee>[1],
 ) {
-  const result = await prisma.$transaction(async (tx) =>
+  return prisma.$transaction(async (tx) =>
     applyStoreCreditAsProcessingFee(tx, input),
   );
-
-  await updateInvoiceAfterPayment(result.invoiceId);
-
-  return result;
 }

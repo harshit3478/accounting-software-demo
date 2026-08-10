@@ -19,7 +19,9 @@ import { Button } from "../ui/button";
 import type { Invoice } from "../../hooks/useInvoices";
 import {
   getInvoiceAbandonActionLabel,
+  getInvoicePaidAmountForDisplay,
   getInvoiceStatusLabel,
+  getInvoiceTotalForDisplay,
 } from "../../lib/invoice-display";
 import { formatBusinessDate } from "@/lib/business-date";
 
@@ -75,6 +77,9 @@ export default function InvoiceTableRow({
     invoice.status !== "inactive" &&
     invoice.status !== "abandoned" &&
     !invoice.isHold;
+
+  const displayAmount = getInvoiceTotalForDisplay(invoice);
+  const displayPaidAmount = getInvoicePaidAmountForDisplay(invoice);
 
   const trk = invoice.trackingNumber?.trim();
   const sid = invoice.shipmentId?.trim();
@@ -176,13 +181,13 @@ export default function InvoiceTableRow({
         )}
       </td>
       <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
-        ${invoice.amount.toLocaleString()}
+        ${displayAmount.toLocaleString()}
       </td>
       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
-        ${invoice.paidAmount.toLocaleString()}
-        {invoice.status === "partial" && (
+        ${displayPaidAmount.toLocaleString()}
+        {invoice.status === "partial" && displayAmount > 0 && (
           <div className="text-xs text-gray-500 mt-0.5">
-            {Math.round((invoice.paidAmount / invoice.amount) * 100)}%
+            {Math.round((displayPaidAmount / displayAmount) * 100)}%
           </div>
         )}
       </td>
