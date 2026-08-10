@@ -416,6 +416,150 @@ export function previewLayawayInstallmentRepair(
   };
 }
 
+/**
+ * Rebuild layaway installments to the full expected schedule (same as Edit
+ * Invoice installment preview): amounts, due dates, and labels.
+ * Reconciles isPaid / paidAmount from invoice.paidAmount in due-date order.
+ */
+export async function syncLayawayPlanInstallments(
+  tx: TxClient,
+  invoiceId: number,
+): Promise<void> {
+  const invoice = await tx.invoice.findUnique({
+    where: { id: invoiceId },
+    select: {
+      id: true,
+      amount: true,
+      paidAmount: true,
+      invoiceDate: true,
+      isLayaway: true,
+    },
+  });
+
+  if (!invoice?.isLayaway) {
+    return;
+  }
+
+  const plan = await tx.layawayPlan.findUnique({
+    where: { invoiceId },
+    include: {
+      installments: {
+        orderBy: [{ dueDate: "asc" }, { id: "asc" }],
+      },
+    },
+  });
+
+  if (!plan || plan.isCancelled) {
+    return;
+  }
+
+  const expectedSchedule = buildExpectedLayawaySchedule(invoice, plan);
+  if (expectedSchedule.length === 0) {
+    return;
+  }
+
+  const { pairs, unmatchedExisting } = matchInstallmentsToSchedule(
+    plan.installments,
+    expectedSchedule,
+  );
+
+  for (const installment of unmatchedExisting) {
+    if (installment.isPaid) {
+      await tx.layawayInstallment.update({
+        where: { id: installment.id },
+        data: {
+          isPaid: false,
+          paidAmount: null,
+          paidDate: null,
+          paymentId: null,
+        },
+      });
+    }
+    await tx.layawayInstallment.delete({
+      where: { id: installment.id },
+    });
+  }
+
+  const syncedRows: Array<{
+    id: number;
+    label: string;
+    amount: number;
+    isPaid: boolean;
+    paidAmount: number | null;
+    paymentId: number | null;
+    paidDate: Date | null;
+  }> = [];
+
+  for (const pair of pairs) {
+    const nextAmount = roundMoney(pair.expected.amount);
+
+    if (pair.existing) {
+      await tx.layawayInstallment.update({
+        where: { id: pair.existing.id },
+        data: {
+          dueDate: pair.expected.dueDate,
+          amount: nextAmount,
+          label: pair.expected.label,
+        },
+      });
+
+      syncedRows.push({
+        id: pair.existing.id,
+        label: pair.expected.label,
+        amount: nextAmount,
+        isPaid: pair.existing.isPaid,
+        paidAmount: pair.existing.paidAmount
+          ? toNumber(pair.existing.paidAmount)
+          : null,
+        paymentId: pair.existing.paymentId,
+        paidDate: pair.existing.paidDate,
+      });
+      continue;
+    }
+
+    const created = await tx.layawayInstallment.create({
+      data: {
+        layawayPlanId: plan.id,
+        dueDate: pair.expected.dueDate,
+        amount: nextAmount,
+        label: pair.expected.label,
+        isPaid: false,
+      },
+    });
+
+    syncedRows.push({
+      id: created.id,
+      label: pair.expected.label,
+      amount: nextAmount,
+      isPaid: false,
+      paidAmount: null,
+      paymentId: null,
+      paidDate: null,
+    });
+  }
+
+  const paidUpdates = reconcilePaidInstallments(
+    syncedRows,
+    toNumber(invoice.paidAmount),
+  );
+
+  for (const row of syncedRows) {
+    const paidState = paidUpdates.get(row.id);
+    if (!paidState) continue;
+
+    const nextIsPaid = paidState.isPaid;
+    await tx.layawayInstallment.update({
+      where: { id: row.id },
+      data: {
+        isPaid: nextIsPaid,
+        paidAmount: nextIsPaid ? (paidState.paidAmount ?? row.amount) : null,
+        paidDate: nextIsPaid ? row.paidDate ?? new Date() : null,
+        paymentId: nextIsPaid ? paidState.paymentId ?? row.paymentId : null,
+      },
+    });
+  }
+}
+
 export async function repairLayawayInstallmentsForInvoice(
   tx: TxClient,
   invoiceId: number,
@@ -441,7 +585,7 @@ export async function repairLayawayInstallmentsForInvoice(
     where: { invoiceId },
     include: {
       installments: {
-        orderBy: { dueDate: "asc" },
+        orderBy: [{ dueDate: "asc" }, { id: "asc" }],
       },
     },
   });
@@ -460,101 +604,7 @@ export async function repairLayawayInstallmentsForInvoice(
     return null;
   }
 
-  const expectedSchedule = buildExpectedLayawaySchedule(invoice, plan);
-  const { pairs, unmatchedExisting } = matchInstallmentsToSchedule(
-    plan.installments,
-    expectedSchedule,
-  );
-
-  const correctedRows: Array<{
-    id: number;
-    label: string;
-    amount: number;
-    isPaid: boolean;
-    paidAmount: number | null;
-    paymentId: number | null;
-  }> = [];
-
-  for (const pair of pairs) {
-    const nextAmount = roundMoney(pair.expected.amount);
-
-    if (pair.existing) {
-      correctedRows.push({
-        id: pair.existing.id,
-        label: pair.existing.label,
-        amount: nextAmount,
-        isPaid: pair.existing.isPaid,
-        paidAmount: pair.existing.paidAmount
-          ? toNumber(pair.existing.paidAmount)
-          : null,
-        paymentId: pair.existing.paymentId,
-      });
-      continue;
-    }
-
-    correctedRows.push({
-      id: -1,
-      label: pair.expected.label,
-      amount: nextAmount,
-      isPaid: false,
-      paidAmount: null,
-      paymentId: null,
-    });
-  }
-
-  const paidUpdates = reconcilePaidInstallments(
-    correctedRows,
-    toNumber(invoice.paidAmount),
-  );
-
-  for (const pair of pairs) {
-    if (!pair.existing) continue;
-
-    const nextAmount = roundMoney(pair.expected.amount);
-    const paidState = paidUpdates.get(pair.existing.id);
-    const nextIsPaid = paidState?.isPaid ?? pair.existing.isPaid;
-
-    await tx.layawayInstallment.update({
-      where: { id: pair.existing.id },
-      data: {
-        amount: nextAmount,
-        isPaid: nextIsPaid,
-        paidAmount: nextIsPaid ? (paidState?.paidAmount ?? nextAmount) : null,
-        paidDate: nextIsPaid ? pair.existing.paidDate : null,
-        paymentId: nextIsPaid ? paidState?.paymentId ?? pair.existing.paymentId : null,
-      },
-    });
-  }
-
-  for (const pair of pairs) {
-    if (pair.existing) continue;
-
-    const created = await tx.layawayInstallment.create({
-      data: {
-        layawayPlanId: plan.id,
-        dueDate: pair.expected.dueDate,
-        amount: roundMoney(pair.expected.amount),
-        label: pair.expected.label,
-        isPaid: false,
-      },
-    });
-
-    correctedRows.push({
-      id: created.id,
-      label: created.label,
-      amount: toNumber(created.amount),
-      isPaid: false,
-      paidAmount: null,
-      paymentId: null,
-    });
-  }
-
-  for (const installment of unmatchedExisting) {
-    if (installment.isPaid) continue;
-    await tx.layawayInstallment.delete({
-      where: { id: installment.id },
-    });
-  }
+  await syncLayawayPlanInstallments(tx, invoiceId);
 
   return preview;
 }

@@ -32,7 +32,7 @@ import {
   startOfBusinessDay,
 } from "../../../../lib/business-date";
 import { calculateRestockingFeeAmount } from "../../../../lib/restocking-fee";
-import { buildLayawayInstallmentSchedule } from "../../../../lib/layaway-installments";
+import { syncLayawayPlanInstallments } from "../../../../lib/repair-layaway-installments";
 import { uploadToR2 } from "../../../../lib/r2-client";
 import { allocatePaymentAmounts } from "../../../../lib/allocate-payment-amounts";
 import { resolveAppliedRemovedItemDepositFeeAmount } from "../../../../lib/invoice-display";
@@ -735,17 +735,6 @@ export async function PUT(
             const hasPaidExistingPlan = Boolean(
               existingPlan && hasPaidInstallments,
             );
-            const paidRegularInstallmentCount = hasPaidExistingPlan
-              ? paidInstallments.filter(
-                  (inst: { label: string }) =>
-                    !inst.label.toLowerCase().includes("down payment"),
-                ).length
-              : 0;
-            const hasPaidDownPayment = hasPaidExistingPlan
-              ? paidInstallments.some((inst: { label: string }) =>
-                  inst.label.toLowerCase().includes("down payment"),
-                )
-              : false;
             const hasLayawayPlanConfigChanged = Boolean(
               existingPlan &&
                 (existingPlan.months !== normalizedLayawayPlan.months ||
@@ -789,28 +778,7 @@ export async function PUT(
               };
             }
 
-            const planDownPayment = hasPaidExistingPlan
-              ? Number(existingPlan!.downPayment)
-              : normalizedLayawayPlan.downPayment;
-            const planTotal = Number(updated.amount);
-            const installments = buildLayawayInstallmentSchedule({
-              invoiceDate: invoiceDateValue,
-              frequency: normalizedLayawayPlan.paymentFrequency,
-              months: normalizedLayawayPlan.months,
-              downPayment: planDownPayment,
-              totalAmount: planTotal,
-              includeDownPayment: !hasPaidDownPayment,
-              paidRegularInstallmentCount,
-            });
-
             if (existingPlan) {
-              await tx.layawayInstallment.deleteMany({
-                where: {
-                  layawayPlanId: existingPlan.id,
-                  isPaid: false,
-                },
-              });
-
               await tx.layawayPlan.update({
                 where: { invoiceId },
                 data: {
@@ -836,22 +804,10 @@ export async function PUT(
               });
             }
 
-            const plan = await tx.layawayPlan.findUnique({
-              where: { invoiceId },
-              select: { id: true },
-            });
-
-            if (plan) {
-              await tx.layawayInstallment.createMany({
-                data: installments.map((inst) => ({
-                  layawayPlanId: plan.id,
-                  dueDate: inst.dueDate,
-                  amount: inst.amount,
-                  label: inst.label,
-                  isPaid: false,
-                })),
-              });
-            }
+            // Full schedule sync (matches Edit Invoice preview) + settle
+            // isPaid from invoice.paidAmount. Avoids keeping stale paid rows
+            // while regenerating only unpaid ones at a different amount.
+            await syncLayawayPlanInstallments(tx, invoiceId);
           }
         }
 
