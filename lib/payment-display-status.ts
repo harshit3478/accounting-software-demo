@@ -18,11 +18,13 @@ export function getPaymentDisplayStatus(payment: {
   refundProofUrl?: string | null;
   source?: string | null;
 }): PaymentDisplayStatus {
+  // Abandonment wins over fee source so waived/mistaken fee payments
+  // (e.g. deposit_fee) show as Abandoned / Refund after isAbandoned is set.
+  if (payment.isAbandoned && payment.refundProofUrl) return "refund";
+  if (payment.isAbandoned) return "abandoned";
   if (payment.source === "deposit_fee") return "deposit_fee";
   if (payment.source === "retained_fee") return "retained_fee";
   if (payment.source === "restocking_fee") return "restocking_fee";
-  if (payment.isAbandoned && payment.refundProofUrl) return "refund";
-  if (payment.isAbandoned) return "abandoned";
   return "active";
 }
 
