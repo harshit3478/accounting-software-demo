@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 import { requireSuperAdmin } from "../../../../../lib/auth";
 import { getBusinessTodayString } from "../../../../../lib/business-date";
@@ -45,12 +45,6 @@ function mapCustomerRow(customer: any): Record<string, string | number | boolean
   };
 }
 
-function parsePositiveInt(value: string | null, fallback: number): number {
-  const parsed = parseInt(value || "", 10);
-  if (!Number.isFinite(parsed) || parsed < 1) return fallback;
-  return parsed;
-}
-
 async function resolveQuickBooksUserId(superAdminId: number): Promise<number | null> {
   const own = await prisma.quickBooksConnection.findUnique({
     where: { userId: superAdminId },
@@ -66,13 +60,9 @@ async function resolveQuickBooksUserId(superAdminId: number): Promise<number | n
   return anyActive?.userId ?? null;
 }
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const user = await requireSuperAdmin();
-
-    const { searchParams } = new URL(request.url);
-    const page = parsePositiveInt(searchParams.get("page"), 1);
-    const number = parsePositiveInt(searchParams.get("number"), 1000);
 
     const connectionUserId = await resolveQuickBooksUserId(user.id);
     if (!connectionUserId) {
@@ -113,11 +103,8 @@ export async function GET(request: NextRequest) {
     }
 
     const totalCustomers = customers.length;
-    const start = (page - 1) * number;
-    const pageCustomers = customers.slice(start, start + number);
-    const rows = pageCustomers.map(mapCustomerRow);
+    const rows = customers.map(mapCustomerRow);
 
-    // Summary row at the bottom of the sheet
     rows.push({
       Id: "",
       DisplayName: "Total Customers",
@@ -131,7 +118,7 @@ export async function GET(request: NextRequest) {
       ShippingAddress: "",
       Balance: "",
       Active: "",
-      Notes: `Page ${page} · Showing ${pageCustomers.length} of ${totalCustomers}`,
+      Notes: "",
       CreatedAt: "",
       UpdatedAt: "",
     } as any);
@@ -150,7 +137,7 @@ export async function GET(request: NextRequest) {
       { wch: 40 },
       { wch: 12 },
       { wch: 10 },
-      { wch: 40 },
+      { wch: 30 },
       { wch: 22 },
       { wch: 22 },
     ];
@@ -164,7 +151,7 @@ export async function GET(request: NextRequest) {
       headers: {
         "Content-Type":
           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "Content-Disposition": `attachment; filename="quickbooks-customers-${timestamp}-page-${page}.xlsx"`,
+        "Content-Disposition": `attachment; filename="quickbooks-customers-${timestamp}.xlsx"`,
       },
     });
   } catch (error: any) {
