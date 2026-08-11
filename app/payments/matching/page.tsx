@@ -12,6 +12,7 @@ import {
   isLateFeeConfigured,
 } from "../../../lib/late-fee-client";
 import { formatBusinessDate } from "../../../lib/business-date";
+import { getCreditCardProcessingFeeSuggestion } from "../../../lib/processing-fee-client";
 
 interface Payment {
   id: number;
@@ -21,6 +22,8 @@ interface Payment {
   method: { id: number; name: string; icon: string | null; color: string };
   paymentDate: string;
   notes: string | null;
+  source?: string | null;
+  quickbooksId?: string | null;
   paymentMatches: any[];
 }
 
@@ -73,6 +76,7 @@ function PaymentMatchingPageContent() {
   });
   const [applyLateFee, setApplyLateFee] = useState(true);
   const [lateFeeWaivedReason, setLateFeeWaivedReason] = useState("");
+  const [applyProcessingFee, setApplyProcessingFee] = useState(false);
 
   const [summary, setSummary] = useState({ count: 0, totalAmount: 0 });
 
@@ -177,6 +181,7 @@ function PaymentMatchingPageContent() {
     setMatchAmount(matchAmt.toFixed(2));
     setApplyLateFee(true);
     setLateFeeWaivedReason("");
+    setApplyProcessingFee(false);
     setShowMatchModal(true);
   };
 
@@ -185,6 +190,7 @@ function PaymentMatchingPageContent() {
     setMatchAmount("");
     setApplyLateFee(true);
     setLateFeeWaivedReason("");
+    setApplyProcessingFee(false);
     setShowMatchModal(true);
   };
 
@@ -224,30 +230,38 @@ function PaymentMatchingPageContent() {
 
     setIsMatching(true);
     try {
-      const res = await fetch(`/api/payments/${selectedPayment.id}/match`, {
+      // Use /link so leftover can become processing fee or store credit.
+      const res = await fetch(`/api/payments/link`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          matches: [
-            {
-              invoiceId: matchingInvoice.id,
-              amount,
-            },
-          ],
+          paymentId: selectedPayment.id,
+          invoiceId: matchingInvoice.id,
+          amount,
           lateFeeAmount:
             shouldPromptLateFee && applyLateFee ? lateFeeSetting.amount : 0,
           lateFeeWaivedReason:
             shouldPromptLateFee && !applyLateFee
               ? lateFeeWaivedReason.trim()
               : "",
+          applyOverageAsProcessingFee:
+            shouldPromptProcessingFee && applyProcessingFee,
         }),
       });
 
       if (res.ok) {
-        showSuccess(`Payment matched to ${matchingInvoice.invoiceNumber}`);
+        const data = await res.json();
+        if (data.processingFeeApplied > 0) {
+          showSuccess(
+            `Matched to ${matchingInvoice.invoiceNumber}. $${Number(data.processingFeeApplied).toFixed(2)} applied as Credit Card Processing Fee.`,
+          );
+        } else {
+          showSuccess(`Payment matched to ${matchingInvoice.invoiceNumber}`);
+        }
         setShowMatchModal(false);
         setMatchingInvoice(null);
         setMatchAmount("");
+        setApplyProcessingFee(false);
         await fetchUnmatchedPayments();
       } else {
         const error = await res.json();
@@ -289,6 +303,30 @@ function PaymentMatchingPageContent() {
     !!selectedPayment &&
     !!overdueInstallment &&
     isLateFeeConfigured(lateFeeSetting);
+
+  const matchAmountNumber = parseFloat(matchAmount);
+  const paymentRemainingForMatch = selectedPayment
+    ? selectedPayment.remainingAmount ??
+      selectedPayment.amount -
+        selectedPayment.paymentMatches.reduce(
+          (sum: number, m: any) => sum + Number(m.amount || 0),
+          0,
+        )
+    : 0;
+  const processingFeeSuggestion =
+    selectedPayment &&
+    Number.isFinite(matchAmountNumber) &&
+    matchAmountNumber > 0
+      ? getCreditCardProcessingFeeSuggestion({
+          paymentTotal: Number(selectedPayment.amount),
+          amountToLink: matchAmountNumber,
+          paymentAvailable: paymentRemainingForMatch,
+          quickbooksId: selectedPayment.quickbooksId,
+          source: selectedPayment.source,
+          methodName: selectedPayment.method?.name,
+        })
+      : { eligible: false, overage: 0, maxSuggestable: 0 };
+  const shouldPromptProcessingFee = processingFeeSuggestion.eligible;
 
   if (isLoading) {
     return (
@@ -680,11 +718,36 @@ function PaymentMatchingPageContent() {
                   step="0.01"
                   min="0"
                   value={matchAmount}
-                  onChange={(e) => setMatchAmount(e.target.value)}
+                  onChange={(e) => {
+                    setApplyProcessingFee(false);
+                    setMatchAmount(e.target.value);
+                  }}
                   className="w-full border text-gray-900 border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   placeholder="Enter amount"
                 />
               </div>
+
+              {shouldPromptProcessingFee && (
+                <div className="rounded-lg border border-sky-200 bg-sky-50 p-4 space-y-3">
+                  <div>
+                    <p className="text-sm font-semibold text-sky-900">
+                      Optional: credit card processing fee
+                    </p>
+                  </div>
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={applyProcessingFee}
+                      onChange={(e) => setApplyProcessingFee(e.target.checked)}
+                      className="mt-0.5 h-4 w-4 rounded border-sky-300 text-sky-600 focus:ring-sky-500"
+                    />
+                    <span className="text-sm text-sky-900">
+                      Apply ${processingFeeSuggestion.overage.toFixed(2)} as
+                      Credit Card Processing Fee on this invoice
+                    </span>
+                  </label>
+                </div>
+              )}
 
               {shouldPromptLateFee && overdueInstallment && (
                 <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-3">

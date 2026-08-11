@@ -16,6 +16,7 @@ import {
   getRemovedItemDepositFeeDisplayEntries,
   getVisibleLayawayFee,
   getVisibleLateFee,
+  getVisibleProcessingFee,
   getInvoiceTotalForDisplay,
   getInvoicePaidAmountForDisplay,
   getInvoiceAmountDue,
@@ -905,6 +906,10 @@ export default function ViewInvoiceModal({
       : null);
   const shippingFee = Number(invoice.shippingFee || 0);
   const insuranceAmount = Number(invoice.insuranceAmount || 0);
+  const processingFee = getVisibleProcessingFee({
+    processingFee: invoice.processingFee,
+    payments,
+  });
   const earlyPaymentDiscount = Number(invoice.earlyPaymentDiscount || 0);
   const layawayFee = getVisibleLayawayFee(invoice);
   const depositFeeNotInTotal = getCurrentItemDepositFeeTotal(invoice.items);
@@ -989,16 +994,13 @@ export default function ViewInvoiceModal({
     | "deposit_fee"
     | "restocking_fee"
     | "retained_fee"
-    | "late_fee";
+    | "late_fee"
+    | "processing_fee";
 
   const paymentHistoryDisplay = (() => {
     if (invoice.status !== "abandoned") {
       return payments
-        .filter(
-          (payment) =>
-            payment.source !== "late_fee" &&
-            payment.source !== "processing_fee",
-        )
+        .filter((payment) => payment.source !== "late_fee")
         .map((payment) => ({
         payment,
         role: (payment.source === "deposit_fee"
@@ -1007,6 +1009,8 @@ export default function ViewInvoiceModal({
               ? "retained_fee"
             : payment.source === "restocking_fee"
               ? "restocking_fee"
+              : payment.source === "processing_fee"
+                ? "processing_fee"
               : "payment") as PaymentHistoryRole,
       }));
     }
@@ -1144,6 +1148,8 @@ export default function ViewInvoiceModal({
         return "Non-Refundable";
       case "restocking_fee":
         return "Restocking Fee";
+      case "processing_fee":
+        return "Credit Card Processing Fee";
       default:
         return "Payment";
     }
@@ -1161,6 +1167,8 @@ export default function ViewInvoiceModal({
         return "bg-rose-100 text-rose-800";
       case "restocking_fee":
         return "bg-indigo-100 text-indigo-800";
+      case "processing_fee":
+        return "bg-sky-100 text-sky-800";
       default:
         return "bg-gray-100 text-gray-700";
     }
@@ -1745,6 +1753,16 @@ export default function ViewInvoiceModal({
                   <span className="text-gray-600">Insurance:</span>
                   <span className="font-medium text-gray-900">
                     {formatCurrency(insuranceAmount)}
+                  </span>
+                </div>
+              )}
+              {processingFee > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">
+                    Credit Card Processing Fee:
+                  </span>
+                  <span className="font-medium text-gray-900">
+                    {formatCurrency(processingFee)}
                   </span>
                 </div>
               )}

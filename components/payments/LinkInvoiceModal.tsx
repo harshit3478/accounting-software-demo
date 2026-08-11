@@ -18,6 +18,7 @@ import {
   extractInvoiceNumbersFromMemo,
   invoiceMatchesMemoSuggestion,
 } from "../../lib/quickbooks-invoice-memo";
+import { getCreditCardProcessingFeeSuggestion } from "../../lib/processing-fee-client";
 
 interface Payment {
   id: number;
@@ -27,6 +28,7 @@ interface Payment {
   notes?: string;
   isMatched: boolean;
   customerId?: number | null;
+  source?: string | null;
   quickbooksId?: string | null;
   quickbooksInvoiceMemo?: string | null;
   paymentMatches: { amount: string | number }[];
@@ -83,6 +85,7 @@ export default function LinkInvoiceModal({
     useState<EarlyPaymentDiscountSettingSnapshot | null>(null);
   const [applyLateFee, setApplyLateFee] = useState(true);
   const [lateFeeWaivedReason, setLateFeeWaivedReason] = useState("");
+  const [applyProcessingFee, setApplyProcessingFee] = useState(false);
 
   // Fetch unpaid invoices when modal opens
   useEffect(() => {
@@ -139,6 +142,7 @@ export default function LinkInvoiceModal({
       setSearchTerm("");
       setApplyLateFee(true);
       setLateFeeWaivedReason("");
+      setApplyProcessingFee(false);
     }
   }, [isOpen, payment]);
 
@@ -234,6 +238,7 @@ export default function LinkInvoiceModal({
   const handleSelectInvoice = (invoice: Invoice) => {
     if (!payment) return;
     setSelectedInvoiceId(invoice.id);
+    setApplyProcessingFee(false);
 
     const available = getPaymentBalance(payment);
     const grossRemaining = Number(invoice.amount) - Number(invoice.paidAmount);
@@ -271,13 +276,19 @@ export default function LinkInvoiceModal({
             shouldPromptLateFee && !applyLateFee
               ? lateFeeWaivedReason.trim()
               : "",
+          applyOverageAsProcessingFee:
+            shouldPromptProcessingFee && applyProcessingFee,
         }),
       });
 
       const data = await res.json();
 
       if (res.ok) {
-        if (data.storeCreditAdded > 0) {
+        if (data.processingFeeApplied > 0) {
+          alert(
+            `$${Number(data.processingFeeApplied).toFixed(2)} applied as Credit Card Processing Fee.`,
+          );
+        } else if (data.storeCreditAdded > 0) {
           alert(
             `$${Number(data.storeCreditAdded).toFixed(2)} has been saved as Store Credit from the early payment discount.`,
           );
@@ -311,6 +322,21 @@ export default function LinkInvoiceModal({
     !!selectedInvoice &&
     !!overdueInstallment &&
     isLateFeeConfigured(lateFeeSetting);
+
+  const paymentMethodName =
+    typeof payment.method === "object" ? payment.method?.name : payment.method;
+  const processingFeeSuggestion =
+    linkAmount > 0
+      ? getCreditCardProcessingFeeSuggestion({
+          paymentTotal: Number(payment.amount),
+          amountToLink: linkAmount,
+          paymentAvailable: paymentBalance,
+          quickbooksId: payment.quickbooksId,
+          source: payment.source,
+          methodName: paymentMethodName,
+        })
+      : { eligible: false, overage: 0, maxSuggestable: 0 };
+  const shouldPromptProcessingFee = processingFeeSuggestion.eligible;
 
   const earlyDiscountEligibility =
     selectedInvoice &&
@@ -638,14 +664,40 @@ export default function LinkInvoiceModal({
                     min="0.01"
                     step="0.01"
                     max={selectedMaxLink}
-                    value={linkAmount}
-                    onChange={(e) => setLinkAmount(parseFloat(e.target.value))}
-                    className="w-full pl-0 pr-4 py-2 bg-gray-50 border-gray-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all text-xl font-bold text-gray-900 placeholder-gray-300 outline-none"
+                    value={Number.isFinite(linkAmount) ? linkAmount : ""}
+                    onChange={(e) => {
+                      setApplyProcessingFee(false);
+                      const next = parseFloat(e.target.value);
+                      setLinkAmount(Number.isFinite(next) ? next : 0);
+                    }}
+                    className="w-full pl-7 pr-4 py-2 bg-gray-50 border-gray-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all text-xl font-bold text-gray-900 placeholder-gray-300 outline-none"
                     autoFocus
                   />
                 </div>
               </div>
             </div>
+
+            {shouldPromptProcessingFee && (
+              <div className="mt-4 rounded-lg border border-sky-200 bg-sky-50 p-4 space-y-3">
+                <div>
+                  <p className="text-sm font-semibold text-sky-900">
+                    Optional: credit card processing fee
+                  </p>
+                </div>
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={applyProcessingFee}
+                    onChange={(e) => setApplyProcessingFee(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-sky-300 text-sky-600 focus:ring-sky-500"
+                  />
+                  <span className="text-sm text-sky-900">
+                    Apply ${processingFeeSuggestion.overage.toFixed(2)} as
+                    Credit Card Processing Fee on this invoice
+                  </span>
+                </label>
+              </div>
+            )}
           </div>
         )}
       </div>

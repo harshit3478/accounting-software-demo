@@ -7,6 +7,8 @@ import { stampPaymentCode } from "../../../../lib/payment-code";
 import { applyLateFeeToInvoice } from "../../../../lib/late-fee";
 import { recordStoreCreditApplication } from "../../../../lib/store-credit-apply";
 import { createOrIncrementPaymentInvoiceMatch } from "../../../../lib/payment-invoice-match";
+import { applyPaymentOverageAsProcessingFee } from "../../../../lib/processing-fee";
+import { getCreditCardProcessingFeeSuggestion } from "../../../../lib/processing-fee-client";
 
 export async function POST(request: NextRequest) {
   try {
@@ -19,6 +21,7 @@ export async function POST(request: NextRequest) {
       lateFeeAmount,
       lateFeeReason,
       lateFeeWaivedReason,
+      applyOverageAsProcessingFee,
     } = body;
 
     if (!paymentId || !invoiceId || !amount) {
@@ -34,6 +37,7 @@ export async function POST(request: NextRequest) {
       typeof lateFeeReason === "string" ? lateFeeReason.trim() : "";
     const normalizedLateFeeWaivedReason =
       typeof lateFeeWaivedReason === "string" ? lateFeeWaivedReason.trim() : "";
+    const shouldApplyProcessingFee = applyOverageAsProcessingFee === true;
 
     if (amountToLink.isNegative() || amountToLink.isZero()) {
       return NextResponse.json(
@@ -42,12 +46,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Start a transaction to ensure integrity
     const result = await prisma.$transaction(async (tx) => {
-      // 1. Fetch Payment and its current matches
       const payment = await tx.payment.findUnique({
         where: { id: paymentId },
-        include: { paymentMatches: true },
+        include: {
+          paymentMatches: true,
+          method: { select: { id: true, name: true } },
+        },
       });
 
       if (!payment) {
@@ -58,14 +63,12 @@ export async function POST(request: NextRequest) {
         throw new Error("Cannot link an abandoned payment to an invoice");
       }
 
-      // Safeguard: If payment is directly linked via invoiceId column, it considers fully used by that invoice
       if (payment.invoiceId) {
         throw new Error(
           "Payment is already directly allocated to an invoice. Cannot create additional manual links.",
         );
       }
 
-      // Calculate available balance on payment
       const matchedAmount = payment.paymentMatches.reduce(
         (sum, match) => sum.add(match.amount),
         new Prisma.Decimal(0),
@@ -83,7 +86,6 @@ export async function POST(request: NextRequest) {
 
       const remainingAfterLink = paymentAvailable.sub(amountToLink);
 
-      // 2. Fetch Invoice
       const invoice = await tx.invoice.findUnique({
         where: { id: invoiceId },
       });
@@ -98,13 +100,10 @@ export async function POST(request: NextRequest) {
         !invoice.customerId
       ) {
         throw new Error(
-          "Cannot convert the remaining payment balance to store credit because this invoice has no linked customer",
+          "Cannot convert the remaining payment balance because this invoice has no linked customer",
         );
       }
 
-      // Customer-scoped payments (manual + store credit) must only link to
-      // invoices for the same customer. QuickBooks payments may start without
-      // customerId and inherit it from the invoice on first link.
       let paymentCustomerId =
         (payment as any).customerId != null
           ? Number((payment as any).customerId)
@@ -142,21 +141,14 @@ export async function POST(request: NextRequest) {
         paymentCustomerId = invoice.customerId;
       }
 
-      // Calculate remaining balance on invoice
-      // Note: We use paidAmount from invoice, but we should verify it implies matches
-      // But updateInvoiceAfterPayment keeps it in sync.
       const invoiceRemaining = invoice.amount.sub(invoice.paidAmount);
 
-      // Allow a small epsilon for float issues? standard practice with Decimals is exact.
-      // But let's check strict greater than.
       if (amountToLink.gt(invoiceRemaining)) {
-        // Optionally, we could clamp it, but for now throwing error is safer
         throw new Error(
           `Amount exceeds invoice remaining balance. Remaining: ${invoiceRemaining}`,
         );
       }
 
-      // 3. Create or extend the match (partial links to the same invoice reuse one row)
       const match = await createOrIncrementPaymentInvoiceMatch(tx, {
         paymentId,
         invoiceId,
@@ -187,10 +179,48 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      // 4. If this is a regular payment and it still has remaining balance,
-      // split the remainder into customer-scoped store credit so it cannot be
-      // reused against unrelated invoices.
       if (remainingAfterLink.gt(0) && canSplitResidualIntoCredit) {
+        const remainingNumber = Number(remainingAfterLink.toFixed(2));
+        const feeSuggestion = getCreditCardProcessingFeeSuggestion({
+          paymentTotal: Number(payment.amount),
+          amountToLink: Number(amountToLink),
+          paymentAvailable: Number(paymentAvailable),
+          quickbooksId: payment.quickbooksId,
+          source: payment.source,
+          methodName: payment.method?.name,
+        });
+
+        if (shouldApplyProcessingFee) {
+          if (!feeSuggestion.eligible) {
+            throw new Error(
+              "Credit card processing fee can only be suggested when the leftover is at most 7% of the payment total for QuickBooks or card payments",
+            );
+          }
+
+          await tx.payment.update({
+            where: { id: paymentId },
+            data: {
+              amount: amountToLink,
+              isMatched: true,
+            },
+          });
+
+          await applyPaymentOverageAsProcessingFee(tx, {
+            invoiceId,
+            invoiceNumber: invoice.invoiceNumber,
+            methodId: payment.methodId,
+            paymentDate: payment.paymentDate,
+            amount: remainingNumber,
+            userId: user.id,
+          });
+
+          return {
+            match,
+            processingFeeApplied: remainingNumber,
+            customerId: invoice.customerId,
+          };
+        }
+
         await tx.payment.update({
           where: { id: paymentId },
           data: {
@@ -215,12 +245,6 @@ export async function POST(request: NextRequest) {
 
         await stampPaymentCode(tx, creditPayment.id);
 
-        // NOTE: we intentionally do NOT update customer.storeCredit or create the
-        // customerCreditTransaction inside this large interactive transaction to
-        // avoid timeouts on slower DB connections. Instead we return the created
-        // creditPayment id and remaining amount so we can perform a small follow
-        // up transaction after commit.
-
         return {
           match,
           creditPaymentId: creditPayment.id,
@@ -228,8 +252,6 @@ export async function POST(request: NextRequest) {
           customerId: invoice.customerId,
         };
       } else {
-        // Store-credit payments keep their remaining balance available for the
-        // same customer, so only mark them fully matched when exhausted.
         const newMatchedTotal = matchedAmount.add(amountToLink);
         const isNowFullyMatched = newMatchedTotal.gte(payment.amount);
 
@@ -257,10 +279,6 @@ export async function POST(request: NextRequest) {
       return { match };
     });
 
-    // If the transaction returned a created credit payment, perform a small
-    // follow-up transaction to update the customer's store credit and create
-    // the customerCreditTransaction record. Keeping this separate avoids long
-    // interactive transactions which can time out.
     if ((result as any).creditPaymentId) {
       const payload = result as any;
       await prisma.$transaction([
@@ -286,19 +304,24 @@ export async function POST(request: NextRequest) {
       ]);
     }
 
-    // 5. Update Invoice Status (outside transactions)
     const invoiceUpdateResult = await updateInvoiceAfterPayment(invoiceId);
 
-    // Normalize response shape: return match
     const match = (result as any).match;
+    const processingFeeApplied = Number(
+      (result as any).processingFeeApplied || 0,
+    );
     return NextResponse.json({
       success: true,
       match,
+      processingFeeApplied:
+        processingFeeApplied > 0 ? processingFeeApplied : undefined,
       storeCreditAdded: invoiceUpdateResult.earlyDiscountStoreCredit,
       message:
-        invoiceUpdateResult.earlyDiscountStoreCredit > 0
-          ? `Payment linked. $${invoiceUpdateResult.earlyDiscountStoreCredit.toFixed(2)} saved as store credit from early payment discount.`
-          : undefined,
+        processingFeeApplied > 0
+          ? `$${processingFeeApplied.toFixed(2)} applied as credit card processing fee.`
+          : invoiceUpdateResult.earlyDiscountStoreCredit > 0
+            ? `Payment linked. $${invoiceUpdateResult.earlyDiscountStoreCredit.toFixed(2)} saved as store credit from early payment discount.`
+            : undefined,
     });
   } catch (error: any) {
     console.error("Error linking payment:", error);

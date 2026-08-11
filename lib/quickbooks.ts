@@ -238,3 +238,41 @@ export async function fetchLinkedQuickBooksInvoiceMemo(
 
   return memos.length > 0 ? memos.join(" | ") : null;
 }
+
+const QB_CUSTOMER_PAGE_SIZE = 1000;
+
+function fetchCustomersPageFromQuickBooks(
+  qbo: QuickBooks,
+  startPosition: number,
+): Promise<any[]> {
+  return new Promise((resolve, reject) => {
+    const criteria = `MAXRESULTS ${QB_CUSTOMER_PAGE_SIZE} STARTPOSITION ${startPosition}`;
+    qbo.findCustomers(criteria, (err: any, result: any) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+
+      const customers = result?.QueryResponse?.Customer || [];
+      resolve(Array.isArray(customers) ? customers : [customers]);
+    });
+  });
+}
+
+/** Pull every Customer from QuickBooks Online (paginated past MAXRESULTS 1000). */
+export async function fetchAllCustomersFromQuickBooks(
+  qbo: QuickBooks,
+): Promise<any[]> {
+  const all: any[] = [];
+  let startPosition = 1;
+
+  while (true) {
+    const page = await fetchCustomersPageFromQuickBooks(qbo, startPosition);
+    if (page.length === 0) break;
+    all.push(...page);
+    if (page.length < QB_CUSTOMER_PAGE_SIZE) break;
+    startPosition += QB_CUSTOMER_PAGE_SIZE;
+  }
+
+  return all;
+}

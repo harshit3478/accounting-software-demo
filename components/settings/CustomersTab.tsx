@@ -1029,10 +1029,10 @@ export default function CustomersTab({
                                             openProcessingFeeModal(tx)
                                           }
                                           className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-amber-800 bg-amber-100 hover:bg-amber-200 rounded-md transition-colors"
-                                          title="Apply this credit as a processing fee on an invoice"
+                                          title="Apply this credit as a credit card processing fee on an invoice"
                                         >
                                           <Receipt size={12} />
-                                          Processing Fee
+                                          Credit Card Fee
                                         </button>
                                       )}
                                   </td>
@@ -1237,11 +1237,12 @@ export default function CustomersTab({
           />
           <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-1">
-              Apply Processing Fee
+              Apply Credit Card Processing Fee
             </h3>
             <p className="text-sm text-gray-600 mb-4">
-              Move store credit to a processing fee on an invoice. This removes
-              the amount from store credit and adds it to the invoice total.
+              Move store credit to a credit card processing fee on an invoice.
+              This removes the amount from store credit and adds it to the
+              invoice total.
             </p>
 
             <div className="space-y-4">
@@ -1333,7 +1334,7 @@ export default function CustomersTab({
               >
                 {processingFeeSubmitting
                   ? "Applying..."
-                  : "Apply Processing Fee"}
+                  : "Apply Credit Card Fee"}
               </button>
             </div>
           </div>

@@ -35,6 +35,10 @@ declare module "node-quickbooks" {
       criteria: any,
       callback: (err: any, payments: any) => void,
     ): void;
+    findCustomers(
+      criteria: any,
+      callback: (err: any, customers: any) => void,
+    ): void;
   }
 
   export = QuickBooks;

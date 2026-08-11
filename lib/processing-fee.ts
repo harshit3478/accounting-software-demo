@@ -1,5 +1,85 @@
 import { Prisma } from "@prisma/client";
 import prisma from "./prisma";
+import { stampPaymentCode } from "./payment-code";
+import { updateInvoiceAfterPayment } from "./invoice-utils";
+
+export async function createProcessingFeePayment(
+  tx: any,
+  input: {
+    invoiceId: number;
+    methodId: number;
+    paymentDate: Date;
+    amount: number;
+    userId: number;
+    notes?: string | null;
+  },
+) {
+  const safeAmount = Number(input.amount || 0);
+  if (!Number.isFinite(safeAmount) || safeAmount <= 0) {
+    return null;
+  }
+
+  const notes =
+    input.notes?.trim() ||
+    "Credit card processing fee applied from payment overage";
+
+  const payment = await tx.payment.create({
+    data: {
+      invoiceId: input.invoiceId,
+      amount: safeAmount,
+      paymentDate: input.paymentDate,
+      methodId: input.methodId,
+      notes,
+      userId: input.userId,
+      isMatched: true,
+      source: "processing_fee",
+    },
+  });
+
+  await stampPaymentCode(tx, payment.id);
+
+  return payment;
+}
+
+/**
+ * Apply payment residual directly as a credit card processing fee on the invoice
+ * (instead of converting it to store credit).
+ */
+export async function applyPaymentOverageAsProcessingFee(
+  tx: any,
+  input: {
+    invoiceId: number;
+    invoiceNumber: string;
+    methodId: number;
+    paymentDate: Date;
+    amount: number;
+    userId: number;
+  },
+) {
+  const safeAmount = Number(input.amount || 0);
+  if (!Number.isFinite(safeAmount) || safeAmount <= 0) {
+    throw new Error("Processing fee amount must be greater than 0");
+  }
+
+  await createProcessingFeePayment(tx, {
+    invoiceId: input.invoiceId,
+    methodId: input.methodId,
+    paymentDate: input.paymentDate,
+    amount: safeAmount,
+    userId: input.userId,
+    notes: `Credit card processing fee on ${input.invoiceNumber}`,
+  });
+
+  await tx.invoice.update({
+    where: { id: input.invoiceId },
+    data: {
+      processingFee: { increment: safeAmount },
+      amount: { increment: safeAmount },
+    },
+  });
+
+  return { amount: safeAmount };
+}
 
 export async function applyStoreCreditAsProcessingFee(
   tx: any,
@@ -58,6 +138,8 @@ export async function applyStoreCreditAsProcessingFee(
   }
 
   let creditPaymentId: number | null = null;
+  let methodId: number | null = null;
+  let paymentDate = new Date();
 
   if (input.creditTransactionId) {
     const creditTx = await tx.customerCreditTransaction.findFirst({
@@ -71,6 +153,8 @@ export async function applyStoreCreditAsProcessingFee(
           select: {
             id: true,
             amount: true,
+            methodId: true,
+            paymentDate: true,
             source: true,
             isAbandoned: true,
             notes: true,
@@ -105,6 +189,8 @@ export async function applyStoreCreditAsProcessingFee(
       }
 
       creditPaymentId = creditTx.payment.id;
+      methodId = creditTx.payment.methodId;
+      paymentDate = creditTx.payment.paymentDate;
 
       await tx.payment.update({
         where: { id: creditTx.payment.id },
@@ -112,7 +198,7 @@ export async function applyStoreCreditAsProcessingFee(
           isMatched: true,
           notes: [
             creditTx.payment.notes || "",
-            `Reclassified as processing fee on ${invoice.invoiceNumber}`,
+            `Reclassified as credit card processing fee on ${invoice.invoiceNumber}`,
           ]
             .filter(Boolean)
             .join(" | "),
@@ -121,8 +207,37 @@ export async function applyStoreCreditAsProcessingFee(
     }
   }
 
-  // Processing fees are recorded only in customer store credit history.
-  // Do not create invoice payments or inflate invoice total / paid amount.
+  if (!methodId) {
+    const fallbackMethod = await tx.paymentMethodEntry.findFirst({
+      where: { isActive: true },
+      orderBy: { sortOrder: "asc" },
+      select: { id: true },
+    });
+
+    if (!fallbackMethod) {
+      throw new Error("No active payment method found");
+    }
+
+    methodId = fallbackMethod.id;
+  }
+
+  await createProcessingFeePayment(tx, {
+    invoiceId: input.invoiceId,
+    methodId,
+    paymentDate,
+    amount: safeAmount,
+    userId: input.userId,
+    notes: `Credit card processing fee from store credit on ${invoice.invoiceNumber}`,
+  });
+
+  await tx.invoice.update({
+    where: { id: input.invoiceId },
+    data: {
+      processingFee: { increment: safeAmount },
+      amount: { increment: safeAmount },
+    },
+  });
+
   await tx.customer.update({
     where: { id: input.customerId },
     data: {
@@ -135,7 +250,7 @@ export async function applyStoreCreditAsProcessingFee(
       customerId: input.customerId,
       amount: new Prisma.Decimal(safeAmount),
       type: "debit",
-      reason: `Processing fee applied to invoice ${invoice.invoiceNumber}`,
+      reason: `Credit card processing fee applied to invoice ${invoice.invoiceNumber}`,
       paymentId: creditPaymentId,
       invoiceId: input.invoiceId,
       createdById: input.userId,
@@ -152,7 +267,11 @@ export async function applyStoreCreditAsProcessingFee(
 export async function applyStoreCreditAsProcessingFeeAndSync(
   input: Parameters<typeof applyStoreCreditAsProcessingFee>[1],
 ) {
-  return prisma.$transaction(async (tx) =>
+  const result = await prisma.$transaction(async (tx) =>
     applyStoreCreditAsProcessingFee(tx, input),
   );
+
+  await updateInvoiceAfterPayment(result.invoiceId);
+
+  return result;
 }
