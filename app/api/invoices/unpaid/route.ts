@@ -30,7 +30,10 @@ export async function GET(request: NextRequest) {
         paidAmount: true,
         dueDate: true,
         invoiceDate: true,
+        items: true,
         earlyPaymentDiscount: true,
+        unitDiscountAmount: true,
+        unitDiscountOffer: true,
         status: true,
         customerId: true,
         isLayaway: true,
@@ -59,12 +62,27 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    const serializedInvoices = unpaidInvoices.map((invoice) => ({
+    const serializedInvoices = (unpaidInvoices as any[]).map((invoice) => ({
       ...invoice,
-      amount: invoice.amount.toNumber(),
-      paidAmount: invoice.paidAmount.toNumber(),
-      earlyPaymentDiscount: invoice.earlyPaymentDiscount.toNumber(),
-      invoiceDate: invoice.invoiceDate.toISOString(),
+      amount: Number(invoice.amount?.toNumber?.() ?? invoice.amount ?? 0),
+      paidAmount: Number(
+        invoice.paidAmount?.toNumber?.() ?? invoice.paidAmount ?? 0,
+      ),
+      earlyPaymentDiscount: Number(
+        invoice.earlyPaymentDiscount?.toNumber?.() ??
+          invoice.earlyPaymentDiscount ??
+          0,
+      ),
+      unitDiscountAmount: Number(
+        invoice.unitDiscountAmount?.toNumber?.() ??
+          invoice.unitDiscountAmount ??
+          0,
+      ),
+      unitDiscountOffer: invoice.unitDiscountOffer ?? null,
+      invoiceDate:
+        invoice.invoiceDate instanceof Date
+          ? invoice.invoiceDate.toISOString()
+          : invoice.invoiceDate,
     }));
 
     return NextResponse.json(serializedInvoices);

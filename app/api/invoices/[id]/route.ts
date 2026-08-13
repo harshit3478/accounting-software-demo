@@ -36,6 +36,10 @@ import { syncLayawayPlanInstallments } from "../../../../lib/repair-layaway-inst
 import { uploadToR2 } from "../../../../lib/r2-client";
 import { allocatePaymentAmounts } from "../../../../lib/allocate-payment-amounts";
 import { resolveAppliedRemovedItemDepositFeeAmount } from "../../../../lib/invoice-display";
+import {
+  buildUnitDiscountOfferForInvoice,
+  toUnitDiscountOfferJson,
+} from "../../../../lib/unit-discount";
 
 async function getConfiguredLayawayFeeRates() {
   const rateModel = (prisma as any)?.layawayFeeSetting;
@@ -580,6 +584,14 @@ export async function PUT(
       liveTypeId: resolvedLiveTypeId,
       liveTypeSnapshot: resolvedLiveTypeSnapshot,
       customerId: resolvedCustomerId,
+      unitDiscountAmount: 0,
+      unitDiscountOffer: toUnitDiscountOfferJson(
+        await buildUnitDiscountOfferForInvoice({
+          items: normalizedItems,
+          invoiceDate: invoiceDateValue,
+          isLayaway: isLayaway || false,
+        }),
+      ),
     };
 
     const changes: Record<string, any> = {};
@@ -673,6 +685,11 @@ export async function PUT(
       "customerId",
       existingInvoice.customerId || null,
       nextData.customerId || null,
+    );
+    trackChange(
+      "unitDiscountOffer",
+      existingInvoiceAny.unitDiscountOffer || null,
+      nextData.unitDiscountOffer,
     );
 
     let invoice = await prisma.$transaction(
@@ -825,17 +842,27 @@ export async function PUT(
     // here to avoid leaving the invoice stuck in a stale status (e.g. "partial"
     // when it is actually fully paid). Inactive/abandoned states are preserved.
     if (invoice.status !== "inactive" && invoice.status !== "abandoned") {
-      const recalculatedStatus = calculateInvoiceStatus(
-        invoice.amount.toNumber(),
-        invoice.paidAmount.toNumber(),
-        invoice.dueDate,
-      );
-
-      if (recalculatedStatus !== invoice.status) {
-        invoice = await prisma.invoice.update({
+      if (Number(invoice.paidAmount) > 0.01) {
+        await updateInvoiceAfterPayment(invoiceId);
+        const refreshed = await prisma.invoice.findUnique({
           where: { id: invoiceId },
-          data: { status: recalculatedStatus },
         });
+        if (refreshed) {
+          invoice = refreshed;
+        }
+      } else {
+        const recalculatedStatus = calculateInvoiceStatus(
+          invoice.amount.toNumber(),
+          invoice.paidAmount.toNumber(),
+          invoice.dueDate,
+        );
+
+        if (recalculatedStatus !== invoice.status) {
+          invoice = await prisma.invoice.update({
+            where: { id: invoiceId },
+            data: { status: recalculatedStatus },
+          });
+        }
       }
     }
 
@@ -874,6 +901,17 @@ export async function PUT(
       layawayFee: Number((invoice as any).layawayFee?.toNumber?.() ?? 0),
       waiveLayawayFee: Boolean((invoice as any).waiveLayawayFee),
       lateFee: Number((invoice as any).lateFee?.toNumber?.() ?? 0),
+      earlyPaymentDiscount: Number(
+        (invoice as any).earlyPaymentDiscount?.toNumber?.() ??
+          (invoice as any).earlyPaymentDiscount ??
+          0,
+      ),
+      unitDiscountAmount: Number(
+        (invoice as any).unitDiscountAmount?.toNumber?.() ??
+          (invoice as any).unitDiscountAmount ??
+          0,
+      ),
+      unitDiscountOffer: (invoice as any).unitDiscountOffer ?? null,
       amount: invoice.amount.toNumber(),
       paidAmount: invoice.paidAmount.toNumber(),
     };

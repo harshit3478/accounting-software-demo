@@ -95,6 +95,7 @@ model User {
   chequesRejected                 ChequeVault[]               @relation("ChequeRejectedBy")
   chequesCorrectionRequested      ChequeVault[]               @relation("ChequeCorrectionRequestedBy")
   chequesInvoicesLinked           ChequeVault[]               @relation("ChequeInvoicesLinkedBy")
+  unitDiscountSettingsCreated     UnitDiscountSetting[]
 
   @@map("users")
 }
@@ -123,6 +124,8 @@ model Invoice {
   lateFee             Decimal  @default(0) @db.Decimal(10, 2)
   processingFee       Decimal  @default(0) @db.Decimal(10, 2)
   earlyPaymentDiscount Decimal @default(0) @db.Decimal(10, 2)
+  unitDiscountAmount   Decimal @default(0) @db.Decimal(10, 2)
+  unitDiscountOffer    Json?
   insuranceBaseAmount Decimal? @db.Decimal(10, 2)
   amount              Decimal  @db.Decimal(10, 2) // Total amount
   paidAmount          Decimal  @default(0) @db.Decimal(10, 2) // Track partial payments
@@ -554,6 +557,25 @@ model EarlyPaymentDiscountSetting {
   updatedAt        DateTime @updatedAt
 
   @@map("early_payment_discount_settings")
+}
+
+model UnitDiscountSetting {
+  id              Int      @id @default(autoincrement())
+  unitName        String
+  discountPercent Decimal  @db.Decimal(10, 2)
+  periodStart     DateTime
+  periodEnd       DateTime
+  paymentDueDate  DateTime
+  isActive        Boolean  @default(true)
+  createdBy       Int
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  creator User @relation(fields: [createdBy], references: [id], onDelete: Restrict)
+
+  @@index([unitName, isActive])
+  @@index([isActive, periodStart, periodEnd])
+  @@map("unit_discount_settings")
 }
 
 model DueReminderSetting {

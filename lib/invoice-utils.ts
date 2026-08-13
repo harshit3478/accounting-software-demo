@@ -5,6 +5,10 @@ import {
   maybeApplyEarlyPaymentDiscount,
   roundMoney,
 } from "./early-payment-discount";
+import {
+  creditUnitDiscountOverpaymentAsStoreCredit,
+  maybeApplyUnitDiscount,
+} from "./unit-discount";
 import { resetDueReminderTracking } from "./due-reminders";
 
 /**
@@ -200,22 +204,55 @@ export async function updateInvoiceAfterPayment(
   });
 
   const earlyPaymentSetting = await getEarlyPaymentDiscountSettingSnapshot();
-  const discountApplied = await prisma.$transaction(async (tx) =>
-    maybeApplyEarlyPaymentDiscount(tx, {
+  const discountApplied = await prisma.$transaction(async (tx) => {
+    const unitDiscountApplied = await maybeApplyUnitDiscount(tx, {
       invoice: {
         ...invoice,
         paidAmount: totalPaid,
       },
       totalPaid,
+    });
+
+    const amountAfterUnitDiscount = unitDiscountApplied
+      ? roundMoney(Math.max(invoiceAmount - unitDiscountApplied, 0))
+      : invoiceAmount;
+
+    const earlyDiscountApplied = await maybeApplyEarlyPaymentDiscount(tx, {
+      invoice: {
+        ...invoice,
+        amount: amountAfterUnitDiscount,
+        paidAmount: totalPaid,
+      },
+      totalPaid,
       setting: earlyPaymentSetting,
-    }),
-  );
+    });
+
+    return { unitDiscountApplied, earlyDiscountApplied };
+  });
 
   let finalInvoiceAmount = invoiceAmount;
   let earlyDiscountStoreCredit = 0;
+  const appliedUnitDiscount = discountApplied.unitDiscountApplied;
+  const appliedEarlyDiscount = discountApplied.earlyDiscountApplied;
 
-  if (discountApplied) {
-    finalInvoiceAmount = Math.max(invoiceAmount - discountApplied, 0);
+  if (appliedUnitDiscount) {
+    finalInvoiceAmount = Math.max(invoiceAmount - appliedUnitDiscount, 0);
+    console.log(
+      `Applied unit discount of $${appliedUnitDiscount.toFixed(2)} on invoice ${invoice.invoiceNumber}`,
+    );
+  }
+
+  if (appliedEarlyDiscount) {
+    finalInvoiceAmount = Math.max(
+      finalInvoiceAmount - appliedEarlyDiscount,
+      0,
+    );
+    console.log(
+      `Applied early payment discount of $${appliedEarlyDiscount.toFixed(2)} on invoice ${invoice.invoiceNumber}`,
+    );
+  }
+
+  if (appliedUnitDiscount || appliedEarlyDiscount) {
     const adjustedStatus = calculateInvoiceStatus(
       finalInvoiceAmount,
       totalPaid,
@@ -228,10 +265,6 @@ export async function updateInvoiceAfterPayment(
         status: adjustedStatus,
       },
     });
-
-    console.log(
-      `Applied early payment discount of $${discountApplied.toFixed(2)} on invoice ${invoice.invoiceNumber}`,
-    );
 
     const overpaymentAfterDiscount = roundMoney(totalPaid - finalInvoiceAmount);
     if (overpaymentAfterDiscount > 0.01 && invoice.customerId) {
@@ -260,36 +293,39 @@ export async function updateInvoiceAfterPayment(
         const creditUserId = latestPayment?.userId;
         if (!creditUserId) {
           console.warn(
-            `Early discount overpayment on ${invoice.invoiceNumber} could not be credited: no user available for audit trail`,
+            `Discount overpayment on ${invoice.invoiceNumber} could not be credited: no user available for audit trail`,
           );
         } else {
-          earlyDiscountStoreCredit =
-            await creditEarlyDiscountOverpaymentAsStoreCredit({
-              customerId: invoice.customerId,
-              invoiceId: invoice.id,
-              invoiceNumber: invoice.invoiceNumber,
-              amount: overpaymentAfterDiscount,
-              methodId,
-              userId: creditUserId,
-            });
+          const creditInput = {
+            customerId: invoice.customerId,
+            invoiceId: invoice.id,
+            invoiceNumber: invoice.invoiceNumber,
+            amount: overpaymentAfterDiscount,
+            methodId,
+            userId: creditUserId,
+          };
+          earlyDiscountStoreCredit = appliedEarlyDiscount
+            ? await creditEarlyDiscountOverpaymentAsStoreCredit(creditInput)
+            : await creditUnitDiscountOverpaymentAsStoreCredit(creditInput);
 
           if (earlyDiscountStoreCredit > 0) {
             console.log(
-              `Credited $${earlyDiscountStoreCredit.toFixed(2)} store credit from early payment discount on invoice ${invoice.invoiceNumber}`,
+              `Credited $${earlyDiscountStoreCredit.toFixed(2)} store credit from discount on invoice ${invoice.invoiceNumber}`,
             );
           }
         }
       } else {
         console.warn(
-          `Early discount overpayment on ${invoice.invoiceNumber} could not be credited: no payment method available`,
+          `Discount overpayment on ${invoice.invoiceNumber} could not be credited: no payment method available`,
         );
       }
     }
   }
 
-  const finalStatus = discountApplied
-    ? calculateInvoiceStatus(finalInvoiceAmount, totalPaid, invoice.dueDate)
-    : newStatus;
+  const finalStatus =
+    appliedUnitDiscount || appliedEarlyDiscount
+      ? calculateInvoiceStatus(finalInvoiceAmount, totalPaid, invoice.dueDate)
+      : newStatus;
 
   if (finalStatus === "paid") {
     await resetDueReminderTracking(invoiceId);

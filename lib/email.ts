@@ -5,6 +5,7 @@ import { BUSINESS_CONFIG } from "./business-config";
 import { formatBusinessDate } from "./business-date";
 import prisma from "./prisma";
 import { buildSingleInvoicePdfBuffer } from "./pdf-export";
+import { getUnitDiscountDisplayState } from "./unit-discount-client";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -330,6 +331,8 @@ export async function sendInvoiceEmail(invoice: {
     paymentDate: string | Date;
     method?: { name: string } | null;
   }> | null;
+  unitDiscountAmount?: number;
+  unitDiscountOffer?: unknown;
 }) {
   const {
     name: businessName,
@@ -357,6 +360,29 @@ export async function sendInvoiceEmail(invoice: {
     Number(invoice.amount || 0) - Number(invoice.paidAmount || 0),
     0,
   );
+  const unitDiscountState = getUnitDiscountDisplayState(invoice);
+  const unitDiscountText =
+    unitDiscountState.pending && unitDiscountState.offer
+      ? `Save $${unitDiscountState.offer.totalDiscount.toFixed(2)} if this invoice is fully paid by ${formatBusinessDate(unitDiscountState.offer.paymentDueDate)} (${unitDiscountState.offer.breakdown
+          .map(
+            (line) =>
+              `${line.unitName} ${line.discountPercent}% = $${line.discountAmount.toFixed(2)}`,
+          )
+          .join("; ")}).`
+      : "";
+  const unitDiscountHtml =
+    unitDiscountState.pending && unitDiscountState.offer
+      ? `<div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:10px;padding:12px 14px;margin-bottom:18px;font-size:13px;color:#065f46;">
+              <strong>$${unitDiscountState.offer.totalDiscount.toFixed(2)} off this invoice</strong>
+              <div style="margin-top:6px;">${unitDiscountState.offer.breakdown
+                .map(
+                  (line) =>
+                    `${line.unitName}: ${line.discountPercent}% of $${line.itemAmount.toFixed(2)} = $${line.discountAmount.toFixed(2)} off`,
+                )
+                .join("<br/>")}</div>
+              <div style="margin-top:6px;">If this invoice is fully paid by <strong>${formatBusinessDate(unitDiscountState.offer.paymentDueDate)}</strong>, you save $${unitDiscountState.offer.totalDiscount.toFixed(2)}.</div>
+            </div>`
+      : "";
   const terms = Array.isArray(invoice.termsSnapshot)
     ? invoice.termsSnapshot
     : [];
@@ -398,6 +424,7 @@ export async function sendInvoiceEmail(invoice: {
         `Already Paid: $${Number(invoice.paidAmount || 0).toFixed(2)}`,
         `Remaining Balance: $${remaining.toFixed(2)}`,
         `Due Date: ${dueDate}`,
+        unitDiscountText,
         invoice.isLayaway
           ? "This is a layaway invoice."
           : "This is a cash invoice.",
@@ -428,6 +455,7 @@ export async function sendInvoiceEmail(invoice: {
                 <span>Remaining</span><strong>${remaining <= 0 ? "PAID IN FULL" : `$${remaining.toFixed(2)}`}</strong>
               </div>
             </div>
+            ${unitDiscountHtml}
             <table style="width:100%;border-collapse:collapse;font-size:13px;">
               <tr><td style="padding:6px 0;color:#6b7280;">Due date</td><td style="padding:6px 0;text-align:right;">${dueDate}</td></tr>
               <tr><td style="padding:6px 0;color:#6b7280;">Invoice type</td><td style="padding:6px 0;text-align:right;">${invoice.isLayaway ? "Layaway" : "Cash"}</td></tr>

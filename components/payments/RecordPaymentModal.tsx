@@ -11,6 +11,8 @@ import {
   getBusinessTodayString,
   formatBusinessDate,
 } from "../../lib/business-date";
+import { getUnitDiscountedRemaining } from "../../lib/unit-discount-client";
+import type { UnitDiscountSettingSnapshot } from "../../lib/unit-discount-client";
 
 interface PaymentMethodType {
   id: number;
@@ -43,6 +45,15 @@ interface Invoice {
   paidAmount: number;
   status: string;
   customerId?: number | null;
+  invoiceDate?: string;
+  isLayaway?: boolean;
+  items?: Array<{
+    unit?: string | null;
+    quantity?: number;
+    price?: number;
+  }> | null;
+  unitDiscountAmount?: number;
+  unitDiscountOffer?: unknown;
   customer?: {
     id: number;
     name: string;
@@ -76,6 +87,9 @@ export default function RecordPaymentModal({
   const [lateFeeWaivedReason, setLateFeeWaivedReason] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [unitDiscountSettings, setUnitDiscountSettings] = useState<
+    UnitDiscountSettingSnapshot[]
+  >([]);
 
   useEffect(() => {
     if (isOpen) {
@@ -92,6 +106,14 @@ export default function RecordPaymentModal({
           }
         })
         .catch(() => {});
+      fetch("/api/unit-discount")
+        .then((res) => (res.ok ? res.json() : []))
+        .then((data) => {
+          setUnitDiscountSettings(Array.isArray(data) ? data : []);
+        })
+        .catch(() => {
+          setUnitDiscountSettings([]);
+        });
       setPayment({
         amount: "",
         methodId: "",
@@ -120,6 +142,18 @@ export default function RecordPaymentModal({
       );
     }
   }, [isOpen, payment.customerId]);
+
+  useEffect(() => {
+    if (!isOpen || !payment.invoiceId) return;
+    const inv = invoices.find((row) => row.id === parseInt(payment.invoiceId));
+    if (!inv) return;
+    const due = getUnitDiscountedRemaining({
+      ...inv,
+      paymentDate: payment.paymentDate,
+      settings: unitDiscountSettings,
+    });
+    setPayment((prev) => ({ ...prev, amount: due.toFixed(2) }));
+  }, [isOpen, payment.invoiceId, payment.paymentDate, invoices, unitDiscountSettings]);
 
   const fetchCustomers = async () => {
     try {
@@ -270,6 +304,13 @@ export default function RecordPaymentModal({
     !!overdueInstallment &&
     isLateFeeConfigured(lateFeeSetting);
   const remainingAmount = selectedInvoice
+    ? getUnitDiscountedRemaining({
+        ...selectedInvoice,
+        paymentDate: payment.paymentDate,
+        settings: unitDiscountSettings,
+      })
+    : 0;
+  const grossRemaining = selectedInvoice
     ? selectedInvoice.amount - selectedInvoice.paidAmount
     : 0;
   const excessAmount =
@@ -403,20 +444,32 @@ export default function RecordPaymentModal({
                 ? "No invoice (standalone payment)"
                 : "Select a customer first"}
             </option>
-            {invoices.map((invoice) => (
-              <option key={invoice.id} value={invoice.id}>
-                {invoice.invoiceNumber} - {invoice.clientName}
-                (Remaining: $
-                {(invoice.amount - invoice.paidAmount).toFixed(2)})
-              </option>
-            ))}
+            {invoices.map((invoice) => {
+              const due = getUnitDiscountedRemaining({
+                ...invoice,
+                paymentDate: payment.paymentDate,
+                settings: unitDiscountSettings,
+              });
+              return (
+                <option key={invoice.id} value={invoice.id}>
+                  {invoice.invoiceNumber} - {invoice.clientName}
+                  (Remaining: ${due.toFixed(2)})
+                </option>
+              );
+            })}
           </select>
           {selectedInvoice && (
             <p className="text-sm text-gray-600 mt-1">
               Invoice total: ${selectedInvoice.amount.toFixed(2)} | Paid: $
               {selectedInvoice.paidAmount.toFixed(2)} |
               <span className="font-medium text-blue-600">
-                Remaining: ${remainingAmount.toFixed(2)}
+                Remaining:{" "}
+                {grossRemaining - remainingAmount > 0.01 && (
+                  <span className="line-through text-gray-400 mr-1 font-normal">
+                    ${grossRemaining.toFixed(2)}
+                  </span>
+                )}
+                ${remainingAmount.toFixed(2)}
               </span>
             </p>
           )}

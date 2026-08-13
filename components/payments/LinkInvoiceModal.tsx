@@ -13,6 +13,8 @@ import {
   type EarlyPaymentDiscountSettingSnapshot,
 } from "../../lib/early-payment-discount-client";
 import EarlyPaymentDiscountNotice from "../invoices/EarlyPaymentDiscountNotice";
+import UnitDiscountOfferNotice from "../invoices/UnitDiscountOfferNotice";
+import { getUnitDiscountDisplayState } from "../../lib/unit-discount-client";
 import { formatBusinessDate } from "../../lib/business-date";
 import {
   extractInvoiceNumbersFromMemo,
@@ -41,9 +43,12 @@ interface Invoice {
   amount: string | number;
   paidAmount: string | number;
   status: string;
+  customerId?: number | null;
   dueDate: string;
   invoiceDate?: string;
   earlyPaymentDiscount?: number;
+  unitDiscountAmount?: number;
+  unitDiscountOffer?: unknown;
   isLayaway?: boolean;
   layawayPlan?: {
     installments?: Array<{
@@ -242,11 +247,17 @@ export default function LinkInvoiceModal({
 
     const available = getPaymentBalance(payment);
     const grossRemaining = Number(invoice.amount) - Number(invoice.paidAmount);
+    const unitState = getUnitDiscountDisplayState({
+      ...invoice,
+      amount: Number(invoice.amount),
+      paidAmount: Number(invoice.paidAmount),
+      paymentDate: payment.paymentDate,
+      additionalPaymentAmount: grossRemaining,
+    });
     const eligibility = getInvoiceEarlyDiscountEligibility(invoice);
-    const dueAmount = getEarlyDiscountDisplayAmounts(
-      invoice,
-      eligibility,
-    ).displayRemaining;
+    const dueAmount = unitState.pending
+      ? unitState.remainingAfterDiscount
+      : getEarlyDiscountDisplayAmounts(invoice, eligibility).displayRemaining;
 
     setLinkAmount(Math.min(available, dueAmount));
   };
@@ -290,7 +301,7 @@ export default function LinkInvoiceModal({
           );
         } else if (data.storeCreditAdded > 0) {
           alert(
-            `$${Number(data.storeCreditAdded).toFixed(2)} has been saved as Store Credit from the early payment discount.`,
+            `$${Number(data.storeCreditAdded).toFixed(2)} has been saved as Store Credit.`,
           );
         }
         onSuccess();
@@ -338,21 +349,49 @@ export default function LinkInvoiceModal({
       : { eligible: false, overage: 0, maxSuggestable: 0 };
   const shouldPromptProcessingFee = processingFeeSuggestion.eligible;
 
+  const unitDiscountState = selectedInvoice
+    ? getUnitDiscountDisplayState({
+        ...selectedInvoice,
+        amount: Number(selectedInvoice.amount),
+        paidAmount: Number(selectedInvoice.paidAmount),
+        paymentDate: payment.paymentDate,
+        additionalPaymentAmount:
+          Number(selectedInvoice.amount) - Number(selectedInvoice.paidAmount),
+      })
+    : null;
+
   const earlyDiscountEligibility =
     selectedInvoice &&
     linkAmount > 0 &&
     isEarlyPaymentDiscountConfigured(earlyDiscountSetting)
       ? getEarlyPaymentDiscountEligibility({
-          invoice: selectedInvoice,
+          invoice: unitDiscountState?.pending
+            ? {
+                ...selectedInvoice,
+                amount: unitDiscountState.discountedTotal,
+              }
+            : selectedInvoice,
           paymentDate: payment.paymentDate,
-          additionalPaymentAmount:
-            Number(selectedInvoice.amount) - Number(selectedInvoice.paidAmount),
+          additionalPaymentAmount: unitDiscountState?.pending
+            ? unitDiscountState.remainingAfterDiscount
+            : Number(selectedInvoice.amount) -
+              Number(selectedInvoice.paidAmount),
           setting: earlyDiscountSetting,
         })
       : null;
 
   const selectedDiscountAmounts = selectedInvoice
-    ? getEarlyDiscountDisplayAmounts(selectedInvoice, earlyDiscountEligibility)
+    ? unitDiscountState?.pending
+      ? {
+          showDiscount: true,
+          discountAmount: unitDiscountState.offer?.totalDiscount || 0,
+          displayRemaining: unitDiscountState.remainingAfterDiscount,
+          grossRemaining: Math.max(
+            Number(selectedInvoice.amount) - Number(selectedInvoice.paidAmount),
+            0,
+          ),
+        }
+      : getEarlyDiscountDisplayAmounts(selectedInvoice, earlyDiscountEligibility)
     : null;
   const selectedMaxLink = selectedInvoice
     ? Math.min(
@@ -361,6 +400,16 @@ export default function LinkInvoiceModal({
           Number(selectedInvoice.amount) - Number(selectedInvoice.paidAmount),
       )
     : 0;
+  const leftoverAfterLink =
+    selectedInvoice && linkAmount > 0
+      ? Math.round((paymentBalance - linkAmount) * 100) / 100
+      : 0;
+  const leftoverGoesToStoreCredit =
+    leftoverAfterLink > 0.01 &&
+    !!selectedInvoice?.customerId &&
+    payment.paymentMatches.length === 0 &&
+    payment.source !== "store_credit_excess" &&
+    !applyProcessingFee;
 
   const footer = (
     <div className="flex justify-end space-x-4">
@@ -469,6 +518,10 @@ export default function LinkInvoiceModal({
           />
         </div>
 
+        {unitDiscountState?.pending && unitDiscountState.offer && (
+          <UnitDiscountOfferNotice offer={unitDiscountState.offer} />
+        )}
+
         {earlyDiscountEligibility && selectedDiscountAmounts && (
           <EarlyPaymentDiscountNotice
             eligibility={earlyDiscountEligibility}
@@ -564,12 +617,27 @@ export default function LinkInvoiceModal({
           ) : (
             <div className="space-y-1 pb-4">
               {filteredInvoices.map((inv) => {
+                const unitState = getUnitDiscountDisplayState({
+                  ...inv,
+                  amount: Number(inv.amount),
+                  paidAmount: Number(inv.paidAmount),
+                  paymentDate: payment.paymentDate,
+                  additionalPaymentAmount:
+                    Number(inv.amount) - Number(inv.paidAmount),
+                });
                 const invoiceEarlyDiscount =
                   getInvoiceEarlyDiscountEligibility(inv);
-                const dueAmounts = getEarlyDiscountDisplayAmounts(
-                  inv,
-                  invoiceEarlyDiscount,
-                );
+                const dueAmounts = unitState.pending
+                  ? {
+                      showDiscount: true,
+                      discountAmount: unitState.offer?.totalDiscount || 0,
+                      displayRemaining: unitState.remainingAfterDiscount,
+                      grossRemaining: Math.max(
+                        Number(inv.amount) - Number(inv.paidAmount),
+                        0,
+                      ),
+                    }
+                  : getEarlyDiscountDisplayAmounts(inv, invoiceEarlyDiscount);
                 const isMemoSuggested = invoiceMatchesMemoSuggestion(
                   inv.invoiceNumber,
                   memoSuggestedNumbers,
@@ -676,6 +744,13 @@ export default function LinkInvoiceModal({
                 </div>
               </div>
             </div>
+
+            {leftoverGoesToStoreCredit && (
+              <p className="text-sm text-emerald-700 mt-3">
+                Remaining ${leftoverAfterLink.toFixed(2)} of this payment will
+                be saved as Store Credit.
+              </p>
+            )}
 
             {shouldPromptProcessingFee && (
               <div className="mt-4 rounded-lg border border-sky-200 bg-sky-50 p-4 space-y-3">

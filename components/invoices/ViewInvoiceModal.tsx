@@ -21,6 +21,8 @@ import {
   getInvoicePaidAmountForDisplay,
   getInvoiceAmountDue,
 } from "../../lib/invoice-display";
+import { getUnitDiscountDisplayState } from "../../lib/unit-discount-client";
+import UnitDiscountOfferNotice from "./UnitDiscountOfferNotice";
 import {
   buildLateFeeReason,
   findOverdueLayawayInstallmentClient,
@@ -110,10 +112,13 @@ interface Invoice {
   insuranceAmount?: number;
   processingFee?: number;
   earlyPaymentDiscount?: number;
+  unitDiscountAmount?: number;
+  unitDiscountOffer?: unknown;
   lateFee?: number;
   amount: number;
   paidAmount: number;
   dueDate: string;
+  invoiceDate?: string | null;
   dueDateReason?: string | null;
   status: "paid" | "pending" | "overdue" | "partial" | "abandoned" | "inactive";
   isLayaway: boolean;
@@ -911,6 +916,8 @@ export default function ViewInvoiceModal({
     payments,
   });
   const earlyPaymentDiscount = Number(invoice.earlyPaymentDiscount || 0);
+  const unitDiscountState = getUnitDiscountDisplayState(invoice);
+  const unitDiscountAmount = Number(invoice.unitDiscountAmount || 0);
   const layawayFee = getVisibleLayawayFee(invoice);
   const depositFeeNotInTotal = getCurrentItemDepositFeeTotal(invoice.items);
   const appliedRemovedItemDepositFeeTotal =
@@ -1740,6 +1747,14 @@ export default function ViewInvoiceModal({
                   </span>
                 </div>
               )}
+              {unitDiscountAmount > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Unit Discount:</span>
+                  <span className="font-medium text-green-700">
+                    -{formatCurrency(unitDiscountAmount)}
+                  </span>
+                </div>
+              )}
               {shippingFee > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Shipping Fee:</span>
@@ -1929,6 +1944,19 @@ export default function ViewInvoiceModal({
                     {formatCurrency(amountDue)}
                   </span>
                 </div>
+              )}
+              {unitDiscountState.pending && unitDiscountState.offer && (
+                <UnitDiscountOfferNotice
+                  offer={unitDiscountState.offer}
+                  className="mt-4 mb-0"
+                />
+              )}
+              {unitDiscountState.applied && unitDiscountState.offer && (
+                <UnitDiscountOfferNotice
+                  offer={unitDiscountState.offer}
+                  applied
+                  className="mt-4 mb-0"
+                />
               )}
             </div>
           </div>

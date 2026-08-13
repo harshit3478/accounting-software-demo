@@ -17,6 +17,7 @@ import {
   isAbandonedLayawayInvoice,
   resolveInvoiceDate,
 } from "../../lib/invoice-display";
+import { getUnitDiscountDisplayState } from "../../lib/unit-discount-client";
 import type { InvoiceItem } from "./types";
 
 interface Payment {
@@ -57,6 +58,8 @@ interface Invoice {
   tax: number;
   discount: number;
   earlyPaymentDiscount?: number;
+  unitDiscountAmount?: number;
+  unitDiscountOffer?: unknown;
   shippingFee?: number;
   insuranceAmount?: number;
   amount: number;
@@ -141,6 +144,7 @@ export default function InvoiceImageTemplate({
     { ...invoice, payments: paymentsToShow },
     { includeSubtotal: true },
   );
+  const unitDiscountState = getUnitDiscountDisplayState(invoice);
   const biz = BUSINESS_CONFIG;
   const appliedRemovedItemDepositFeeEntries =
     getAppliedRemovedItemDepositFeeEntries(invoice.editHistory || []);
@@ -595,7 +599,8 @@ export default function InvoiceImageTemplate({
               <span
                 style={{
                   fontWeight: 600,
-                  ...(row.label === "Early Payment Discount:"
+                  ...(row.label === "Early Payment Discount:" ||
+                  row.label === "Unit Discount:"
                     ? { color: "#15803d" }
                     : {}),
                 }}
@@ -714,6 +719,40 @@ export default function InvoiceImageTemplate({
             <span>Amount Due (USD):</span>
             <span>{fmt(amtDue)}</span>
           </div>
+          {unitDiscountState.offer &&
+            (unitDiscountState.pending || unitDiscountState.applied) && (
+              <div
+                style={{
+                  marginTop: "10px",
+                  padding: "10px 12px",
+                  backgroundColor: "#ecfdf5",
+                  border: "1px solid #a7f3d0",
+                  borderRadius: "8px",
+                  color: "#065f46",
+                  fontSize: "11px",
+                  lineHeight: 1.45,
+                }}
+              >
+                <div style={{ fontWeight: 700 }}>
+                  {unitDiscountState.applied
+                    ? `${fmt(unitDiscountState.offer.totalDiscount)} unit discount applied`
+                    : `${fmt(unitDiscountState.offer.totalDiscount)} off this invoice`}
+                </div>
+                {unitDiscountState.offer.breakdown.map((line) => (
+                  <div key={`${line.unitName}-${line.discountPercent}`}>
+                    {line.unitName}: {line.discountPercent}% of {fmt(line.itemAmount)}{" "}
+                    = {fmt(line.discountAmount)} off
+                  </div>
+                ))}
+                {unitDiscountState.pending && (
+                  <div style={{ marginTop: "4px" }}>
+                    If this invoice is fully paid by{" "}
+                    {fmtDate(unitDiscountState.offer.paymentDueDate)}, you save{" "}
+                    {fmt(unitDiscountState.offer.totalDiscount)}.
+                  </div>
+                )}
+              </div>
+            )}
           {itemDepositReference && (
             <div
               style={{

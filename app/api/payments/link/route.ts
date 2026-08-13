@@ -310,17 +310,25 @@ export async function POST(request: NextRequest) {
     const processingFeeApplied = Number(
       (result as any).processingFeeApplied || 0,
     );
+    const residualStoreCredit = Number(
+      (result as any).remainingAfterLink || 0,
+    );
+    const storeCreditAdded =
+      Math.round(
+        (residualStoreCredit + invoiceUpdateResult.earlyDiscountStoreCredit) *
+          100,
+      ) / 100;
     return NextResponse.json({
       success: true,
       match,
       processingFeeApplied:
         processingFeeApplied > 0 ? processingFeeApplied : undefined,
-      storeCreditAdded: invoiceUpdateResult.earlyDiscountStoreCredit,
+      storeCreditAdded,
       message:
         processingFeeApplied > 0
           ? `$${processingFeeApplied.toFixed(2)} applied as credit card processing fee.`
-          : invoiceUpdateResult.earlyDiscountStoreCredit > 0
-            ? `Payment linked. $${invoiceUpdateResult.earlyDiscountStoreCredit.toFixed(2)} saved as store credit from early payment discount.`
+          : storeCreditAdded > 0
+            ? `Payment linked. $${storeCreditAdded.toFixed(2)} saved as store credit.`
             : undefined,
     });
   } catch (error: any) {

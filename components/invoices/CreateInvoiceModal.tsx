@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import Modal from "./Modal";
 import PreviewInvoiceModal from "./PreviewInvoiceModal";
 import InvoiceItemsEditor from "./InvoiceItemsEditor";
 import InvoiceSummary from "./InvoiceSummary";
 import AddCustomerModal from "./AddCustomerModal";
 import UpdateCustomerFieldsModal from "./UpdateCustomerFieldsModal";
+import ConfirmModal from "./ConfirmModal";
 import { InvoiceItem } from "./types";
 import {
   calculateInsuranceAmount,
@@ -28,6 +29,12 @@ import {
   isBeforeBusinessToday,
   isFutureBusinessDate,
 } from "../../lib/business-date";
+import {
+  calculateUnitDiscountOffer,
+  getUnitDiscountInvoiceDateChangeNotice,
+  type UnitDiscountDateChangeNotice,
+  type UnitDiscountSettingSnapshot,
+} from "../../lib/unit-discount-client";
 
 interface CustomerOption {
   id: number;
@@ -163,6 +170,9 @@ export default function CreateInvoiceModal({
 
   useEffect(() => {
     if (!isOpen) return;
+
+    setUnitDiscountSettingsLoaded(false);
+    delayedInvoiceDateChangeRef.current = null;
 
     fetch("/api/terms")
       .then((res) => (res.ok ? res.json() : []))
@@ -302,6 +312,18 @@ export default function CreateInvoiceModal({
       .catch(() => {
         setLayawayFeeRates(DEFAULT_LAYAWAY_FEE_RATES);
       });
+
+    fetch("/api/unit-discount")
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        setUnitDiscountSettings(Array.isArray(data) ? data : []);
+      })
+      .catch(() => {
+        setUnitDiscountSettings([]);
+      })
+      .finally(() => {
+        setUnitDiscountSettingsLoaded(true);
+      });
   }, [isOpen]);
 
   useEffect(() => {
@@ -337,6 +359,15 @@ export default function CreateInvoiceModal({
     "fixed",
   );
   const [isLayaway, setIsLayaway] = useState(false);
+  const [unitDiscountSettings, setUnitDiscountSettings] = useState<
+    UnitDiscountSettingSnapshot[]
+  >([]);
+  const [unitDiscountSettingsLoaded, setUnitDiscountSettingsLoaded] =
+    useState(false);
+  const delayedInvoiceDateChangeRef = useRef<{
+    from: string;
+    to: string;
+  } | null>(null);
   const [layawayMonths, setLayawayMonths] = useState(3);
   const [layawayFrequency, setLayawayFrequency] = useState<
     "monthly" | "bi-weekly" | "weekly"
@@ -375,6 +406,11 @@ export default function CreateInvoiceModal({
   const [showPreview, setShowPreview] = useState(false);
   const [invoiceDateError, setInvoiceDateError] = useState("");
   const [dateError, setDateError] = useState("");
+  const [unitDiscountDateNotice, setUnitDiscountDateNotice] =
+    useState<UnitDiscountDateChangeNotice | null>(null);
+  const [pendingInvoiceDate, setPendingInvoiceDate] = useState<string | null>(
+    null,
+  );
 
   const calculateSubtotal = () => {
     return items.reduce((sum, item) => sum + item.quantity * item.price, 0);
@@ -391,6 +427,17 @@ export default function CreateInvoiceModal({
       ? (subtotal * discount) / 100
       : discount;
   };
+
+  const unitDiscountOffer = useMemo(
+    () =>
+      calculateUnitDiscountOffer({
+        items,
+        invoiceDate,
+        isLayaway,
+        settings: unitDiscountSettings,
+      }),
+    [items, invoiceDate, isLayaway, unitDiscountSettings],
+  );
 
   const calculatePreShippingTotal = () => {
     return (
@@ -512,11 +559,68 @@ export default function CreateInvoiceModal({
     return true;
   };
 
-  const handleInvoiceDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newDate = e.target.value;
+  const applyInvoiceDate = (newDate: string) => {
     setInvoiceDate(newDate);
     validateInvoiceDate(newDate);
   };
+
+  const handleInvoiceDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newDate = e.target.value;
+    if (!validateInvoiceDate(newDate)) {
+      setInvoiceDate(newDate);
+      return;
+    }
+
+    if (!unitDiscountSettingsLoaded) {
+      delayedInvoiceDateChangeRef.current = {
+        from: invoiceDate,
+        to: newDate,
+      };
+      setInvoiceDate(newDate);
+      return;
+    }
+
+    const notice = getUnitDiscountInvoiceDateChangeNotice({
+      items,
+      previousDate: invoiceDate,
+      nextDate: newDate,
+      isLayaway,
+      settings: unitDiscountSettings,
+    });
+    if (notice) {
+      setPendingInvoiceDate(newDate);
+      setUnitDiscountDateNotice(notice);
+      return;
+    }
+
+    applyInvoiceDate(newDate);
+  };
+
+  useEffect(() => {
+    if (!isOpen || !unitDiscountSettingsLoaded) return;
+    const delayed = delayedInvoiceDateChangeRef.current;
+    if (!delayed) return;
+    delayedInvoiceDateChangeRef.current = null;
+
+    const notice = getUnitDiscountInvoiceDateChangeNotice({
+      items,
+      previousDate: delayed.from,
+      nextDate: delayed.to,
+      isLayaway,
+      settings: unitDiscountSettings,
+    });
+    if (notice) {
+      setInvoiceDate(delayed.from);
+      setPendingInvoiceDate(delayed.to);
+      setUnitDiscountDateNotice(notice);
+    }
+  }, [
+    isOpen,
+    unitDiscountSettingsLoaded,
+    unitDiscountSettings,
+    items,
+    isLayaway,
+  ]);
 
   const handleCreateNewCustomer = async () => {
     if (!newCustomerData.name.trim()) {
@@ -1744,6 +1848,7 @@ export default function CreateInvoiceModal({
                 insuranceAmount={insuranceAmount}
                 layawayFee={calculateLayawayFeeAmount()}
                 total={calculateTotal()}
+                unitDiscountOffer={unitDiscountOffer}
               />
             </div>
           </div>
@@ -1775,6 +1880,7 @@ export default function CreateInvoiceModal({
         }
         total={calculateTotal()}
         isLayaway={isLayaway}
+        unitDiscountOffer={unitDiscountOffer}
         isSubmitting={isCreating}
         useDefaultTerms={false}
         availableStoreCredit={
@@ -1822,6 +1928,25 @@ export default function CreateInvoiceModal({
               })()
             : []
         }
+      />
+      <ConfirmModal
+        isOpen={!!unitDiscountDateNotice}
+        onClose={() => {
+          setUnitDiscountDateNotice(null);
+          setPendingInvoiceDate(null);
+        }}
+        onConfirm={() => {
+          if (pendingInvoiceDate) {
+            applyInvoiceDate(pendingInvoiceDate);
+          }
+          setUnitDiscountDateNotice(null);
+          setPendingInvoiceDate(null);
+        }}
+        title={unitDiscountDateNotice?.title || "Unit discount"}
+        message={unitDiscountDateNotice?.message || ""}
+        confirmText="Change date"
+        cancelText="Keep current date"
+        type={unitDiscountDateNotice?.kind === "lost" ? "warning" : "info"}
       />
     </>
   );

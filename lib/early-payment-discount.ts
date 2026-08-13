@@ -32,6 +32,13 @@ const DEFAULT_SETTING: EarlyPaymentDiscountSettingSnapshot = {
   isActive: false,
 };
 
+function decimalToNumber(value: Prisma.Decimal | number): number {
+  if (typeof value === "object" && value && "toNumber" in value) {
+    return value.toNumber();
+  }
+  return Number(value ?? 0);
+}
+
 export async function getEarlyPaymentDiscountSettingSnapshot(): Promise<EarlyPaymentDiscountSettingSnapshot> {
   const model = (prisma as any)?.earlyPaymentDiscountSetting;
   if (!model) {
@@ -87,11 +94,20 @@ export async function creditEarlyDiscountOverpaymentAsStoreCredit(input: {
   amount: number;
   methodId: number;
   userId: number;
+  notes?: string;
+  reason?: string;
 }): Promise<number> {
   const safeAmount = roundMoney(input.amount);
   if (safeAmount <= 0.01) {
     return 0;
   }
+
+  const notes =
+    input.notes ||
+    `Store credit from early payment discount on ${input.invoiceNumber}`;
+  const reason =
+    input.reason ||
+    `Early payment discount overpayment on ${input.invoiceNumber}`;
 
   await prisma.$transaction(async (tx) => {
     const creditPayment = await tx.payment.create({
@@ -100,7 +116,7 @@ export async function creditEarlyDiscountOverpaymentAsStoreCredit(input: {
         amount: safeAmount,
         paymentDate: new Date(),
         methodId: input.methodId,
-        notes: `Store credit from early payment discount on ${input.invoiceNumber}`,
+        notes,
         userId: input.userId,
         isMatched: false,
         source: "store_credit_excess",
@@ -123,7 +139,7 @@ export async function creditEarlyDiscountOverpaymentAsStoreCredit(input: {
         customerId: input.customerId,
         amount: safeAmount,
         type: "credit",
-        reason: `Early payment discount overpayment on ${input.invoiceNumber}`,
+        reason,
         paymentId: creditPayment.id,
         invoiceId: input.invoiceId,
         createdById: null,
@@ -170,18 +186,12 @@ export async function maybeApplyEarlyPaymentDiscount(
     return null;
   }
 
-  const existingDiscount = Number(
-    invoice.earlyPaymentDiscount?.toNumber?.() ??
-      invoice.earlyPaymentDiscount ??
-      0,
-  );
+  const existingDiscount = decimalToNumber(invoice.earlyPaymentDiscount);
   if (existingDiscount > 0) {
     return null;
   }
 
-  const invoiceAmount = Number(
-    invoice.amount?.toNumber?.() ?? invoice.amount ?? 0,
-  );
+  const invoiceAmount = decimalToNumber(invoice.amount);
   if (invoiceAmount <= 0) {
     return null;
   }

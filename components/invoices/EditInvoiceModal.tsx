@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import {
   calculateLayawayFeeFromItems,
   DEFAULT_LAYAWAY_FEE_RATES,
@@ -14,12 +14,19 @@ import {
 import InvoiceItemsEditor from "./InvoiceItemsEditor";
 import InvoiceSummary from "./InvoiceSummary";
 import Modal from "./Modal";
+import ConfirmModal from "./ConfirmModal";
 import { InvoiceItem } from "./types";
 import { useAuth } from "../../lib/AuthContext";
 import {
   isBeforeBusinessToday,
   isFutureBusinessDate,
 } from "../../lib/business-date";
+import {
+  calculateUnitDiscountOffer,
+  getUnitDiscountInvoiceDateChangeNotice,
+  type UnitDiscountDateChangeNotice,
+  type UnitDiscountSettingSnapshot,
+} from "../../lib/unit-discount-client";
 
 interface CustomerOption {
   id: number;
@@ -88,6 +95,7 @@ interface Invoice {
   discount: number;
   shippingFee?: number;
   insuranceAmount?: number;
+  layawayFee?: number;
   amount: number;
   paidAmount: number;
   invoiceDate?: string;
@@ -153,6 +161,17 @@ export default function EditInvoiceModal({
     DEFAULT_LAYAWAY_FEE_RATES,
   );
   const [isLayaway, setIsLayaway] = useState(false);
+  const [unitDiscountSettings, setUnitDiscountSettings] = useState<
+    UnitDiscountSettingSnapshot[]
+  >([]);
+  const [unitDiscountSettingsLoaded, setUnitDiscountSettingsLoaded] =
+    useState(false);
+  const delayedInvoiceDateChangeRef = useRef<{
+    from: string;
+    to: string;
+  } | null>(null);
+  const discountDateAcknowledgedRef = useRef(false);
+  const originalInvoiceDateRef = useRef("");
   const [layawayMonths, setLayawayMonths] = useState(3);
   const [layawayFrequency, setLayawayFrequency] = useState<
     "monthly" | "bi-weekly" | "weekly"
@@ -173,6 +192,12 @@ export default function EditInvoiceModal({
   const [isUpdating, setIsUpdating] = useState(false);
   const [invoiceDateError, setInvoiceDateError] = useState("");
   const [dateError, setDateError] = useState("");
+  const [unitDiscountDateNotice, setUnitDiscountDateNotice] =
+    useState<UnitDiscountDateChangeNotice | null>(null);
+  const [pendingInvoiceDate, setPendingInvoiceDate] = useState<string | null>(
+    null,
+  );
+  const [pendingDiscountSave, setPendingDiscountSave] = useState(false);
   const [editReason, setEditReason] = useState("");
   const [editMigratedInvoice, setEditMigratedInvoice] = useState(false);
   const [migratedInvoiceEditEnabled, setMigratedInvoiceEditEnabled] =
@@ -200,6 +225,13 @@ export default function EditInvoiceModal({
   // Fetch customers for autocomplete
   useEffect(() => {
     if (isOpen) {
+      setUnitDiscountSettingsLoaded(false);
+      setUnitDiscountDateNotice(null);
+      setPendingInvoiceDate(null);
+      setPendingDiscountSave(false);
+      delayedInvoiceDateChangeRef.current = null;
+      discountDateAcknowledgedRef.current = false;
+
       fetch("/api/customers?all=true")
         .then((res) => (res.ok ? res.json() : []))
         .then((data) => setCustomers(data))
@@ -262,6 +294,18 @@ export default function EditInvoiceModal({
         })
         .catch(() => {
           setLayawayFeeRates(DEFAULT_LAYAWAY_FEE_RATES);
+        });
+
+      fetch("/api/unit-discount")
+        .then((res) => (res.ok ? res.json() : []))
+        .then((data) => {
+          setUnitDiscountSettings(Array.isArray(data) ? data : []);
+        })
+        .catch(() => {
+          setUnitDiscountSettings([]);
+        })
+        .finally(() => {
+          setUnitDiscountSettingsLoaded(true);
         });
 
       fetch("/api/recalculation-fee")
@@ -337,6 +381,8 @@ export default function EditInvoiceModal({
       setInvoiceDate(
         (invoice.invoiceDate || invoice.createdAt || "").split("T")[0] || "",
       );
+      originalInvoiceDateRef.current =
+        (invoice.invoiceDate || invoice.createdAt || "").split("T")[0] || "";
       setDueDate((invoice.dueDate || "").split("T")[0] || "");
       setDueDateReason(invoice.dueDateReason || "");
       setItems(
@@ -409,6 +455,17 @@ export default function EditInvoiceModal({
       ? (subtotal * discount) / 100
       : discount;
   };
+
+  const unitDiscountOffer = useMemo(
+    () =>
+      calculateUnitDiscountOffer({
+        items,
+        invoiceDate,
+        isLayaway,
+        settings: unitDiscountSettings,
+      }),
+    [items, invoiceDate, isLayaway, unitDiscountSettings],
+  );
 
   const calculateLayawayFeeAmount = () => {
     if (!isLayaway || waiveLayawayFee) return 0;
@@ -535,11 +592,75 @@ export default function EditInvoiceModal({
     return true;
   };
 
-  const handleInvoiceDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newDate = e.target.value;
+  const applyInvoiceDate = (newDate: string) => {
     setInvoiceDate(newDate);
     validateInvoiceDate(newDate);
   };
+
+  const promptInvoiceDateChange = (previousDate: string, nextDate: string) => {
+    const notice = getUnitDiscountInvoiceDateChangeNotice({
+      items,
+      previousDate,
+      nextDate,
+      isLayaway,
+      settings: unitDiscountSettings,
+    });
+    if (notice) {
+      setPendingInvoiceDate(nextDate);
+      setUnitDiscountDateNotice(notice);
+      return true;
+    }
+    return false;
+  };
+
+  const handleInvoiceDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newDate = e.target.value;
+    if (!validateInvoiceDate(newDate)) {
+      setInvoiceDate(newDate);
+      return;
+    }
+
+    if (!unitDiscountSettingsLoaded) {
+      delayedInvoiceDateChangeRef.current = {
+        from: invoiceDate,
+        to: newDate,
+      };
+      setInvoiceDate(newDate);
+      return;
+    }
+
+    if (promptInvoiceDateChange(invoiceDate, newDate)) {
+      return;
+    }
+
+    applyInvoiceDate(newDate);
+  };
+
+  useEffect(() => {
+    if (!isOpen || !unitDiscountSettingsLoaded) return;
+    const delayed = delayedInvoiceDateChangeRef.current;
+    if (!delayed) return;
+    delayedInvoiceDateChangeRef.current = null;
+
+    const notice = getUnitDiscountInvoiceDateChangeNotice({
+      items,
+      previousDate: delayed.from,
+      nextDate: delayed.to,
+      isLayaway,
+      settings: unitDiscountSettings,
+    });
+    if (notice) {
+      setInvoiceDate(delayed.from);
+      setPendingInvoiceDate(delayed.to);
+      setUnitDiscountDateNotice(notice);
+    }
+  }, [
+    isOpen,
+    unitDiscountSettingsLoaded,
+    unitDiscountSettings,
+    items,
+    isLayaway,
+  ]);
 
   const handleUpdateInvoice = async (
     recalculationFeeActionOverride?: "apply" | "skip",
@@ -557,6 +678,20 @@ export default function EditInvoiceModal({
 
     if (!validateDate(dueDate)) {
       onError?.("Invalid due date");
+      return;
+    }
+
+    const eligibilityNotice = getUnitDiscountInvoiceDateChangeNotice({
+      items,
+      previousDate: originalInvoiceDateRef.current || invoiceDate,
+      nextDate: invoiceDate,
+      isLayaway,
+      settings: unitDiscountSettings,
+    });
+    if (eligibilityNotice?.kind === "gained" && !discountDateAcknowledgedRef.current) {
+      setPendingInvoiceDate(invoiceDate);
+      setUnitDiscountDateNotice(eligibilityNotice);
+      setPendingDiscountSave(true);
       return;
     }
 
@@ -1372,6 +1507,7 @@ export default function EditInvoiceModal({
                 insuranceAmount={insuranceAmount}
                 layawayFee={calculateLayawayFeeAmount()}
                 total={calculateTotal()}
+                unitDiscountOffer={unitDiscountOffer}
               />
 
             </div>
@@ -1607,6 +1743,32 @@ export default function EditInvoiceModal({
           </div>
         </div>
       )}
+      <ConfirmModal
+        isOpen={!!unitDiscountDateNotice}
+        onClose={() => {
+          setUnitDiscountDateNotice(null);
+          setPendingInvoiceDate(null);
+          setPendingDiscountSave(false);
+        }}
+        onConfirm={() => {
+          if (pendingInvoiceDate && pendingInvoiceDate !== invoiceDate) {
+            applyInvoiceDate(pendingInvoiceDate);
+          }
+          const shouldSave = pendingDiscountSave;
+          setUnitDiscountDateNotice(null);
+          setPendingInvoiceDate(null);
+          setPendingDiscountSave(false);
+          discountDateAcknowledgedRef.current = true;
+          if (shouldSave) {
+            void handleUpdateInvoice();
+          }
+        }}
+        title={unitDiscountDateNotice?.title || "Unit discount"}
+        message={unitDiscountDateNotice?.message || ""}
+        confirmText={pendingDiscountSave ? "Change date and update" : "Change date"}
+        cancelText="Keep current date"
+        type={unitDiscountDateNotice?.kind === "lost" ? "warning" : "info"}
+      />
     </>
   );
 }

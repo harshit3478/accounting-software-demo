@@ -19,6 +19,12 @@ import {
   getBusinessTodayString,
 } from "../../lib/business-date";
 import EarlyPaymentDiscountNotice from "./EarlyPaymentDiscountNotice";
+import UnitDiscountOfferNotice from "./UnitDiscountOfferNotice";
+import {
+  getUnitDiscountDisplayState,
+  resolveUnitDiscountOffer,
+  type UnitDiscountSettingSnapshot,
+} from "../../lib/unit-discount-client";
 
 interface PaymentMethodType {
   id: number;
@@ -37,7 +43,14 @@ interface Invoice {
   amount: number;
   paidAmount: number;
   invoiceDate?: string;
+  items?: Array<{
+    unit?: string | null;
+    quantity?: number;
+    price?: number;
+  }> | null;
   earlyPaymentDiscount?: number;
+  unitDiscountAmount?: number;
+  unitDiscountOffer?: unknown;
   status?: string;
   isLayaway?: boolean;
   layawayPlan?: {
@@ -80,6 +93,9 @@ export default function PaymentModal({
   });
   const [earlyDiscountSetting, setEarlyDiscountSetting] =
     useState<EarlyPaymentDiscountSettingSnapshot | null>(null);
+  const [unitDiscountSettings, setUnitDiscountSettings] = useState<
+    UnitDiscountSettingSnapshot[]
+  >([]);
   const [applyLateFee, setApplyLateFee] = useState<boolean | null>(null);
   const [lateFeeWaivedReason, setLateFeeWaivedReason] = useState("");
   const [isRecording, setIsRecording] = useState(false);
@@ -123,30 +139,21 @@ export default function PaymentModal({
           }
         })
         .catch(() => {});
+
+      fetch("/api/unit-discount")
+        .then((res) => (res.ok ? res.json() : []))
+        .then((data) => {
+          setUnitDiscountSettings(Array.isArray(data) ? data : []);
+        })
+        .catch(() => {
+          setUnitDiscountSettings([]);
+        });
     }
   }, [isOpen]);
 
   useEffect(() => {
     if (invoice && isOpen) {
-      const grossRemaining = invoice.amount - invoice.paidAmount;
-      const paymentDateStr = getBusinessTodayString();
-      let amountToPay = grossRemaining;
-
-      if (isEarlyPaymentDiscountConfigured(earlyDiscountSetting)) {
-        const eligibility = getEarlyPaymentDiscountEligibility({
-          invoice,
-          paymentDate: paymentDateStr,
-          additionalPaymentAmount: grossRemaining,
-          setting: earlyDiscountSetting,
-        });
-        amountToPay = getEarlyDiscountDisplayAmounts(
-          invoice,
-          eligibility,
-        ).displayRemaining;
-      }
-
-      setPaymentAmount(amountToPay);
-      setPaymentDate(paymentDateStr);
+      setPaymentDate(getBusinessTodayString());
       setSelectedMethodId(
         (prev) =>
           prev || (paymentMethods.length > 0 ? paymentMethods[0].id : null),
@@ -155,7 +162,7 @@ export default function PaymentModal({
       setApplyLateFee(null);
       setLateFeeWaivedReason("");
     }
-  }, [invoice, isOpen, earlyDiscountSetting]);
+  }, [invoice, isOpen]);
 
   const overdueInstallment =
     invoice && paymentDate
@@ -165,21 +172,54 @@ export default function PaymentModal({
     !!invoice && !!overdueInstallment && isLateFeeConfigured(lateFeeSetting);
 
   const grossRemaining = invoice ? invoice.amount - invoice.paidAmount : 0;
+  const resolvedUnitDiscountOffer = invoice
+    ? resolveUnitDiscountOffer({
+        items: invoice.items,
+        invoiceDate: invoice.invoiceDate,
+        isLayaway: invoice.isLayaway,
+        unitDiscountOffer: invoice.unitDiscountOffer,
+        settings: unitDiscountSettings,
+      })
+    : null;
+  const unitDiscountState = invoice
+    ? getUnitDiscountDisplayState({
+        ...invoice,
+        unitDiscountOffer: resolvedUnitDiscountOffer,
+        paymentDate,
+        additionalPaymentAmount: grossRemaining,
+      })
+    : null;
   const fullPayEligibility =
     invoice &&
     paymentDate &&
     isEarlyPaymentDiscountConfigured(earlyDiscountSetting)
       ? getEarlyPaymentDiscountEligibility({
-          invoice,
+          invoice: unitDiscountState?.pending
+            ? { ...invoice, amount: unitDiscountState.discountedTotal }
+            : invoice,
           paymentDate,
-          additionalPaymentAmount: grossRemaining,
+          additionalPaymentAmount: unitDiscountState?.pending
+            ? unitDiscountState.remainingAfterDiscount
+            : grossRemaining,
           setting: earlyDiscountSetting,
         })
       : null;
   const discountAmounts = invoice
-    ? getEarlyDiscountDisplayAmounts(invoice, fullPayEligibility)
+    ? unitDiscountState?.pending
+      ? {
+          showDiscount: true,
+          discountAmount: unitDiscountState.offer?.totalDiscount || 0,
+          displayRemaining: unitDiscountState.remainingAfterDiscount,
+          grossRemaining,
+        }
+      : getEarlyDiscountDisplayAmounts(invoice, fullPayEligibility)
     : null;
   const remainingBalance = discountAmounts?.displayRemaining ?? grossRemaining;
+
+  useEffect(() => {
+    if (!invoice || !isOpen || !paymentDate) return;
+    setPaymentAmount(remainingBalance);
+  }, [invoice, isOpen, paymentDate, remainingBalance]);
 
   const earlyDiscountEligibility =
     invoice && paymentDate && isEarlyPaymentDiscountConfigured(earlyDiscountSetting)
@@ -388,7 +428,7 @@ export default function PaymentModal({
             <div className="border-t border-green-300 pt-2 flex justify-between">
               <span className="font-semibold text-gray-900">
                 {discountAmounts?.showDiscount
-                  ? "Remaining (after early discount):"
+                  ? "Remaining (after discount):"
                   : "Remaining Balance:"}
               </span>
               <span className="text-xl font-bold text-green-700">
@@ -528,6 +568,10 @@ export default function PaymentModal({
                 </div>
               )}
             </div>
+          )}
+
+          {unitDiscountState?.pending && unitDiscountState.offer && (
+            <UnitDiscountOfferNotice offer={unitDiscountState.offer} />
           )}
 
           {earlyDiscountEligibility && discountAmounts && (

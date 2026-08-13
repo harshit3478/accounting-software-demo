@@ -66,6 +66,8 @@ export async function POST(
       discount: Number(invoice.discount || 0),
       shippingFee: Number(invoice.shippingFee || 0),
       insuranceAmount: Number(invoice.insuranceAmount || 0),
+      unitDiscountAmount: Number((invoice as any).unitDiscountAmount || 0),
+      unitDiscountOffer: (invoice as any).unitDiscountOffer || null,
       payments: invoice.payments.map((payment) => ({
         amount: Number(payment.amount),
         paymentDate: payment.paymentDate,

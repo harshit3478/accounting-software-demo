@@ -21,6 +21,7 @@ import {
   formatBusinessDate,
   getBusinessTodayString,
 } from "./business-date";
+import { getUnitDiscountDisplayState } from "./unit-discount-client";
 
 function formatUsd(amount: number): string {
   return `$${amount.toLocaleString("en-US", {
@@ -60,6 +61,8 @@ interface Invoice {
   tax?: number;
   discount?: number;
   earlyPaymentDiscount?: number;
+  unitDiscountAmount?: number;
+  unitDiscountOffer?: unknown;
   shippingFee?: number;
   insuranceAmount?: number;
   isLayaway?: boolean;
@@ -130,6 +133,44 @@ function renderPdfItemDepositReference(
   doc.setFont("helvetica", "normal");
   doc.setTextColor(26, 26, 26);
   return y + (labelLines.length > 1 ? labelLines.length * 5 + 1 : 6);
+}
+
+function renderPdfUnitDiscountOffer(
+  doc: jsPDF,
+  invoice: Invoice,
+  left: number,
+  right: number,
+  y: number,
+): number {
+  const state = getUnitDiscountDisplayState(invoice);
+  if (!state.offer || (!state.pending && !state.applied)) {
+    return y;
+  }
+
+  const offer = state.offer;
+  const headline = state.applied
+    ? `$${offer.totalDiscount.toFixed(2)} unit discount applied`
+    : `$${offer.totalDiscount.toFixed(2)} off this invoice`;
+  const breakdown = offer.breakdown
+    .map(
+      (line) =>
+        `${line.unitName} ${line.discountPercent}% ($${line.discountAmount.toFixed(2)})`,
+    )
+    .join(", ");
+  const dueLine = state.pending
+    ? `If fully paid by ${formatBusinessDate(offer.paymentDueDate)}, you save $${offer.totalDiscount.toFixed(2)}.`
+    : "";
+  const text = [headline, breakdown, dueLine].filter(Boolean).join("\n");
+  const lines = doc.splitTextToSize(text, right - left);
+
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "italic");
+  doc.setTextColor(21, 128, 61);
+  doc.text(lines, left, y);
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(26, 26, 26);
+  return y + lines.length * 4 + 4;
 }
 
 function drawInvoiceStatusWatermark(doc: jsPDF, text: "CANCELLED" | "ABANDONED") {
@@ -749,6 +790,7 @@ export async function generateSingleInvoicePDF(
   doc.text("Amount Due:", summaryLabelX, y, { align: "right" });
   doc.text(`$${amtDue.toFixed(2)}`, R, y, { align: "right" });
   y += 6;
+  y = renderPdfUnitDiscountOffer(doc, invoice, L, R, y + 2);
 
   if (itemDepositReference) {
     y = renderPdfItemDepositReference(
@@ -1174,6 +1216,7 @@ export function buildSingleInvoicePdfBuffer(
   doc.text("Amount Due:", 130, y, { align: "right" });
   doc.text(`$${amtDue.toFixed(2)}`, R, y, { align: "right" });
   y += 6;
+  y = renderPdfUnitDiscountOffer(doc, invoice, L, R, y + 2);
 
   if (itemDepositReference) {
     y = renderPdfItemDepositReference(

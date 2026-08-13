@@ -1,3 +1,5 @@
+import UnitDiscountOfferNotice from "./UnitDiscountOfferNotice";
+
 interface InvoiceSummaryProps {
   subtotal: number;
   tax: number;
@@ -8,6 +10,16 @@ interface InvoiceSummaryProps {
   insuranceAmount?: number;
   layawayFee?: number;
   total: number;
+  unitDiscountOffer?: {
+    paymentDueDate: string;
+    totalDiscount: number;
+    breakdown: Array<{
+      unitName: string;
+      discountPercent: number;
+      itemAmount: number;
+      discountAmount: number;
+    }>;
+  } | null;
 }
 
 export default function InvoiceSummary({
@@ -20,6 +32,7 @@ export default function InvoiceSummary({
   insuranceAmount = 0,
   layawayFee = 0,
   total,
+  unitDiscountOffer = null,
 }: InvoiceSummaryProps) {
   const getTaxDisplay = () => {
     if (taxType === "percentage") {
@@ -86,6 +99,12 @@ export default function InvoiceSummary({
           ${total.toFixed(2)}
         </span>
       </div>
+      {unitDiscountOffer && unitDiscountOffer.totalDiscount > 0 && (
+        <UnitDiscountOfferNotice
+          offer={unitDiscountOffer}
+          className="mt-3 mb-0"
+        />
+      )}
     </div>
   );
 }

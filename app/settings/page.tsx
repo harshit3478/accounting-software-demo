@@ -25,6 +25,7 @@ import RecalculationFeeTab from "../../components/settings/RecalculationFeeTab";
 import MigratedInvoiceEditTab from "../../components/settings/MigratedInvoiceEditTab";
 import DueDateReasonsTab from "../../components/settings/DueDateReasonsTab";
 import ProfileTab from "../../components/settings/ProfileTab";
+import UnitDiscountTab from "../../components/settings/UnitDiscountTab";
 import {
   CreditCard,
   UserCircle,
@@ -39,6 +40,7 @@ import {
   CalendarClock,
   Shield,
   MapPinned,
+  Percent,
 } from "lucide-react";
 
 const PROFILE_TAB = {
@@ -77,16 +79,39 @@ const ADMIN_TABS = [
   { id: "quickbooks", label: "QuickBooks", icon: Link2 },
 ] as const;
 
-type TabId = typeof PROFILE_TAB.id | (typeof ADMIN_TABS)[number]["id"];
+const UNIT_DISCOUNT_TAB = {
+  id: "unit-discount",
+  label: "Unit Discount",
+  icon: Percent,
+} as const;
+
+type TabId =
+  | typeof PROFILE_TAB.id
+  | (typeof ADMIN_TABS)[number]["id"]
+  | typeof UNIT_DISCOUNT_TAB.id;
 
 function SettingsContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { showSuccess, showError } = useToastContext();
-  const { hasSettingPermission } = useAuth();
-  const visibleAdminTabs = ADMIN_TABS.filter((tab) =>
+  const { hasSettingPermission, isSuperAdmin, isAdmin } = useAuth();
+  const permissionTabs = ADMIN_TABS.filter((tab) =>
     hasSettingPermission(tab.id),
   );
+  const insertAt = permissionTabs.findIndex((tab) => tab.id === "due-reminders");
+  const visibleAdminTabs =
+    isSuperAdmin || isAdmin
+      ? [
+          ...permissionTabs.slice(
+            0,
+            insertAt === -1 ? permissionTabs.length : insertAt,
+          ),
+          UNIT_DISCOUNT_TAB,
+          ...permissionTabs.slice(
+            insertAt === -1 ? permissionTabs.length : insertAt,
+          ),
+        ]
+      : permissionTabs;
   const visibleTabs = [PROFILE_TAB, ...visibleAdminTabs];
 
   const tabParam = searchParams.get("tab") as TabId | null;
@@ -152,6 +177,10 @@ function SettingsContent() {
             showSuccess={showSuccess}
             showError={showError}
           />
+        );
+      case "unit-discount":
+        return (
+          <UnitDiscountTab showSuccess={showSuccess} showError={showError} />
         );
       case "due-reminders":
         return (

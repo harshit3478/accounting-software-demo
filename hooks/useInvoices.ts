@@ -24,6 +24,8 @@ export interface Invoice {
   insuranceAmount?: number;
   processingFee?: number;
   earlyPaymentDiscount?: number;
+  unitDiscountAmount?: number;
+  unitDiscountOffer?: unknown;
   insuranceBaseAmount?: number | null;
   amount: number;
   paidAmount: number;
@@ -865,7 +867,6 @@ export function useInvoices(
     setTypeFilter,
     liveTypeFilter,
     setLiveTypeFilter,
-    setShipmentFilter,
     searchTerm,
     setSearchTerm,
     sortBy,

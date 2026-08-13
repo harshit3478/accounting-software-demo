@@ -31,6 +31,10 @@ import {
   isFutureBusinessDate,
   startOfBusinessDay,
 } from "../../../lib/business-date";
+import {
+  buildUnitDiscountOfferForInvoice,
+  toUnitDiscountOfferJson,
+} from "../../../lib/unit-discount";
 
 async function getConfiguredInsuranceBands(): Promise<InsuranceBand[]> {
   const ruleModel = (prisma as any)?.insuranceRule;
@@ -433,6 +437,10 @@ export async function GET(request: NextRequest) {
       earlyPaymentDiscount: invoice.earlyPaymentDiscount?.toNumber
         ? invoice.earlyPaymentDiscount.toNumber()
         : (invoice.earlyPaymentDiscount ?? 0),
+      unitDiscountAmount: invoice.unitDiscountAmount?.toNumber
+        ? invoice.unitDiscountAmount.toNumber()
+        : (invoice.unitDiscountAmount ?? 0),
+      unitDiscountOffer: invoice.unitDiscountOffer ?? null,
       amount: invoice.amount?.toNumber
         ? invoice.amount.toNumber()
         : invoice.amount,
@@ -776,6 +784,11 @@ export async function POST(request: NextRequest) {
     }
 
     const invoiceSource = source || "manual";
+    const unitDiscountOffer = await buildUnitDiscountOfferForInvoice({
+      items: normalizedItems,
+      invoiceDate: invoiceDateValue,
+      isLayaway: isLayaway || false,
+    });
     const invoice = await (prisma as any).invoice.create({
       data: {
         userId: user.id,
@@ -805,6 +818,8 @@ export async function POST(request: NextRequest) {
         liveTypeId: resolvedLiveTypeId,
         liveTypeSnapshot: resolvedLiveTypeSnapshot,
         shippingFeeRuleId: shippingFeeRuleId || null,
+        unitDiscountAmount: 0,
+        unitDiscountOffer: toUnitDiscountOfferJson(unitDiscountOffer),
       },
     });
 
@@ -922,6 +937,10 @@ export async function POST(request: NextRequest) {
       lateFee: invAny.lateFee?.toNumber
         ? invAny.lateFee.toNumber()
         : (invAny.lateFee ?? 0),
+      unitDiscountAmount: invAny.unitDiscountAmount?.toNumber
+        ? invAny.unitDiscountAmount.toNumber()
+        : (invAny.unitDiscountAmount ?? 0),
+      unitDiscountOffer: invAny.unitDiscountOffer ?? null,
       insuranceBaseAmount:
         normalizedInsuranceBaseAmount ??
         (invAny.insuranceBaseAmount?.toNumber

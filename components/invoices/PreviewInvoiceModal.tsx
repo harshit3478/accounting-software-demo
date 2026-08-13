@@ -4,6 +4,7 @@ import Modal from "./Modal";
 import { InvoiceItem } from "./types";
 import { useEffect, useState } from "react";
 import { formatBusinessDate } from "../../lib/business-date";
+import UnitDiscountOfferNotice from "./UnitDiscountOfferNotice";
 
 interface PreviewInvoiceModalProps {
   isOpen: boolean;
@@ -31,6 +32,16 @@ interface PreviewInvoiceModalProps {
   availableStoreCredit?: number;
   applyStoreCredit?: boolean;
   onApplyStoreCreditChange?: (value: boolean) => void;
+  unitDiscountOffer?: {
+    paymentDueDate: string;
+    totalDiscount: number;
+    breakdown: Array<{
+      unitName: string;
+      discountPercent: number;
+      itemAmount: number;
+      discountAmount: number;
+    }>;
+  } | null;
 }
 
 export default function PreviewInvoiceModal({
@@ -59,6 +70,7 @@ export default function PreviewInvoiceModal({
   availableStoreCredit = 0,
   applyStoreCredit = false,
   onApplyStoreCreditChange,
+  unitDiscountOffer = null,
 }: PreviewInvoiceModalProps) {
   const [defaultTerms, setDefaultTerms] = useState<string[] | null>(null);
 
@@ -312,6 +324,12 @@ export default function PreviewInvoiceModal({
               ${total.toFixed(2)}
             </span>
           </div>
+          {unitDiscountOffer && unitDiscountOffer.totalDiscount > 0 && (
+            <UnitDiscountOfferNotice
+              offer={unitDiscountOffer}
+              className="mt-3 mb-0"
+            />
+          )}
           {showStoreCreditOption && applyStoreCredit && (
             <>
               <div className="flex justify-between text-sm pt-1">

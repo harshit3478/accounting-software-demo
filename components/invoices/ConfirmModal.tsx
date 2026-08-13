@@ -66,7 +66,7 @@ export default function ConfirmModal({
   const styles = typeStyles[type];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 animate-fade-in">
       <div
         className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-all duration-300"
         onClick={!isLoading ? onClose : undefined}
@@ -133,7 +133,7 @@ export default function ConfirmModal({
               <h3 className="text-lg font-semibold text-gray-900 mb-2">
                 {title}
               </h3>
-              <p className="text-sm text-gray-600">{message}</p>
+              <p className="text-sm text-gray-600 whitespace-pre-line">{message}</p>
             </div>
           </div>
         </div>

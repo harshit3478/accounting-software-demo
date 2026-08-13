@@ -8,6 +8,8 @@ export interface InvoiceDisplayLike {
   tax?: number | null;
   discount?: number | null;
   earlyPaymentDiscount?: number | null;
+  unitDiscountAmount?: number | null;
+  unitDiscountOffer?: unknown;
   shippingFee?: number | null;
   insuranceAmount?: number | null;
   amount?: number | null;
@@ -368,6 +370,7 @@ export function getInvoiceAmountDue(invoice: {
   tax?: number | null;
   discount?: number | null;
   earlyPaymentDiscount?: number | null;
+  unitDiscountAmount?: number | null;
   shippingFee?: number | null;
   insuranceAmount?: number | null;
   layawayFee?: number | null;
@@ -395,7 +398,8 @@ export function computeInvoiceLineItemTotal(
     Number(invoice.subtotal || 0) +
     Number(invoice.tax || 0) -
     Number(invoice.discount || 0) -
-    Number(invoice.earlyPaymentDiscount || 0) +
+    Number(invoice.earlyPaymentDiscount || 0) -
+    Number(invoice.unitDiscountAmount || 0) +
     Number(invoice.shippingFee || 0) +
     Number(invoice.insuranceAmount || 0) +
     getVisibleLayawayFee(invoice) +
@@ -415,6 +419,7 @@ export function getInvoiceTotalForDisplay(
     tax?: number | null;
     discount?: number | null;
     earlyPaymentDiscount?: number | null;
+    unitDiscountAmount?: number | null;
     shippingFee?: number | null;
     insuranceAmount?: number | null;
     layawayFee?: number | null;
@@ -627,6 +632,14 @@ export function buildInvoicePdfSummaryRows(
           {
             label: "Early Payment Discount:",
             value: -Number(invoice.earlyPaymentDiscount || 0),
+          },
+        ]
+      : []),
+    ...(Number(invoice.unitDiscountAmount || 0) > 0
+      ? [
+          {
+            label: "Unit Discount:",
+            value: -Number(invoice.unitDiscountAmount || 0),
           },
         ]
       : []),
