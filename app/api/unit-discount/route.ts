@@ -40,9 +40,6 @@ export async function POST(request: NextRequest) {
     const discountPercent = Number(body?.discountPercent);
     const periodStart = toBusinessDateStringFromInput(body?.periodStart || "");
     const periodEnd = toBusinessDateStringFromInput(body?.periodEnd || "");
-    const paymentDueDate = toBusinessDateStringFromInput(
-      body?.paymentDueDate || "",
-    );
 
     if (!unitName) {
       return NextResponse.json(
@@ -79,20 +76,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!paymentDueDate) {
-      return NextResponse.json(
-        { error: "Payment due date is required" },
-        { status: 400 },
-      );
-    }
-
-    if (paymentDueDate < periodStart) {
-      return NextResponse.json(
-        { error: "Payment due date cannot be before the invoice period start" },
-        { status: 400 },
-      );
-    }
-
     const model = (prisma as any)?.unitDiscountSetting;
     if (!model) {
       return NextResponse.json(
@@ -123,7 +106,6 @@ export async function POST(request: NextRequest) {
         discountPercent,
         periodStart: startOfBusinessDay(periodStart),
         periodEnd: startOfBusinessDay(periodEnd),
-        paymentDueDate: startOfBusinessDay(paymentDueDate),
         isActive: true,
         createdBy: user.id,
       },
@@ -138,7 +120,6 @@ export async function POST(request: NextRequest) {
         ),
         periodStart,
         periodEnd,
-        paymentDueDate,
         isActive: !!row.isActive,
       },
       { status: 201 },

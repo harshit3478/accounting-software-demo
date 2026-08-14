@@ -1,5 +1,6 @@
 import { roundMoney } from "./early-payment-discount-shared";
 import {
+  addCivilDays,
   formatBusinessDate,
   getBusinessTodayString,
   toBusinessDateStringFromInput,
@@ -7,13 +8,15 @@ import {
 
 export { roundMoney };
 
+export const UNIT_DISCOUNT_PAYMENT_WINDOW_DAYS = 14;
+
 export interface UnitDiscountSettingSnapshot {
   id?: number;
   unitName: string;
   discountPercent: number;
   periodStart: string;
   periodEnd: string;
-  paymentDueDate: string;
+  paymentDueDate?: string;
   isActive?: boolean;
 }
 
@@ -40,6 +43,34 @@ export function normalizeUnitKey(unitName: string): string {
   return String(unitName || "")
     .trim()
     .toLowerCase();
+}
+
+export function getUnitDiscountPayByDate(
+  invoiceDate?: string | Date | null,
+): string {
+  const date = invoiceDate ? toBusinessDateStringFromInput(invoiceDate) : "";
+  if (!date) return "";
+  return addCivilDays(date, UNIT_DISCOUNT_PAYMENT_WINDOW_DAYS);
+}
+
+export function applyUnitDiscountPayByDate(
+  offer: UnitDiscountOfferSnapshot | null,
+  invoiceDate?: string | Date | null,
+): UnitDiscountOfferSnapshot | null {
+  if (!offer) return null;
+  const paymentDueDate = getUnitDiscountPayByDate(invoiceDate);
+  if (!paymentDueDate) return offer;
+  return { ...offer, paymentDueDate };
+}
+
+export function normalizeUnitDiscountOfferJson(
+  offerValue: unknown,
+  invoiceDate?: string | Date | null,
+): UnitDiscountOfferSnapshot | null {
+  return applyUnitDiscountPayByDate(
+    parseUnitDiscountOffer(offerValue),
+    invoiceDate,
+  );
 }
 
 export function parseUnitDiscountOffer(
@@ -91,7 +122,7 @@ export function parseUnitDiscountOffer(
         .filter((line): line is UnitDiscountBreakdownLine => line !== null)
     : [];
 
-  if (!paymentDueDate || totalDiscount <= 0 || breakdown.length === 0) {
+  if (totalDiscount <= 0 || breakdown.length === 0) {
     return null;
   }
 
@@ -120,22 +151,23 @@ export function calculateUnitDiscountOffer(input: {
 }): UnitDiscountOfferSnapshot | null {
   if (input.isLayaway) return null;
 
+  const invoiceDate = input.invoiceDate
+    ? toBusinessDateStringFromInput(input.invoiceDate)
+    : "";
+  if (!invoiceDate) return null;
+
   const settings = (input.settings || [])
     .map((setting) => ({
       ...setting,
       periodStart: toBusinessDateStringFromInput(setting.periodStart || ""),
       periodEnd: toBusinessDateStringFromInput(setting.periodEnd || ""),
-      paymentDueDate: toBusinessDateStringFromInput(
-        setting.paymentDueDate || "",
-      ),
     }))
     .filter(
       (setting) =>
         setting?.isActive !== false &&
         Number(setting.discountPercent) > 0 &&
         setting.periodStart &&
-        setting.periodEnd &&
-        setting.paymentDueDate,
+        setting.periodEnd,
     );
   if (settings.length === 0) return null;
 
@@ -174,7 +206,7 @@ export function calculateUnitDiscountOffer(input: {
       (row) =>
         normalizeUnitKey(row.unitName) === unitKey &&
         isCivilDateInInclusiveRange(
-          input.invoiceDate,
+          invoiceDate,
           row.periodStart,
           row.periodEnd,
         ),
@@ -190,7 +222,6 @@ export function calculateUnitDiscountOffer(input: {
   if (matchedByUnit.size === 0) return null;
 
   const breakdown: UnitDiscountBreakdownLine[] = [];
-  let paymentDueDate = "";
 
   for (const match of matchedByUnit.values()) {
     const discountAmount = roundMoney(
@@ -203,14 +234,12 @@ export function calculateUnitDiscountOffer(input: {
       itemAmount: match.itemAmount,
       discountAmount,
     });
-    if (!paymentDueDate || match.setting.paymentDueDate < paymentDueDate) {
-      paymentDueDate = match.setting.paymentDueDate;
-    }
   }
 
   const totalDiscount = roundMoney(
     breakdown.reduce((sum, line) => sum + line.discountAmount, 0),
   );
+  const paymentDueDate = getUnitDiscountPayByDate(invoiceDate);
   if (!paymentDueDate || totalDiscount <= 0) return null;
 
   return {
@@ -239,6 +268,8 @@ export function getUnitDiscountDisplayState(input: {
   paidAmount?: number | string | null;
   unitDiscountAmount?: number | string | null;
   unitDiscountOffer?: unknown;
+  invoiceDate?: string | Date | null;
+  createdAt?: string | Date | null;
   paymentDate?: string | Date | null;
   additionalPaymentAmount?: number;
 }): {
@@ -251,7 +282,10 @@ export function getUnitDiscountDisplayState(input: {
   discountedTotal: number;
   remainingAfterDiscount: number;
 } {
-  const offer = parseUnitDiscountOffer(input.unitDiscountOffer);
+  const offer = applyUnitDiscountPayByDate(
+    parseUnitDiscountOffer(input.unitDiscountOffer),
+    input.invoiceDate || input.createdAt,
+  );
   const appliedAmount = roundMoney(Number(input.unitDiscountAmount || 0));
   const amount = roundMoney(Number(input.amount || 0));
   const paidAmount = roundMoney(Number(input.paidAmount || 0));
@@ -307,15 +341,17 @@ export function resolveUnitDiscountOffer(input: {
   unitDiscountOffer?: unknown;
   settings?: UnitDiscountSettingSnapshot[] | null;
 }): UnitDiscountOfferSnapshot | null {
-  return (
+  const offer = applyUnitDiscountPayByDate(
     parseUnitDiscountOffer(input.unitDiscountOffer) ||
-    calculateUnitDiscountOffer({
-      items: input.items,
-      invoiceDate: input.invoiceDate,
-      isLayaway: input.isLayaway,
-      settings: input.settings,
-    })
+      calculateUnitDiscountOffer({
+        items: input.items,
+        invoiceDate: input.invoiceDate,
+        isLayaway: input.isLayaway,
+        settings: input.settings,
+      }),
+    input.invoiceDate,
   );
+  return offer;
 }
 
 export function getUnitDiscountedRemaining(input: {
@@ -395,7 +431,7 @@ export function getUnitDiscountInvoiceDateChangeNotice(input: {
     return {
       kind: "gained",
       title: "Invoice will be eligible for a discount",
-      message: `After you change this date to ${formattedNext}, this invoice will be eligible for a unit discount offer.\n\n$${nextOffer.totalDiscount.toFixed(2)} off (${breakdown}).\nIf this invoice is fully paid by ${formatBusinessDate(nextOffer.paymentDueDate)}, you save this discount.`,
+      message: `After you change this date to ${formattedNext}, this invoice will be eligible for a unit discount offer.\n\n$${nextOffer.totalDiscount.toFixed(2)} off (${breakdown}).\nIf this invoice is fully paid within ${UNIT_DISCOUNT_PAYMENT_WINDOW_DAYS} days (by ${formatBusinessDate(nextOffer.paymentDueDate)}), you save this discount.`,
     };
   }
 

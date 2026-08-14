@@ -33,6 +33,8 @@ import {
 } from "../../../lib/business-date";
 import {
   buildUnitDiscountOfferForInvoice,
+  persistNormalizedUnitDiscountOffers,
+  serializeUnitDiscountOfferField,
   toUnitDiscountOfferJson,
 } from "../../../lib/unit-discount";
 
@@ -405,6 +407,12 @@ export async function GET(request: NextRequest) {
       take: limit,
     });
 
+    try {
+      await persistNormalizedUnitDiscountOffers(invoices);
+    } catch (error) {
+      console.error("Failed to normalize unit discount pay-by dates:", error);
+    }
+
     // Convert Decimal to number for JSON serialization
     const serializedInvoices = (invoices as any[]).map((invoice: any) => ({
       ...invoice,
@@ -440,7 +448,11 @@ export async function GET(request: NextRequest) {
       unitDiscountAmount: invoice.unitDiscountAmount?.toNumber
         ? invoice.unitDiscountAmount.toNumber()
         : (invoice.unitDiscountAmount ?? 0),
-      unitDiscountOffer: invoice.unitDiscountOffer ?? null,
+      unitDiscountOffer:
+        serializeUnitDiscountOfferField(
+          invoice.unitDiscountOffer,
+          invoice.invoiceDate || invoice.createdAt,
+        ) ?? null,
       amount: invoice.amount?.toNumber
         ? invoice.amount.toNumber()
         : invoice.amount,
@@ -940,7 +952,11 @@ export async function POST(request: NextRequest) {
       unitDiscountAmount: invAny.unitDiscountAmount?.toNumber
         ? invAny.unitDiscountAmount.toNumber()
         : (invAny.unitDiscountAmount ?? 0),
-      unitDiscountOffer: invAny.unitDiscountOffer ?? null,
+      unitDiscountOffer:
+        serializeUnitDiscountOfferField(
+          invAny.unitDiscountOffer,
+          invAny.invoiceDate || invAny.createdAt,
+        ) ?? null,
       insuranceBaseAmount:
         normalizedInsuranceBaseAmount ??
         (invAny.insuranceBaseAmount?.toNumber

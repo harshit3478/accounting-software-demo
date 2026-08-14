@@ -565,7 +565,6 @@ model UnitDiscountSetting {
   discountPercent Decimal  @db.Decimal(10, 2)
   periodStart     DateTime
   periodEnd       DateTime
-  paymentDueDate  DateTime
   isActive        Boolean  @default(true)
   createdBy       Int
   createdAt       DateTime @default(now())

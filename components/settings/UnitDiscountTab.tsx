@@ -3,7 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { FiPlus } from "react-icons/fi";
 import { formatBusinessDate, getBusinessTodayString } from "../../lib/business-date";
-import type { UnitDiscountSettingSnapshot } from "../../lib/unit-discount-client";
+import {
+  UNIT_DISCOUNT_PAYMENT_WINDOW_DAYS,
+  type UnitDiscountSettingSnapshot,
+} from "../../lib/unit-discount-client";
 
 interface InvoiceUnit {
   id: number;
@@ -33,7 +36,6 @@ export default function UnitDiscountTab({
     discountPercent: "",
     periodStart: getBusinessTodayString(),
     periodEnd: getBusinessTodayString(),
-    paymentDueDate: getBusinessTodayString(),
   });
 
   const activeUnits = useMemo(
@@ -83,7 +85,6 @@ export default function UnitDiscountTab({
       discountPercent: "",
       periodStart: getBusinessTodayString(),
       periodEnd: getBusinessTodayString(),
-      paymentDueDate: getBusinessTodayString(),
     });
   };
 
@@ -109,10 +110,6 @@ export default function UnitDiscountTab({
       showError("Period start cannot be after period end");
       return;
     }
-    if (!form.paymentDueDate) {
-      showError("Payment due date is required");
-      return;
-    }
 
     setIsSaving(true);
     try {
@@ -124,7 +121,6 @@ export default function UnitDiscountTab({
           discountPercent,
           periodStart: form.periodStart,
           periodEnd: form.periodEnd,
-          paymentDueDate: form.paymentDueDate,
         }),
       });
 
@@ -152,8 +148,8 @@ export default function UnitDiscountTab({
           <p className="text-gray-600 text-sm mt-1">
             Percentage off cash invoices by unit when the invoice date falls in
             the configured period. The discount is applied only if the invoice
-            is fully paid by the payment due date. Existing configs cannot be
-            edited.
+            is fully paid within {UNIT_DISCOUNT_PAYMENT_WINDOW_DAYS} days of the
+            invoice date. Existing configs cannot be edited.
           </p>
         </div>
         <button
@@ -236,27 +232,11 @@ export default function UnitDiscountTab({
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
               />
             </div>
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Payment due date
-              </label>
-              <input
-                type="date"
-                value={form.paymentDueDate}
-                onChange={(e) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    paymentDueDate: e.target.value,
-                  }))
-                }
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                Discount applies only if the cash invoice is fully paid on or
-                before this date.
-              </p>
-            </div>
           </div>
+          <p className="text-xs text-gray-500">
+            Discount applies only if the cash invoice is fully paid within{" "}
+            {UNIT_DISCOUNT_PAYMENT_WINDOW_DAYS} days of its invoice date.
+          </p>
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -294,7 +274,7 @@ export default function UnitDiscountTab({
                 <th className="px-4 py-2 font-medium">Unit</th>
                 <th className="px-4 py-2 font-medium">Discount</th>
                 <th className="px-4 py-2 font-medium">Invoice period</th>
-                <th className="px-4 py-2 font-medium">Pay by</th>
+                <th className="px-4 py-2 font-medium">Pay within</th>
                 <th className="px-4 py-2 font-medium">Status</th>
               </tr>
             </thead>
@@ -310,7 +290,7 @@ export default function UnitDiscountTab({
                     {formatBusinessDate(setting.periodEnd)}
                   </td>
                   <td className="px-4 py-2 text-gray-900">
-                    {formatBusinessDate(setting.paymentDueDate)}
+                    {UNIT_DISCOUNT_PAYMENT_WINDOW_DAYS} days of invoice date
                   </td>
                   <td className="px-4 py-2">
                     <span

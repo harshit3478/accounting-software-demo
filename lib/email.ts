@@ -6,6 +6,7 @@ import { formatBusinessDate } from "./business-date";
 import prisma from "./prisma";
 import { buildSingleInvoicePdfBuffer } from "./pdf-export";
 import { getUnitDiscountDisplayState } from "./unit-discount-client";
+import { resolveInvoiceDate } from "./invoice-display";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -360,10 +361,16 @@ export async function sendInvoiceEmail(invoice: {
     Number(invoice.amount || 0) - Number(invoice.paidAmount || 0),
     0,
   );
-  const unitDiscountState = getUnitDiscountDisplayState(invoice);
+  const unitDiscountState = getUnitDiscountDisplayState({
+    ...invoice,
+    invoiceDate: resolveInvoiceDate(
+      invoice.invoiceDate as string | null | undefined,
+      invoice.createdAt as string | null | undefined,
+    ),
+  });
   const unitDiscountText =
     unitDiscountState.pending && unitDiscountState.offer
-      ? `Save $${unitDiscountState.offer.totalDiscount.toFixed(2)} if this invoice is fully paid by ${formatBusinessDate(unitDiscountState.offer.paymentDueDate)} (${unitDiscountState.offer.breakdown
+      ? `Save $${unitDiscountState.offer.totalDiscount.toFixed(2)} if this invoice is fully paid within 14 days (by ${formatBusinessDate(unitDiscountState.offer.paymentDueDate)}) (${unitDiscountState.offer.breakdown
           .map(
             (line) =>
               `${line.unitName} ${line.discountPercent}% = $${line.discountAmount.toFixed(2)}`,
@@ -380,7 +387,7 @@ export async function sendInvoiceEmail(invoice: {
                     `${line.unitName}: ${line.discountPercent}% of $${line.itemAmount.toFixed(2)} = $${line.discountAmount.toFixed(2)} off`,
                 )
                 .join("<br/>")}</div>
-              <div style="margin-top:6px;">If this invoice is fully paid by <strong>${formatBusinessDate(unitDiscountState.offer.paymentDueDate)}</strong>, you save $${unitDiscountState.offer.totalDiscount.toFixed(2)}.</div>
+              <div style="margin-top:6px;">If this invoice is fully paid within 14 days (by <strong>${formatBusinessDate(unitDiscountState.offer.paymentDueDate)}</strong>), you save $${unitDiscountState.offer.totalDiscount.toFixed(2)}.</div>
             </div>`
       : "";
   const terms = Array.isArray(invoice.termsSnapshot)

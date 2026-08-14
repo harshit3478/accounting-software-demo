@@ -1,7 +1,10 @@
 "use client";
 
 import { formatBusinessDate } from "../../lib/business-date";
-import type { UnitDiscountOfferSnapshot } from "../../lib/unit-discount-client";
+import {
+  UNIT_DISCOUNT_PAYMENT_WINDOW_DAYS,
+  type UnitDiscountOfferSnapshot,
+} from "../../lib/unit-discount-client";
 
 interface UnitDiscountOfferNoticeProps {
   offer: UnitDiscountOfferSnapshot;
@@ -37,11 +40,12 @@ export default function UnitDiscountOfferNotice({
       </ul>
       {!applied && (
         <p className="mt-2 text-xs text-emerald-800">
-          If this invoice is fully paid by{" "}
+          If this invoice is fully paid within{" "}
+          {UNIT_DISCOUNT_PAYMENT_WINDOW_DAYS} days (by{" "}
           <span className="font-semibold">
             {formatBusinessDate(offer.paymentDueDate)}
           </span>
-          , you save {formatCurrency(offer.totalDiscount)}.
+          ), you save {formatCurrency(offer.totalDiscount)}.
         </p>
       )}
     </div>

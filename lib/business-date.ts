@@ -109,7 +109,7 @@ function utcMidnightOf(dateStr: string): Date {
   return new Date(`${dateStr}T00:00:00.000Z`);
 }
 
-function addCivilDays(dateStr: string, days: number): string {
+export function addCivilDays(dateStr: string, days: number): string {
   const date = utcMidnightOf(dateStr);
   date.setUTCDate(date.getUTCDate() + days);
   return date.toISOString().slice(0, 10);

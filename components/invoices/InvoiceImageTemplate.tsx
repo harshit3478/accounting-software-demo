@@ -147,7 +147,10 @@ export default function InvoiceImageTemplate({
     { ...invoice, payments: paymentsToShow },
     { includeSubtotal: true },
   );
-  const unitDiscountState = getUnitDiscountDisplayState(invoice);
+  const unitDiscountState = getUnitDiscountDisplayState({
+    ...invoice,
+    invoiceDate: resolveInvoiceDate(invoice.invoiceDate, invoice.createdAt),
+  });
   const biz = BUSINESS_CONFIG;
   const appliedRemovedItemDepositFeeEntries =
     getAppliedRemovedItemDepositFeeEntries(invoice.editHistory || []);
@@ -749,8 +752,8 @@ export default function InvoiceImageTemplate({
                 ))}
                 {unitDiscountState.pending && (
                   <div style={{ marginTop: "4px" }}>
-                    If this invoice is fully paid by{" "}
-                    {fmtDate(unitDiscountState.offer.paymentDueDate)}, you save{" "}
+                    If this invoice is fully paid within 14 days (by{" "}
+                    {fmtDate(unitDiscountState.offer.paymentDueDate)}), you save{" "}
                     {fmt(unitDiscountState.offer.totalDiscount)}.
                   </div>
                 )}

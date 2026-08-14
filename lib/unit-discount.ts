@@ -6,6 +6,8 @@ import {
 import { creditEarlyDiscountOverpaymentAsStoreCredit } from "./early-payment-discount";
 import {
   calculateUnitDiscountOffer,
+  getUnitDiscountPayByDate,
+  normalizeUnitDiscountOfferJson,
   parseUnitDiscountOffer,
   roundMoney,
   type UnitDiscountItemLike,
@@ -23,6 +25,7 @@ export {
   calculateUnitDiscountOffer,
   getUnitDiscountDisplayState,
   parseUnitDiscountOffer,
+  normalizeUnitDiscountOfferJson,
   roundMoney,
 } from "./unit-discount-shared";
 
@@ -35,7 +38,6 @@ function serializeSetting(row: any): UnitDiscountSettingSnapshot {
     ),
     periodStart: toBusinessDateStringFromInput(row.periodStart),
     periodEnd: toBusinessDateStringFromInput(row.periodEnd),
-    paymentDueDate: toBusinessDateStringFromInput(row.paymentDueDate),
     isActive: !!row.isActive,
   };
 }
@@ -102,6 +104,7 @@ export async function maybeApplyUnitDiscount(
       paidAmount: Prisma.Decimal | number;
       unitDiscountAmount?: Prisma.Decimal | number | null;
       unitDiscountOffer?: unknown;
+      invoiceDate?: string | Date | null;
       status: string;
       isLayaway?: boolean;
       payments: Array<{ paymentDate: Date; source?: string | null }>;
@@ -140,7 +143,8 @@ export async function maybeApplyUnitDiscount(
   if (!latestPaymentDate) return null;
 
   const paymentDateStr = toBusinessDateStringFromInput(latestPaymentDate);
-  if (!paymentDateStr || paymentDateStr > offer.paymentDueDate) {
+  const payByDate = getUnitDiscountPayByDate(invoice.invoiceDate);
+  if (!paymentDateStr || !payByDate || paymentDateStr > payByDate) {
     return null;
   }
 
@@ -175,4 +179,42 @@ export function toUnitDiscountOfferJson(
 ): Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput {
   if (!offer) return Prisma.JsonNull;
   return JSON.parse(JSON.stringify(offer)) as unknown as Prisma.InputJsonValue;
+}
+
+export function serializeUnitDiscountOfferField(
+  offerValue: unknown,
+  invoiceDate?: string | Date | null,
+): UnitDiscountOfferSnapshot | null {
+  return normalizeUnitDiscountOfferJson(offerValue, invoiceDate);
+}
+
+export async function persistNormalizedUnitDiscountOffers(
+  invoices: Array<{
+    id: number;
+    unitDiscountOffer?: unknown;
+    invoiceDate?: string | Date | null;
+    createdAt?: string | Date | null;
+  }>,
+): Promise<void> {
+  const updates = invoices.flatMap((invoice) => {
+    const invoiceDate = invoice.invoiceDate || invoice.createdAt;
+    const normalized = normalizeUnitDiscountOfferJson(
+      invoice.unitDiscountOffer,
+      invoiceDate,
+    );
+    if (!normalized) return [];
+    const current = parseUnitDiscountOffer(invoice.unitDiscountOffer);
+    if (current?.paymentDueDate === normalized.paymentDueDate) return [];
+    return [{ id: invoice.id, offer: normalized }];
+  });
+  if (updates.length === 0) return;
+
+  await prisma.$transaction(
+    updates.map((row) =>
+      (prisma as any).invoice.update({
+        where: { id: row.id },
+        data: { unitDiscountOffer: toUnitDiscountOfferJson(row.offer) },
+      }),
+    ),
+  );
 }

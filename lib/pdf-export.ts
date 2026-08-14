@@ -142,7 +142,10 @@ function renderPdfUnitDiscountOffer(
   right: number,
   y: number,
 ): number {
-  const state = getUnitDiscountDisplayState(invoice);
+  const state = getUnitDiscountDisplayState({
+    ...invoice,
+    invoiceDate: resolveInvoiceDate(invoice.invoiceDate, invoice.createdAt),
+  });
   if (!state.offer || (!state.pending && !state.applied)) {
     return y;
   }
@@ -158,7 +161,7 @@ function renderPdfUnitDiscountOffer(
     )
     .join(", ");
   const dueLine = state.pending
-    ? `If fully paid by ${formatBusinessDate(offer.paymentDueDate)}, you save $${offer.totalDiscount.toFixed(2)}.`
+    ? `If fully paid within 14 days (by ${formatBusinessDate(offer.paymentDueDate)}), you save $${offer.totalDiscount.toFixed(2)}.`
     : "";
   const text = [headline, breakdown, dueLine].filter(Boolean).join("\n");
   const lines = doc.splitTextToSize(text, right - left);

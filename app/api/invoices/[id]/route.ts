@@ -38,6 +38,7 @@ import { allocatePaymentAmounts } from "../../../../lib/allocate-payment-amounts
 import { resolveAppliedRemovedItemDepositFeeAmount } from "../../../../lib/invoice-display";
 import {
   buildUnitDiscountOfferForInvoice,
+  serializeUnitDiscountOfferField,
   toUnitDiscountOfferJson,
 } from "../../../../lib/unit-discount";
 
@@ -911,7 +912,11 @@ export async function PUT(
           (invoice as any).unitDiscountAmount ??
           0,
       ),
-      unitDiscountOffer: (invoice as any).unitDiscountOffer ?? null,
+      unitDiscountOffer:
+        serializeUnitDiscountOfferField(
+          (invoice as any).unitDiscountOffer,
+          invoice.invoiceDate || invoice.createdAt,
+        ) ?? null,
       amount: invoice.amount.toNumber(),
       paidAmount: invoice.paidAmount.toNumber(),
     };

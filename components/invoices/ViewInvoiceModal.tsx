@@ -20,6 +20,7 @@ import {
   getInvoiceTotalForDisplay,
   getInvoicePaidAmountForDisplay,
   getInvoiceAmountDue,
+  resolveInvoiceDate,
 } from "../../lib/invoice-display";
 import { getUnitDiscountDisplayState } from "../../lib/unit-discount-client";
 import UnitDiscountOfferNotice from "./UnitDiscountOfferNotice";
@@ -918,7 +919,10 @@ export default function ViewInvoiceModal({
     payments,
   });
   const earlyPaymentDiscount = Number(invoice.earlyPaymentDiscount || 0);
-  const unitDiscountState = getUnitDiscountDisplayState(invoice);
+  const unitDiscountState = getUnitDiscountDisplayState({
+    ...invoice,
+    invoiceDate: resolveInvoiceDate(invoice.invoiceDate, invoice.createdAt),
+  });
   const unitDiscountAmount = Number(invoice.unitDiscountAmount || 0);
   const layawayFee = getVisibleLayawayFee(invoice);
   const depositFeeNotInTotal = getCurrentItemDepositFeeTotal(invoice.items);

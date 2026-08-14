@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "../../../../lib/prisma";
 import { requireAuth } from "../../../../lib/auth";
+import { serializeUnitDiscountOfferField } from "../../../../lib/unit-discount";
 
 export async function GET(request: NextRequest) {
   try {
@@ -78,7 +79,11 @@ export async function GET(request: NextRequest) {
           invoice.unitDiscountAmount ??
           0,
       ),
-      unitDiscountOffer: invoice.unitDiscountOffer ?? null,
+      unitDiscountOffer:
+        serializeUnitDiscountOfferField(
+          invoice.unitDiscountOffer,
+          invoice.invoiceDate || invoice.createdAt,
+        ) ?? null,
       invoiceDate:
         invoice.invoiceDate instanceof Date
           ? invoice.invoiceDate.toISOString()
