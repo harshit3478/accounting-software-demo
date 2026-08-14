@@ -27,6 +27,9 @@ export interface Invoice {
   unitDiscountAmount?: number;
   unitDiscountOffer?: unknown;
   insuranceBaseAmount?: number | null;
+  lateFee?: number;
+  layawayFee?: number;
+  waiveLayawayFee?: boolean;
   amount: number;
   paidAmount: number;
   dueDate: string;

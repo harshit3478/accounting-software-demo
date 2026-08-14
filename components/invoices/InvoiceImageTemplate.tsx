@@ -68,6 +68,9 @@ interface Invoice {
   invoiceDate?: string | null;
   createdAt: string;
   layawayFee?: number;
+  waiveLayawayFee?: boolean;
+  lateFee?: number;
+  processingFee?: number;
   status: "paid" | "pending" | "overdue" | "partial" | "abandoned" | "inactive";
   isLayaway: boolean;
   description?: string | null;

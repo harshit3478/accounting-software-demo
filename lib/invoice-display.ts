@@ -2,8 +2,10 @@ import { formatBusinessDate } from "./business-date";
 
 export interface InvoiceDisplayLike {
   isLayaway?: boolean;
+  waiveLayawayFee?: boolean | null;
   layawayFee?: number | null;
   lateFee?: number | null;
+  processingFee?: number | null;
   subtotal?: number | null;
   tax?: number | null;
   discount?: number | null;
@@ -33,6 +35,10 @@ export function shouldShowLayawayFee(invoice: InvoiceDisplayLike): boolean {
 }
 
 export function getVisibleLayawayFee(invoice: InvoiceDisplayLike): number {
+  if (invoice.waiveLayawayFee) {
+    return 0;
+  }
+
   const storedLayawayFee = Number(invoice.layawayFee || 0);
   if (storedLayawayFee > 0) {
     return Number(storedLayawayFee.toFixed(2));
@@ -46,12 +52,27 @@ export function getVisibleLayawayFee(invoice: InvoiceDisplayLike): number {
   const subtotal = Number(invoice.subtotal || 0);
   const tax = Number(invoice.tax || 0);
   const discount = Number(invoice.discount || 0);
+  const earlyPaymentDiscount = Number(invoice.earlyPaymentDiscount || 0);
+  const unitDiscountAmount = Number(invoice.unitDiscountAmount || 0);
   const shippingFee = Number(invoice.shippingFee || 0);
   const insuranceAmount = Number(invoice.insuranceAmount || 0);
+  const lateFee = Number(invoice.lateFee || 0);
+  const processingFee = Number(invoice.processingFee || 0);
 
+  // Legacy invoices stored the layaway fee only inside `amount`. Infer it from
+  // the leftover, but never treat late/processing/discount rows as layaway.
   const calculated =
-    amount - subtotal - tax + discount - shippingFee - insuranceAmount;
-  return calculated > 0 ? Number(calculated.toFixed(2)) : 0;
+    amount -
+    subtotal -
+    tax +
+    discount +
+    earlyPaymentDiscount +
+    unitDiscountAmount -
+    shippingFee -
+    insuranceAmount -
+    lateFee -
+    processingFee;
+  return calculated > 0.009 ? Number(calculated.toFixed(2)) : 0;
 }
 
 export function getVisibleLateFee(invoice: {

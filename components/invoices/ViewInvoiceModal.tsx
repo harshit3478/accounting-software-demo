@@ -115,6 +115,8 @@ interface Invoice {
   unitDiscountAmount?: number;
   unitDiscountOffer?: unknown;
   lateFee?: number;
+  layawayFee?: number;
+  waiveLayawayFee?: boolean;
   amount: number;
   paidAmount: number;
   dueDate: string;
