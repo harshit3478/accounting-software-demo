@@ -750,9 +750,6 @@ export async function PUT(
               Number(updated.amount) - paidAmount,
               0,
             );
-            const hasPaidExistingPlan = Boolean(
-              existingPlan && hasPaidInstallments,
-            );
             const hasLayawayPlanConfigChanged = Boolean(
               existingPlan &&
                 (existingPlan.months !== normalizedLayawayPlan.months ||
@@ -797,14 +794,36 @@ export async function PUT(
             }
 
             if (existingPlan) {
+              trackChange(
+                "layawayMonths",
+                existingPlan.months,
+                normalizedLayawayPlan.months,
+              );
+              trackChange(
+                "layawayPaymentFrequency",
+                existingPlan.paymentFrequency,
+                normalizedLayawayPlan.paymentFrequency,
+              );
+              trackChange(
+                "layawayDownPayment",
+                Number(existingPlan.downPayment),
+                normalizedLayawayPlan.downPayment,
+              );
+              trackChange(
+                "layawayNotes",
+                existingPlan.notes || null,
+                normalizedLayawayPlan.notes,
+              );
+
+              // Always persist the requested down payment. Paid installments
+              // are reconciled afterward from invoice.paidAmount, so freezing
+              // DP here left encoded down payments (e.g. $120) stuck at $0.
               await tx.layawayPlan.update({
                 where: { invoiceId },
                 data: {
                   months: normalizedLayawayPlan.months,
                   paymentFrequency: normalizedLayawayPlan.paymentFrequency,
-                  downPayment: hasPaidExistingPlan
-                    ? existingPlan.downPayment
-                    : normalizedLayawayPlan.downPayment,
+                  downPayment: normalizedLayawayPlan.downPayment,
                   notes: normalizedLayawayPlan.notes,
                   isCancelled: false,
                 },
