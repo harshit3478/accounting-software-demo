@@ -1,9 +1,14 @@
 "use client";
 
-import { isChequeVaultPdfFile } from "@/lib/cheque-vault-upload";
+import { useEffect, useState } from "react";
+import {
+  getChequeVaultFileUrl,
+  isChequeVaultPdfFile,
+} from "@/lib/cheque-vault-upload";
 
 interface ChequeDocumentPreviewProps {
   imageUrl: string;
+  chequeId?: number;
   imageFileName?: string | null;
   chequeNumber?: string;
   documentTypeLabel?: string;
@@ -13,13 +18,20 @@ interface ChequeDocumentPreviewProps {
 
 export default function ChequeDocumentPreview({
   imageUrl,
+  chequeId,
   imageFileName,
   chequeNumber,
   documentTypeLabel = "Cheque Without Memo",
   className = "",
   maxHeight = "max-h-80",
 }: ChequeDocumentPreviewProps) {
+  const src = chequeId ? getChequeVaultFileUrl(chequeId) : imageUrl;
   const isPdf = isChequeVaultPdfFile(imageFileName || imageUrl);
+  const [loadFailed, setLoadFailed] = useState(false);
+
+  useEffect(() => {
+    setLoadFailed(false);
+  }, [src]);
 
   if (isPdf) {
     return (
@@ -42,7 +54,7 @@ export default function ChequeDocumentPreview({
         </svg>
         <p className="text-sm font-medium text-gray-700">{documentTypeLabel} PDF</p>
         <a
-          href={imageUrl}
+          href={src}
           target="_blank"
           rel="noopener noreferrer"
           className="text-sm text-blue-600 hover:text-blue-800 font-medium"
@@ -53,18 +65,36 @@ export default function ChequeDocumentPreview({
     );
   }
 
+  if (loadFailed) {
+    return (
+      <div
+        className={`flex flex-col items-center justify-center gap-2 p-8 text-center ${className}`}
+      >
+        <p className="text-sm font-medium text-gray-700">
+          Unable to load document
+        </p>
+        <a
+          href={src}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+        >
+          Open in new tab
+        </a>
+      </div>
+    );
+  }
+
   return (
     <img
-      src={imageUrl}
+      src={src}
       alt={
         chequeNumber
           ? `${documentTypeLabel} #${chequeNumber}`
           : documentTypeLabel
       }
       className={`w-full object-contain ${maxHeight} ${className}`}
-      onError={(e) => {
-        (e.target as HTMLImageElement).style.display = "none";
-      }}
+      onError={() => setLoadFailed(true)}
     />
   );
 }

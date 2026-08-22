@@ -12,7 +12,10 @@ import {
   canLinkInvoicesOnCheque,
   isChequeRequestReadOnly,
 } from "@/lib/cheque-vault-permissions";
-import { getChequeVaultDocumentTypeLabel } from "@/lib/cheque-vault-upload";
+import {
+  getChequeVaultDocumentTypeLabel,
+  getChequeVaultFileUrl,
+} from "@/lib/cheque-vault-upload";
 import {
   formatBusinessDate,
   getBusinessTodayString,
@@ -289,10 +292,13 @@ export default function ChequeDetailModal({
                 </p>
                 <div
                   className="bg-gray-100 rounded-lg overflow-hidden border border-gray-200 cursor-pointer hover:opacity-90 transition-opacity"
-                  onClick={() => window.open(cheque.imageUrl, "_blank")}
+                  onClick={() =>
+                    window.open(getChequeVaultFileUrl(cheque.id), "_blank")
+                  }
                   title="Click to open full size"
                 >
                   <ChequeDocumentPreview
+                    chequeId={cheque.id}
                     imageUrl={cheque.imageUrl}
                     imageFileName={cheque.imageFileName}
                     chequeNumber={cheque.chequeNumber}

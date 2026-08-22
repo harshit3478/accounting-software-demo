@@ -541,6 +541,7 @@ export default function UploadChequeModal({
                   {docLabel} Image
                 </p>
                 <ChequeDocumentPreview
+                  chequeId={uploadedCheque.id}
                   imageUrl={uploadedCheque.imageUrl}
                   imageFileName={uploadedCheque.imageFileName}
                   chequeNumber={chequeNumber}

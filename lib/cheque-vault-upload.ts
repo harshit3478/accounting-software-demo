@@ -30,6 +30,28 @@ export function isChequeVaultPdfFile(fileNameOrUrl?: string | null): boolean {
   return fileNameOrUrl.toLowerCase().endsWith(".pdf");
 }
 
+/** Same-origin file URL so browsers do not need to reach R2 directly. */
+export function getChequeVaultFileUrl(chequeId: number): string {
+  return `/api/cheque-vault/${chequeId}/file`;
+}
+
+export function getChequeVaultContentType(fileName: string): string {
+  const ext = fileName.split(".").pop()?.toLowerCase();
+  switch (ext) {
+    case "jpg":
+    case "jpeg":
+      return "image/jpeg";
+    case "png":
+      return "image/png";
+    case "webp":
+      return "image/webp";
+    case "pdf":
+      return "application/pdf";
+    default:
+      return "application/octet-stream";
+  }
+}
+
 export function emptyChequeOcrResult(): ChequeOcrResult {
   return {
     chequeNumber: null,
