@@ -16,13 +16,21 @@ export function isChequeRequestReadOnly(cheque: { status: string }): boolean {
 export function canEditChequeRequest(
   cheque: { status: string; uploadedById: number },
   userId: number | null | undefined,
-  options?: { isSuperAdmin?: boolean; canApprove?: boolean },
+  options?: {
+    isSuperAdmin?: boolean;
+    canApprove?: boolean;
+    canUpload?: boolean;
+  },
 ): boolean {
-  if (options?.isSuperAdmin || options?.canApprove) return false;
-  if (userId == null || cheque.uploadedById !== userId) return false;
-  return UPLOADER_EDITABLE_STATUSES.includes(
-    cheque.status as ChequeVaultStatus,
-  );
+  if (
+    !UPLOADER_EDITABLE_STATUSES.includes(cheque.status as ChequeVaultStatus)
+  ) {
+    return false;
+  }
+  if (options?.isSuperAdmin || options?.canUpload || options?.canApprove) {
+    return true;
+  }
+  return userId != null && cheque.uploadedById === userId;
 }
 
 export function canLinkInvoicesOnCheque(

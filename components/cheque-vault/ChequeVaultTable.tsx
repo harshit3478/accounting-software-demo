@@ -244,6 +244,7 @@ export default function ChequeVaultTable({
                       {canEditChequeRequest(cheque, currentUserId, {
                         isSuperAdmin,
                         canApprove: canApproveCheques,
+                        canUpload: canUploadCheques,
                       })
                         ? "Edit"
                         : "View"}

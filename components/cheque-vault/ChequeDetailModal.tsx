@@ -84,9 +84,13 @@ export default function ChequeDetailModal({
   onUpdateDetails,
   onDelete,
 }: ChequeDetailModalProps) {
-  const { isSuperAdmin, canApproveCheques, user } = useAuth();
+  const { isSuperAdmin, canApproveCheques, canUploadCheques, user } = useAuth();
   const canReviewCheque = isSuperAdmin || canApproveCheques;
-  const reviewOptions = { isSuperAdmin, canApprove: canApproveCheques };
+  const reviewOptions = {
+    isSuperAdmin,
+    canApprove: canApproveCheques,
+    canUpload: canUploadCheques,
+  };
   const [chequeNumber, setChequeNumber] = useState("");
   const [payorName, setPayorName] = useState("");
   const [amount, setAmount] = useState("");
@@ -695,7 +699,7 @@ export default function ChequeDetailModal({
             )}
 
           {(canDelete ||
-            canEdit ||
+            (canEdit && !canReviewCheque) ||
             readOnly ||
             approveResult ||
             (cheque.status === "NEEDS_CORRECTION" &&

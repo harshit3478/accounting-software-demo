@@ -6,7 +6,6 @@ import {
   canEditChequeRequest,
   canLinkInvoicesOnCheque,
   isChequeRequestReadOnly,
-  isChequeVaultReviewer,
 } from "@/lib/cheque-vault-permissions";
 import { isLinkableInvoiceStatus } from "@/lib/invoice-linkable-status";
 import { deleteFromR2 } from "@/lib/r2-client";
@@ -148,48 +147,31 @@ export async function PATCH(
     const wantsInvoiceUpdate = invoices !== undefined;
 
     const canApprove = hasPermission(user, "chequeVault.approve");
-    const reviewer = isChequeVaultReviewer({
+    const actorOptions = {
       isSuperAdmin: isSuperAdmin(user),
       canApprove,
-    });
-
-    if (reviewer) {
-      if (wantsFieldUpdate) {
-        return NextResponse.json(
-          {
-            error: "Reviewers can only link invoices, not edit cheque details",
-          },
-          { status: 403 },
-        );
-      }
-      if (
-        wantsInvoiceUpdate &&
-        !canLinkInvoicesOnCheque(cheque, user.id, {
-          isSuperAdmin: isSuperAdmin(user),
-          canApprove,
-        })
-      ) {
-        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-      }
-      if (!wantsInvoiceUpdate) {
-        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-      }
-    } else {
-      if (cheque.uploadedById !== user.id) {
-        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-      }
-      if (wantsInvoiceUpdate) {
-        return NextResponse.json(
-          { error: "Only approvers can link invoices to a cheque request" },
-          { status: 403 },
-        );
-      }
-      if (wantsFieldUpdate && !canEditChequeRequest(cheque, user.id)) {
-        return NextResponse.json(
-          { error: "You can only edit your own pending requests" },
-          { status: 403 },
-        );
-      }
+      canUpload: hasPermission(user, "chequeVault.upload"),
+    };
+    if (
+      wantsFieldUpdate &&
+      !canEditChequeRequest(cheque, user.id, actorOptions)
+    ) {
+      return NextResponse.json(
+        { error: "You do not have permission to edit this cheque request" },
+        { status: 403 },
+      );
+    }
+    if (
+      wantsInvoiceUpdate &&
+      !canLinkInvoicesOnCheque(cheque, user.id, actorOptions)
+    ) {
+      return NextResponse.json(
+        { error: "Only approvers can link invoices to a cheque request" },
+        { status: 403 },
+      );
+    }
+    if (!wantsFieldUpdate && !wantsInvoiceUpdate) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const updateData: any = {};
@@ -243,7 +225,7 @@ export async function PATCH(
       updateData.invoicesLinkedAt = new Date();
     }
 
-    // Field updates (uploader only)
+    // Field updates (uploader, super admin, or users with edit permission)
     if (chequeNumber !== undefined) updateData.chequeNumber = chequeNumber;
     if (payorName !== undefined) updateData.payorName = payorName;
     else if (payeeName !== undefined) updateData.payorName = payeeName;
@@ -254,12 +236,12 @@ export async function PATCH(
       updateData.customerEmail = customerEmail || null;
     if (memoText !== undefined) updateData.memoText = memoText || null;
 
-    if (wantsFieldUpdate && !reviewer) {
+    if (wantsFieldUpdate) {
       updateData.submittedAt = new Date();
     }
 
     // Re-submit after correction: reset status to PENDING
-    if (cheque.status === "NEEDS_CORRECTION" && wantsFieldUpdate && !reviewer) {
+    if (cheque.status === "NEEDS_CORRECTION" && wantsFieldUpdate) {
       updateData.status = "PENDING";
       updateData.correctionNote = null;
       updateData.correctionRequestedById = null;
