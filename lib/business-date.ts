@@ -336,3 +336,38 @@ export function formatBusinessDate(
   // Date-only: fixed civil calendar day (legacy UTC midnight + Central business).
   return formatCalendarDateString(resolveCalendarDateString(date), options);
 }
+
+/**
+ * Cheque / memo document dates: one US Central business calendar day for
+ * every viewer (never the viewer's local timezone).
+ * - YYYY-MM-DD and Central start-of-day → that business day
+ * - UTC midnight (legacy date-picker saves) → that civil day, so existing
+ *   cheques do not shift back one day the way invoice dates did for PH
+ */
+export function formatChequeDate(
+  input: string | Date | null | undefined,
+  options: Intl.DateTimeFormatOptions = {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  },
+): string {
+  if (input == null) {
+    return "";
+  }
+
+  if (typeof input === "string" && !input.trim()) {
+    return "";
+  }
+
+  const dateStr =
+    typeof input === "string" && DATE_ONLY_REGEX.test(input.trim())
+      ? input.trim()
+      : resolveCalendarDateString(input);
+
+  if (!dateStr) {
+    return "";
+  }
+
+  return formatCalendarDateString(dateStr, options);
+}

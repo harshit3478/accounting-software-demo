@@ -18,7 +18,11 @@ import {
   parseChequeVaultDocumentType,
 } from "@/lib/cheque-vault-upload";
 import { chequeVaultUserInclude } from "@/lib/cheque-vault-include";
-import { endOfBusinessDay, startOfBusinessDay } from "@/lib/business-date";
+import {
+  endOfBusinessDay,
+  parseBusinessDateInput,
+  startOfBusinessDay,
+} from "@/lib/business-date";
 
 function serializeCheque(cheque: any) {
   return {
@@ -218,13 +222,14 @@ export async function POST(request: NextRequest) {
     const customerEmail =
       (formData.get("customerEmail") as string | null)?.trim() || null;
 
-    const parsedChequeDate = ocrResult.chequeDate
-      ? new Date(ocrResult.chequeDate)
-      : null;
-    const chequeDate =
-      parsedChequeDate && !isNaN(parsedChequeDate.getTime())
-        ? startOfBusinessDay(parsedChequeDate)
+    let chequeDate: Date;
+    try {
+      chequeDate = ocrResult.chequeDate
+        ? parseBusinessDateInput(ocrResult.chequeDate)
         : startOfBusinessDay(new Date());
+    } catch {
+      chequeDate = startOfBusinessDay(new Date());
+    }
 
     const cheque = await prisma.chequeVault.create({
       data: {

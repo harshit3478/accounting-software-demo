@@ -18,8 +18,9 @@ import {
 } from "@/lib/cheque-vault-upload";
 import {
   formatBusinessDate,
+  formatChequeDate,
   getBusinessTodayString,
-  toBusinessDateString,
+  resolveCalendarDateString,
 } from "@/lib/business-date";
 
 interface ChequeDetailModalProps {
@@ -59,7 +60,7 @@ const STATUS_STYLES: Record<string, string> = {
 
 function formatDate(dateStr: string | null) {
   if (!dateStr) return "—";
-  return formatBusinessDate(dateStr);
+  return formatChequeDate(dateStr);
 }
 
 function formatDateTime(dateStr: string | null) {
@@ -119,9 +120,7 @@ export default function ChequeDetailModal({
     setPayorName(cheque.payorName || "");
     setAmount(String(cheque.amount ?? ""));
     setChequeDate(
-      cheque.chequeDate
-        ? toBusinessDateString(new Date(cheque.chequeDate))
-        : "",
+      cheque.chequeDate ? resolveCalendarDateString(cheque.chequeDate) : "",
     );
     setBankName(cheque.bankName || "");
     setMemoText(cheque.memoText || "");

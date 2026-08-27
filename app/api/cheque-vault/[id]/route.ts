@@ -13,6 +13,7 @@ import {
   chequeVaultInvoiceAllocationInclude,
   chequeVaultUserInclude,
 } from "@/lib/cheque-vault-include";
+import { startOfBusinessDay } from "@/lib/business-date";
 
 function serializeCheque(cheque: any) {
   return {
@@ -230,7 +231,9 @@ export async function PATCH(
     if (payorName !== undefined) updateData.payorName = payorName;
     else if (payeeName !== undefined) updateData.payorName = payeeName;
     if (amount !== undefined) updateData.amount = parseFloat(amount);
-    if (chequeDate !== undefined) updateData.chequeDate = new Date(chequeDate);
+    if (chequeDate !== undefined) {
+      updateData.chequeDate = startOfBusinessDay(chequeDate);
+    }
     if (bankName !== undefined) updateData.bankName = bankName;
     if (customerEmail !== undefined)
       updateData.customerEmail = customerEmail || null;

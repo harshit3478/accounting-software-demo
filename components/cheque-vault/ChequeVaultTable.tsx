@@ -6,7 +6,7 @@ import {
   canEditChequeRequest,
 } from "@/lib/cheque-vault-permissions";
 import { getChequeVaultDocumentTypeLabel } from "@/lib/cheque-vault-upload";
-import { formatBusinessDate } from "@/lib/business-date";
+import { formatBusinessDate, formatChequeDate } from "@/lib/business-date";
 import { useAuth } from "@/lib/AuthContext";
 
 interface ChequeVaultTableProps {
@@ -191,7 +191,7 @@ export default function ChequeVaultTable({
                   ${cheque.amount.toFixed(2)}
                 </td>
                 <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
-                  {formatDate(cheque.chequeDate)}
+                  {formatChequeDate(cheque.chequeDate)}
                 </td>
                 <td className="px-4 py-3">
                   {cheque.invoiceAllocations.length > 0 ? (
