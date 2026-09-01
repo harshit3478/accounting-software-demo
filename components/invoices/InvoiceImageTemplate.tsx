@@ -16,6 +16,7 @@ import {
   resolveLiveTypeLabel,
   isAbandonedLayawayInvoice,
   resolveInvoiceDate,
+  getAbandonedInvoiceFinalDueDisplay,
 } from "../../lib/invoice-display";
 import { getUnitDiscountDisplayState } from "../../lib/unit-discount-client";
 import type { InvoiceItem } from "./types";
@@ -137,14 +138,29 @@ export default function InvoiceImageTemplate({
 }: InvoiceImageTemplateProps) {
   const abandoned = isAbandonedInvoice(invoice);
   const amtDue = getInvoiceAmountDue(invoice);
+  const finalDueDisplay = abandoned
+    ? getAbandonedInvoiceFinalDueDisplay({
+        status: invoice.status,
+        isLayaway: invoice.isLayaway,
+        paidAmount: invoice.paidAmount,
+        payments,
+        editHistory: invoice.editHistory,
+        abandonmentRefunds,
+      })
+    : null;
   const invoiceTotal = getInvoiceTotalForDisplay(invoice);
   const paymentsToShow = getInvoicePaymentsForPdf({
     status: invoice.status,
     payments,
     abandonmentRefunds,
+    editHistory: invoice.editHistory,
   });
   const summaryRows = buildInvoicePdfSummaryRows(
-    { ...invoice, payments: paymentsToShow },
+    {
+      ...invoice,
+      payments: paymentsToShow,
+      abandonmentRefunds,
+    },
     { includeSubtotal: true },
   );
   const unitDiscountState = getUnitDiscountDisplayState({
@@ -712,7 +728,7 @@ export default function InvoiceImageTemplate({
             }}
           />
 
-          {/* Amount Due */}
+          {/* Amount Due / Refund Due */}
           <div
             style={{
               display: "flex",
@@ -722,8 +738,18 @@ export default function InvoiceImageTemplate({
               fontWeight: 800,
             }}
           >
-            <span>Amount Due (USD):</span>
-            <span>{fmt(amtDue)}</span>
+            <span>
+              {finalDueDisplay && finalDueDisplay.amount > 0
+                ? `${finalDueDisplay.label}:`
+                : "Amount Due (USD):"}
+            </span>
+            <span>
+              {fmt(
+                finalDueDisplay && finalDueDisplay.amount > 0
+                  ? finalDueDisplay.amount
+                  : amtDue,
+              )}
+            </span>
           </div>
           {unitDiscountState.offer &&
             (unitDiscountState.pending || unitDiscountState.applied) && (

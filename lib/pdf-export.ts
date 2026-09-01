@@ -16,6 +16,7 @@ import {
   isAbandonedLayawayInvoice,
   resolveInvoiceDate,
   resolveLiveTypeLabel,
+  getAbandonedInvoiceFinalDueDisplay,
 } from "./invoice-display";
 import {
   formatBusinessDate,
@@ -114,6 +115,27 @@ interface Invoice {
 }
 
 const { colors } = BUSINESS_CONFIG;
+
+function resolvePdfAmountDueDisplay(invoice: Invoice) {
+  if (isAbandonedInvoice(invoice)) {
+    const finalDue = getAbandonedInvoiceFinalDueDisplay({
+      status: invoice.status,
+      isLayaway: invoice.isLayaway,
+      paidAmount: invoice.paidAmount,
+      payments: invoice.payments,
+      editHistory: invoice.editHistory,
+      abandonmentRefunds: invoice.abandonmentRefunds,
+    });
+    if (finalDue.amount > 0) {
+      return finalDue;
+    }
+  }
+
+  return {
+    label: "Amount Due (USD)",
+    amount: getInvoiceAmountDue(invoice),
+  };
+}
 
 function renderPdfItemDepositReference(
   doc: jsPDF,
@@ -566,6 +588,7 @@ export async function generateSingleInvoicePDF(
   const liveTypeLabel = resolveLiveTypeLabel(invoice);
   const amtDue = getInvoiceAmountDue(invoice);
   const invoiceTotal = getInvoiceTotalForDisplay(invoice);
+  const amountDueDisplay = resolvePdfAmountDueDisplay(invoice);
 
   const metaRows = [
     { label: "Invoice Number:", value: invoice.invoiceNumber },
@@ -629,8 +652,8 @@ export async function generateSingleInvoicePDF(
   doc.setFontSize(9);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(26, 26, 26);
-  doc.text("Amount Due (USD):", metaLabelX, metaY + 1, { align: "right" });
-  doc.text(`$${amtDue.toFixed(2)}`, R, metaY + 1, { align: "right" });
+  doc.text(`${amountDueDisplay.label}:`, metaLabelX, metaY + 1, { align: "right" });
+  doc.text(`$${amountDueDisplay.amount.toFixed(2)}`, R, metaY + 1, { align: "right" });
   metaY += 12;
 
   y = Math.max(y + 4, metaY + 4);
@@ -790,8 +813,8 @@ export async function generateSingleInvoicePDF(
   doc.text("Invoice Total:", summaryLabelX, y, { align: "right" });
   doc.text(`$${invoiceTotal.toFixed(2)}`, R, y, { align: "right" });
   y += 6;
-  doc.text("Amount Due:", summaryLabelX, y, { align: "right" });
-  doc.text(`$${amtDue.toFixed(2)}`, R, y, { align: "right" });
+  doc.text(`${amountDueDisplay.label}:`, summaryLabelX, y, { align: "right" });
+  doc.text(`$${amountDueDisplay.amount.toFixed(2)}`, R, y, { align: "right" });
   y += 6;
   y = renderPdfUnitDiscountOffer(doc, invoice, L, R, y + 2);
 
@@ -1055,6 +1078,7 @@ export function buildSingleInvoicePdfBuffer(
   const liveTypeLabel = resolveLiveTypeLabel(invoice);
   const amtDue = getInvoiceAmountDue(invoice);
   const invoiceTotal = getInvoiceTotalForDisplay(invoice);
+  const amountDueDisplay = resolvePdfAmountDueDisplay(invoice);
   [
     ["Invoice Number:", invoice.invoiceNumber],
     ["Invoice Date:", invoiceDate],
@@ -1076,8 +1100,8 @@ export function buildSingleInvoicePdfBuffer(
   doc.setFontSize(9);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(26, 26, 26);
-  doc.text("Amount Due (USD):", metaLabelX, metaY + 1, { align: "right" });
-  doc.text(`$${amtDue.toFixed(2)}`, R, metaY + 1, { align: "right" });
+  doc.text(`${amountDueDisplay.label}:`, metaLabelX, metaY + 1, { align: "right" });
+  doc.text(`$${amountDueDisplay.amount.toFixed(2)}`, R, metaY + 1, { align: "right" });
   metaY += 12;
 
   y = Math.max(y + 4, metaY + 4);
@@ -1216,8 +1240,8 @@ export function buildSingleInvoicePdfBuffer(
   doc.text("Invoice Total:", 130, y, { align: "right" });
   doc.text(`$${invoiceTotal.toFixed(2)}`, R, y, { align: "right" });
   y += 6;
-  doc.text("Amount Due:", 130, y, { align: "right" });
-  doc.text(`$${amtDue.toFixed(2)}`, R, y, { align: "right" });
+  doc.text(`${amountDueDisplay.label}:`, 130, y, { align: "right" });
+  doc.text(`$${amountDueDisplay.amount.toFixed(2)}`, R, y, { align: "right" });
   y += 6;
   y = renderPdfUnitDiscountOffer(doc, invoice, L, R, y + 2);
 

@@ -90,8 +90,8 @@ export function useChequeVault() {
   const [filterDocumentType, setFilterDocumentType] = useState<
     ChequeVaultDocumentType | "all"
   >("all");
-  const [searchPayee, setSearchPayee] = useState("");
-  const [debouncedPayee, setDebouncedPayee] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [dateRange, setDateRange] = useState<DateRange | null>(null);
   const [filterUploadedBy, setFilterUploadedBy] = useState<number | null>(null);
 
@@ -103,14 +103,14 @@ export function useChequeVault() {
   const [selectedCheque, setSelectedCheque] =
     useState<ChequeVaultRecord | null>(null);
 
-  // Debounce payee search
+  // Debounce search
   useEffect(() => {
     const timer = setTimeout(() => {
-      setDebouncedPayee(searchPayee);
+      setDebouncedSearch(searchQuery);
       setCurrentPage(1);
     }, 300);
     return () => clearTimeout(timer);
-  }, [searchPayee]);
+  }, [searchQuery]);
 
   const fetchCheques = useCallback(async () => {
     setIsLoading(true);
@@ -121,7 +121,7 @@ export function useChequeVault() {
       if (filterStatus !== "all") params.set("status", filterStatus);
       if (filterDocumentType !== "all")
         params.set("documentType", filterDocumentType);
-      if (debouncedPayee) params.set("payorName", debouncedPayee);
+      if (debouncedSearch) params.set("search", debouncedSearch);
       if (dateRange) {
         params.set("startDate", dateRange.startDate);
         params.set("endDate", dateRange.endDate);
@@ -147,7 +147,7 @@ export function useChequeVault() {
     itemsPerPage,
     filterStatus,
     filterDocumentType,
-    debouncedPayee,
+    debouncedSearch,
     dateRange,
     filterUploadedBy,
     showError,
@@ -173,8 +173,13 @@ export function useChequeVault() {
       if (!res.ok) throw new Error(data.error || "Failed to approve");
       const refs: string[] = data.paymentRefs || [];
       const count = data.paymentsCreated ?? refs.length;
+      const storeCreditAdded = Number(data.storeCreditAdded || 0);
+      const storeCreditMessage =
+        storeCreditAdded > 0
+          ? ` $${storeCreditAdded.toFixed(2)} saved as store credit.`
+          : "";
       showSuccess(
-        `Cheque approved. ${count} payment${count === 1 ? "" : "s"} created (${refs.join(", ")}) — visible on the Payments tab.`,
+        `Cheque approved. ${count} payment${count === 1 ? "" : "s"} created (${refs.join(", ")}) — visible on the Payments tab.${storeCreditMessage}`,
       );
       await fetchCheques();
       return data;
@@ -331,8 +336,8 @@ export function useChequeVault() {
       setFilterDocumentType(t);
       setCurrentPage(1);
     },
-    searchPayee,
-    setSearchPayee,
+    searchQuery,
+    setSearchQuery,
     dateRange,
     setDateRange: (r: DateRange | null) => {
       setDateRange(r);

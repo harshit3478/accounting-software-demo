@@ -171,13 +171,13 @@ function ChequeVaultContent() {
               ))}
             </select>
 
-            {/* Payee search */}
+            {/* Search */}
             <input
               type="text"
-              value={vault.searchPayee}
-              onChange={(e) => vault.setSearchPayee(e.target.value)}
-              placeholder="Search payee name..."
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-52"
+              value={vault.searchQuery}
+              onChange={(e) => vault.setSearchQuery(e.target.value)}
+              placeholder="Search payee, cheque #, or amount..."
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-64"
             />
 
             {/* Date range */}

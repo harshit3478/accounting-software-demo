@@ -10,7 +10,6 @@ import InvoiceImageTemplate from "./InvoiceImageTemplate";
 import {
   getAppliedRemovedItemDepositFeeTotal,
   getCurrentItemDepositFeeTotal,
-  getInvoicePaymentsForPdf,
   getInvoiceStatusLabel,
   getRecalculationFeeDisplayEntries,
   getRemovedItemDepositFeeDisplayEntries,
@@ -20,6 +19,7 @@ import {
   getInvoiceTotalForDisplay,
   getInvoicePaidAmountForDisplay,
   getInvoiceAmountDue,
+  getAbandonedInvoicePaymentBreakdown,
   resolveInvoiceDate,
 } from "../../lib/invoice-display";
 import { getUnitDiscountDisplayState } from "../../lib/unit-discount-client";
@@ -285,11 +285,8 @@ export default function ViewInvoiceModal({
       amount: invoice!.status === "abandoned" ? 0 : localInvoiceAmount,
       lateFee: localLateFee,
       paidAmount: localPaidAmount,
-      payments: getInvoicePaymentsForPdf({
-        status: invoice!.status,
-        payments: payments.map(mapPaymentForPdf),
-        abandonmentRefunds: abandonmentRefunds.map(mapPaymentForPdf),
-      }),
+      payments: payments.map(mapPaymentForPdf),
+      abandonmentRefunds: abandonmentRefunds.map(mapPaymentForPdf),
     };
 
     return {
@@ -1001,6 +998,18 @@ export default function ViewInvoiceModal({
     abandonPaymentDisposition === "refund" ||
     displayedAbandonmentRefunds.length > 0;
 
+  const abandonedPaymentBreakdown =
+    invoice.status === "abandoned"
+      ? getAbandonedInvoicePaymentBreakdown({
+          status: invoice.status,
+          isLayaway: invoice.isLayaway,
+          paidAmount: localPaidAmount,
+          payments,
+          editHistory: invoice.editHistory,
+          abandonmentRefunds,
+        })
+      : null;
+
   type PaymentHistoryRole =
     | "payment"
     | "refund"
@@ -1029,6 +1038,28 @@ export default function ViewInvoiceModal({
     }
 
     const rows: Array<{ payment: Payment; role: PaymentHistoryRole }> = [];
+
+    if (abandonedPaymentBreakdown?.receivedPayments.length) {
+      for (const receivedPayment of abandonedPaymentBreakdown.receivedPayments) {
+        rows.push({
+          payment: {
+            id: receivedPayment.paymentId,
+            amount: receivedPayment.amount,
+            paymentCode: receivedPayment.paymentCode,
+            date: receivedPayment.paymentDate,
+            notes: null,
+            createdAt: receivedPayment.paymentDate,
+            method: {
+              id: 0,
+              name: receivedPayment.methodName,
+              icon: null,
+              color: "#059669",
+            },
+          },
+          role: "payment",
+        });
+      }
+    }
 
     if (showRefundInHistory) {
       for (const refundPayment of displayedAbandonmentRefunds) {
@@ -1441,47 +1472,95 @@ export default function ViewInvoiceModal({
           </div>
 
           <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div>
-                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                  Invoice Total
-                </p>
-                <p className="text-xl font-bold text-blue-700">
-                  {formatCurrency(displayInvoiceTotal)}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                  Amount Paid
-                </p>
-                <p className="text-xl font-bold text-green-600">
-                  {formatCurrency(displayPaidAmount)}
-                </p>
-              </div>
-              {amountDue > 0 && (
+            {invoice.status === "abandoned" && abandonedPaymentBreakdown ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {abandonedPaymentBreakdown.hasPayments && (
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                      Payments Received
+                    </p>
+                    <p className="text-xl font-bold text-blue-700">
+                      {formatCurrency(
+                        abandonedPaymentBreakdown.totalPaymentsReceived,
+                      )}
+                    </p>
+                  </div>
+                )}
+                {abandonedPaymentBreakdown.totalRetained > 0 && (
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                      Total Retained
+                    </p>
+                    <p className="text-xl font-bold text-amber-700">
+                      {formatCurrency(abandonedPaymentBreakdown.totalRetained)}
+                    </p>
+                  </div>
+                )}
+                {abandonedPaymentBreakdown.finalAmount > 0 && (
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                      {abandonedPaymentBreakdown.finalAmountLabel.replace(
+                        /:$/,
+                        "",
+                      )}
+                    </p>
+                    <p className="text-xl font-bold text-orange-700">
+                      {formatCurrency(abandonedPaymentBreakdown.finalAmount)}
+                    </p>
+                  </div>
+                )}
                 <div>
                   <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                    Remaining Balance
+                    Invoice Total
                   </p>
-                  <p className="text-xl font-bold text-red-600">
-                    {formatCurrency(amountDue)}
+                  <p className="text-xl font-bold text-gray-700">
+                    {formatCurrency(displayInvoiceTotal)}
                   </p>
                 </div>
-              )}
-              {depositFeeNotInTotal > 0 && (
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div>
                   <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                    Deposit Fee (not in total)
+                    Invoice Total
                   </p>
-                  <p className="text-xl font-bold text-amber-700">
-                    {formatCurrency(depositFeeNotInTotal)}
-                  </p>
-                  <p className="text-xs text-amber-800 mt-1">
-                    On current items, separate from invoice total
+                  <p className="text-xl font-bold text-blue-700">
+                    {formatCurrency(displayInvoiceTotal)}
                   </p>
                 </div>
-              )}
-            </div>
+                <div>
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                    Amount Paid
+                  </p>
+                  <p className="text-xl font-bold text-green-600">
+                    {formatCurrency(displayPaidAmount)}
+                  </p>
+                </div>
+                {amountDue > 0 && (
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                      Remaining Balance
+                    </p>
+                    <p className="text-xl font-bold text-red-600">
+                      {formatCurrency(amountDue)}
+                    </p>
+                  </div>
+                )}
+                {depositFeeNotInTotal > 0 && (
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                      Deposit Fee (not in total)
+                    </p>
+                    <p className="text-xl font-bold text-amber-700">
+                      {formatCurrency(depositFeeNotInTotal)}
+                    </p>
+                    <p className="text-xs text-amber-800 mt-1">
+                      On current items, separate from invoice total
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
             {appliedRemovedItemDepositFeeTotal > 0 && (
               <p className="mt-3 border-t border-blue-200 pt-3 text-xs text-gray-600">
                 {formatCurrency(appliedRemovedItemDepositFeeTotal)} from removed
@@ -1927,6 +2006,79 @@ export default function ViewInvoiceModal({
                   </span>
                 </div>
               ))}
+              {invoice.status === "abandoned" && abandonedPaymentBreakdown && (
+                <div className="rounded-lg border border-orange-200 bg-orange-50 p-4 space-y-2">
+                  <p className="text-sm font-semibold text-orange-900">
+                    Payment Settlement
+                  </p>
+                  {abandonedPaymentBreakdown.hasPayments && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-700">
+                        Total Payments Received:
+                      </span>
+                      <span className="font-medium text-gray-900">
+                        {formatCurrency(
+                          abandonedPaymentBreakdown.totalPaymentsReceived,
+                        )}
+                      </span>
+                    </div>
+                  )}
+                  {abandonedPaymentBreakdown.receivedPayments.map(
+                    (receivedPayment) => (
+                      <div
+                        key={`received-${receivedPayment.paymentId}`}
+                        className="flex justify-between gap-4 text-xs text-emerald-800"
+                      >
+                        <span>
+                          {receivedPayment.paymentCode} —{" "}
+                          {receivedPayment.methodName} (
+                          {formatBusinessDate(receivedPayment.paymentDate)})
+                        </span>
+                        <span className="font-medium">
+                          {formatCurrency(receivedPayment.amount)}
+                        </span>
+                      </div>
+                    ),
+                  )}
+                  {abandonedPaymentBreakdown.deductions.map((deduction) => (
+                    <div
+                      key={deduction.label}
+                      className="flex justify-between text-sm"
+                    >
+                      <span className="text-gray-700">{deduction.label}</span>
+                      <span className="font-medium text-amber-800">
+                        -{formatCurrency(deduction.amount)}
+                      </span>
+                    </div>
+                  ))}
+                  {abandonedPaymentBreakdown.totalRetained > 0 && (
+                    <div className="flex justify-between text-sm border-t border-orange-200 pt-2">
+                      <span className="font-medium text-gray-800">
+                        Total Retained:
+                      </span>
+                      <span className="font-semibold text-amber-800">
+                        {formatCurrency(
+                          abandonedPaymentBreakdown.totalRetained,
+                        )}
+                      </span>
+                    </div>
+                  )}
+                  {abandonedPaymentBreakdown.finalAmount > 0 && (
+                    <div className="flex justify-between text-sm border-t border-orange-200 pt-2">
+                      <span className="font-semibold text-orange-900">
+                        {abandonedPaymentBreakdown.finalAmountLabel.replace(
+                          /:$/,
+                          "",
+                        )}
+                        :
+                      </span>
+                      <span className="font-bold text-orange-700">
+                        {formatCurrency(abandonedPaymentBreakdown.finalAmount)}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="border-t border-blue-300 pt-3 flex justify-between">
                 <span className="text-lg font-semibold text-gray-900">
                   Total Amount:

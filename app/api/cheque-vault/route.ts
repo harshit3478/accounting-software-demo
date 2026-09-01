@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import prisma from "@/lib/prisma";
 import {
   requireChequeVaultUpload,
@@ -23,6 +24,10 @@ import {
   parseBusinessDateInput,
   startOfBusinessDay,
 } from "@/lib/business-date";
+import {
+  buildChequeVaultTextSearchConditions,
+  normalizeAmountSearchTerm,
+} from "@/lib/cheque-vault-search";
 
 function serializeCheque(cheque: any) {
   return {
@@ -54,8 +59,11 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get("status");
     const startDate = searchParams.get("startDate");
     const endDate = searchParams.get("endDate");
-    const payorName =
-      searchParams.get("payorName") || searchParams.get("payeeName");
+    const search =
+      searchParams.get("search") ||
+      searchParams.get("payorName") ||
+      searchParams.get("payeeName") ||
+      "";
     const uploadedBy = searchParams.get("uploadedBy");
     const documentType = searchParams.get("documentType");
 
@@ -74,8 +82,27 @@ export async function GET(request: NextRequest) {
       where.documentType = documentType;
     }
 
-    if (payorName) {
-      where.payorName = { contains: payorName };
+    if (search.trim()) {
+      const orConditions: Prisma.ChequeVaultWhereInput[] =
+        buildChequeVaultTextSearchConditions(search) ?? [];
+      const amountTerm = normalizeAmountSearchTerm(search);
+
+      if (amountTerm) {
+        const amountMatches = await prisma.$queryRaw<{ id: number }[]>`
+          SELECT id FROM cheque_vault
+          WHERE isDeleted = false
+          AND CAST(amount AS CHAR) LIKE ${`%${amountTerm}%`}
+        `;
+        if (amountMatches.length > 0) {
+          orConditions.push({
+            id: { in: amountMatches.map((row) => row.id) },
+          });
+        }
+      }
+
+      if (orConditions.length > 0) {
+        where.OR = orConditions;
+      }
     }
 
     if (startDate || endDate) {

@@ -475,6 +475,210 @@ function getPaymentSourceTotal(
   );
 }
 
+export type AbandonedReceivedPaymentSnapshot = {
+  paymentId: number;
+  paymentCode: string;
+  amount: number;
+  methodName: string;
+  paymentDate: string;
+};
+
+export type AbandonedInvoiceDeduction = {
+  label: string;
+  amount: number;
+};
+
+export type AbandonedInvoicePaymentBreakdown = {
+  disposition: string | null;
+  totalPaymentsReceived: number;
+  deductions: AbandonedInvoiceDeduction[];
+  totalRetained: number;
+  finalAmount: number;
+  finalAmountLabel: string;
+  receivedPayments: AbandonedReceivedPaymentSnapshot[];
+  hasPayments: boolean;
+};
+
+type AbandonHistoryChanges = {
+  paymentDisposition?: { to?: string };
+  movedAmount?: { to?: number };
+  feeAmount?: { to?: number };
+  feeType?: { to?: string | null };
+  paymentTotal?: { to?: number };
+  receivedPayments?: { to?: AbandonedReceivedPaymentSnapshot[] };
+  restockingFeeAmount?: { to?: number };
+  depositFeeAmount?: { to?: number };
+  targetInvoiceId?: { to?: number | null };
+};
+
+function getAbandonHistoryChanges(
+  editHistory?: InvoiceEditHistoryLike[] | null,
+): AbandonHistoryChanges | null {
+  const entry = (editHistory || []).find(
+    (historyEntry) =>
+      (historyEntry.changes as { status?: { to?: string } })?.status?.to ===
+      "abandoned",
+  );
+  if (!entry?.changes) return null;
+  return entry.changes as AbandonHistoryChanges;
+}
+
+function getAbandonedFinalAmountLabel(
+  disposition: string | null | undefined,
+): string {
+  switch (disposition) {
+    case "refund":
+      return "Refund Due to Customer:";
+    case "credit":
+      return "Store Credit Issued:";
+    case "transfer":
+      return "Amount Transferred:";
+    default:
+      return "Amount Returned:";
+  }
+}
+
+export function getAbandonedInvoicePaymentBreakdown(invoice: {
+  status?: string;
+  isLayaway?: boolean;
+  paidAmount?: number | null;
+  payments?: Array<{ source?: string; amount?: number }> | null;
+  editHistory?: InvoiceEditHistoryLike[] | null;
+  abandonmentRefunds?: Array<{ amount?: number }> | null;
+}): AbandonedInvoicePaymentBreakdown | null {
+  if (!isAbandonedInvoice(invoice)) {
+    return null;
+  }
+
+  const history = getAbandonHistoryChanges(invoice.editHistory);
+  const payments = invoice.payments || [];
+
+  const disposition = history?.paymentDisposition?.to ?? null;
+  let movedAmount = Number(history?.movedAmount?.to ?? 0);
+  let totalRetained = Number(history?.feeAmount?.to ?? 0);
+  let totalPaymentsReceived = Number(history?.paymentTotal?.to ?? 0);
+  const receivedPayments = Array.isArray(history?.receivedPayments?.to)
+    ? history.receivedPayments.to
+    : [];
+
+  if (totalPaymentsReceived <= 0 && totalRetained + movedAmount > 0) {
+    totalPaymentsReceived = Number((totalRetained + movedAmount).toFixed(2));
+  }
+
+  if (!history) {
+    totalRetained = getInvoicePaidAmountForDisplay(invoice);
+    const refundTotal = (invoice.abandonmentRefunds || []).reduce(
+      (sum, payment) => sum + Number(payment.amount || 0),
+      0,
+    );
+    movedAmount = refundTotal;
+    totalPaymentsReceived = Number((totalRetained + movedAmount).toFixed(2));
+  }
+
+  const deductions: AbandonedInvoiceDeduction[] = [];
+  const feeType = history?.feeType?.to;
+  const restockingFromHistory = Number(history?.restockingFeeAmount?.to ?? 0);
+  const depositFromHistory = Number(history?.depositFeeAmount?.to ?? 0);
+
+  if (feeType === "both") {
+    if (restockingFromHistory > 0) {
+      deductions.push({
+        label: "Restocking Fee:",
+        amount: restockingFromHistory,
+      });
+    }
+    if (depositFromHistory > 0) {
+      deductions.push({ label: "Deposit Fee:", amount: depositFromHistory });
+    }
+  } else {
+    const restockingFee = getPaymentSourceTotal(payments, "restocking_fee");
+    const depositFee = getPaymentSourceTotal(payments, "deposit_fee");
+    const retainedFee = getPaymentSourceTotal(payments, "retained_fee");
+
+    if (restockingFee > 0) {
+      deductions.push({ label: "Restocking Fee:", amount: restockingFee });
+    }
+    if (depositFee > 0) {
+      deductions.push({ label: "Deposit Fee:", amount: depositFee });
+    }
+    if (retainedFee > 0) {
+      deductions.push({
+        label: "Non-Refundable Amount:",
+        amount: retainedFee,
+      });
+    }
+
+    if (deductions.length === 0 && totalRetained > 0) {
+      const retainedDisplay = getAbandonedRetainedFeeDisplay(invoice);
+      if (retainedDisplay) {
+        deductions.push({
+          label: retainedDisplay.label,
+          amount: retainedDisplay.amount,
+        });
+      }
+    }
+  }
+
+  const computedRetained =
+    totalRetained > 0
+      ? totalRetained
+      : deductions.reduce((sum, deduction) => sum + deduction.amount, 0);
+
+  return {
+    disposition,
+    totalPaymentsReceived,
+    deductions,
+    totalRetained: Number(computedRetained.toFixed(2)),
+    finalAmount: Number(movedAmount.toFixed(2)),
+    finalAmountLabel: getAbandonedFinalAmountLabel(disposition),
+    receivedPayments,
+    hasPayments: totalPaymentsReceived > 0.009,
+  };
+}
+
+export function getAbandonedInvoiceFinalDueDisplay(
+  invoice: Parameters<typeof getAbandonedInvoicePaymentBreakdown>[0],
+): { label: string; amount: number } {
+  const breakdown = getAbandonedInvoicePaymentBreakdown(invoice);
+  if (!breakdown || breakdown.finalAmount <= 0.009) {
+    return { label: "Amount Due (USD)", amount: 0 };
+  }
+
+  return {
+    label: breakdown.finalAmountLabel.replace(/:$/, ""),
+    amount: breakdown.finalAmount,
+  };
+}
+
+export function buildAbandonedInvoicePdfSummaryRows(
+  breakdown: AbandonedInvoicePaymentBreakdown,
+): InvoicePdfSummaryRow[] {
+  const rows: InvoicePdfSummaryRow[] = [];
+
+  if (breakdown.hasPayments) {
+    rows.push({
+      label: "Total Payments Received:",
+      value: breakdown.totalPaymentsReceived,
+    });
+  }
+
+  for (const deduction of breakdown.deductions) {
+    rows.push({
+      label: deduction.label,
+      value: -deduction.amount,
+    });
+  }
+
+  if (breakdown.totalRetained > 0.009) {
+    rows.push({
+      label: "Total Retained:",
+      value: breakdown.totalRetained,
+    });
+  }
+
+  return rows;
+}
+
 export function getAbandonedRetainedFeeDisplay(invoice: {
   status?: string;
   isLayaway?: boolean;
@@ -591,38 +795,14 @@ export function buildInvoicePdfSummaryRows(
     payments?: Array<{ source?: string; amount?: number }> | null;
     editHistory?: InvoiceEditHistoryLike[] | null;
     items?: Array<{ depositFee?: number | null }> | null;
+    abandonmentRefunds?: Array<{ amount?: number }> | null;
   },
   options?: { includeSubtotal?: boolean },
 ): InvoicePdfSummaryRow[] {
   if (isAbandonedInvoice(invoice)) {
-    const restockingFee = getPaymentSourceTotal(
-      invoice.payments,
-      "restocking_fee",
-    );
-    const depositFee = getPaymentSourceTotal(invoice.payments, "deposit_fee");
-    const retainedFee = getPaymentSourceTotal(invoice.payments, "retained_fee");
-    const rows: Array<{ label: string; value: number }> = [];
-
-    if (restockingFee > 0) {
-      rows.push({
-        label: "Restocking Fee:",
-        value: Number(restockingFee.toFixed(2)),
-      });
-    }
-    if (depositFee > 0) {
-      rows.push({
-        label: "Deposit Fee:",
-        value: Number(depositFee.toFixed(2)),
-      });
-    }
-    if (retainedFee > 0) {
-      rows.push({
-        label: "Non-Refundable Amount:",
-        value: Number(retainedFee.toFixed(2)),
-      });
-    }
-    if (rows.length > 0) {
-      return rows;
+    const breakdown = getAbandonedInvoicePaymentBreakdown(invoice);
+    if (breakdown && breakdown.hasPayments) {
+      return buildAbandonedInvoicePdfSummaryRows(breakdown);
     }
 
     const retainedFeeDisplay = getAbandonedRetainedFeeDisplay(invoice);
@@ -706,6 +886,7 @@ export type InvoicePdfPayment = {
   date?: string;
   createdAt?: string;
   isRefund?: boolean;
+  isReceivedPayment?: boolean;
   isAbandoned?: boolean;
   refundProofUrl?: string | null;
   method?: { name?: string } | string | null;
@@ -715,11 +896,29 @@ export function getInvoicePaymentsForPdf(invoice: {
   status?: string;
   payments?: InvoicePdfPayment[] | null;
   abandonmentRefunds?: InvoicePdfPayment[] | null;
+  editHistory?: InvoiceEditHistoryLike[] | null;
 }): InvoicePdfPayment[] {
   const payments = invoice.payments || [];
   if (!isAbandonedInvoice(invoice)) {
     return payments;
   }
+
+  const breakdown = getAbandonedInvoicePaymentBreakdown({
+    status: invoice.status,
+    payments,
+    editHistory: invoice.editHistory,
+    abandonmentRefunds: invoice.abandonmentRefunds,
+  });
+
+  const receivedPayments: InvoicePdfPayment[] = (
+    breakdown?.receivedPayments || []
+  ).map((snapshot) => ({
+    id: snapshot.paymentId,
+    amount: snapshot.amount,
+    paymentDate: snapshot.paymentDate,
+    method: { name: snapshot.methodName },
+    isReceivedPayment: true,
+  }));
 
   const feePayments = payments.filter(
     (payment) =>
@@ -734,7 +933,7 @@ export function getInvoicePaymentsForPdf(invoice: {
       : payments.filter(isRefundPayment)) || [];
 
   const seenIds = new Set<number>();
-  const merged = [...feePayments];
+  const merged = [...receivedPayments, ...feePayments];
   for (const refund of refunds) {
     if (refund.id != null) {
       if (seenIds.has(refund.id)) continue;
@@ -785,7 +984,23 @@ export function getInvoicePdfPaymentLabel(payment: {
         year: "numeric",
       },
     );
-    return `Refund on ${dateStr}:`;
+    return `Refund issued on ${dateStr}:`;
+  }
+
+  if (payment.isReceivedPayment) {
+    const dateStr = formatBusinessDate(
+      payment.paymentDate || payment.date || "",
+      {
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+      },
+    );
+    const methodName =
+      typeof payment.method === "object"
+        ? payment.method?.name || "payment"
+        : String(payment.method || "payment");
+    return `Payment received on ${dateStr} using ${methodName.toLowerCase()}:`;
   }
 
   const dateStr = formatBusinessDate(payment.paymentDate || payment.date || "", {

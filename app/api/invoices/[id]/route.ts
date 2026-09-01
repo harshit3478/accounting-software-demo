@@ -1071,6 +1071,14 @@ export async function DELETE(
     let restockingFeeAmount = 0;
     let depositFeeAmount = 0;
     let refundPaymentIds: number[] = [];
+    let paymentTotal = 0;
+    let receivedPaymentSnapshots: Array<{
+      paymentId: number;
+      paymentCode: string;
+      amount: number;
+      methodName: string;
+      paymentDate: string;
+    }> = [];
 
     const updated = await prisma.$transaction(
       async (tx) => {
@@ -1150,8 +1158,55 @@ export async function DELETE(
             },
           );
           const calculatedDepositFee = Number(depositFeeTotal.toFixed(2));
-          const paymentTotal =
+          paymentTotal =
             Math.round((directTotal + matchedTotal) * 100) / 100;
+
+          const snapshotPaymentIds = [
+            ...new Set([
+              ...realDirectPayments.map((payment) => payment.id),
+              ...matchedPaymentsWithoutDirectOverlap.map(
+                (match) => match.paymentId,
+              ),
+            ]),
+          ];
+
+          if (snapshotPaymentIds.length > 0) {
+            const snapshotPayments = await tx.payment.findMany({
+              where: { id: { in: snapshotPaymentIds } },
+              include: {
+                method: {
+                  select: { name: true },
+                },
+              },
+            });
+            const snapshotById = new Map(
+              snapshotPayments.map((payment) => [payment.id, payment]),
+            );
+
+            for (const payment of realDirectPayments) {
+              const snapshot = snapshotById.get(payment.id);
+              if (!snapshot) continue;
+              receivedPaymentSnapshots.push({
+                paymentId: payment.id,
+                paymentCode: formatPaymentCode(payment.id),
+                amount: payment.amount.toNumber(),
+                methodName: snapshot.method?.name || "Payment",
+                paymentDate: snapshot.paymentDate.toISOString(),
+              });
+            }
+
+            for (const match of matchedPaymentsWithoutDirectOverlap) {
+              const snapshot = snapshotById.get(match.paymentId);
+              if (!snapshot) continue;
+              receivedPaymentSnapshots.push({
+                paymentId: match.paymentId,
+                paymentCode: formatPaymentCode(match.paymentId),
+                amount: match.amount.toNumber(),
+                methodName: snapshot.method?.name || "Payment",
+                paymentDate: snapshot.paymentDate.toISOString(),
+              });
+            }
+          }
 
           if (normalizedFeeAction === "both") {
             const roundedRestockingFee =
@@ -1691,6 +1746,18 @@ export async function DELETE(
                       from: 0,
                       to: movedAmount,
                     },
+                    ...(paymentTotal > 0.009
+                      ? {
+                          paymentTotal: {
+                            from: 0,
+                            to: paymentTotal,
+                          },
+                          receivedPayments: {
+                            from: [],
+                            to: receivedPaymentSnapshots,
+                          },
+                        }
+                      : {}),
                     ...(feeAmount > 0
                       ? {
                           feeAmount: {
