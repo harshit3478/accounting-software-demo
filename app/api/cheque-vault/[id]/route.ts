@@ -11,27 +11,11 @@ import { isLinkableInvoiceStatus } from "@/lib/invoice-linkable-status";
 import { deleteFromR2 } from "@/lib/r2-client";
 import {
   chequeVaultInvoiceAllocationInclude,
+  chequeVaultStoreCreditMoveInclude,
   chequeVaultUserInclude,
+  serializeChequeVaultRecord,
 } from "@/lib/cheque-vault-include";
 import { startOfBusinessDay } from "@/lib/business-date";
-
-function serializeCheque(cheque: any) {
-  return {
-    ...cheque,
-    amount: Number(cheque.amount),
-    invoiceAllocations: (cheque.invoiceAllocations || []).map((a: any) => ({
-      ...a,
-      allocatedAmount: Number(a.allocatedAmount),
-      invoice: a.invoice
-        ? {
-            ...a.invoice,
-            amount: Number(a.invoice.amount),
-            paidAmount: Number(a.invoice.paidAmount),
-          }
-        : null,
-    })),
-  };
-}
 
 export async function GET(
   request: NextRequest,
@@ -60,6 +44,15 @@ export async function GET(
                 amount: true,
                 paidAmount: true,
                 status: true,
+                customerId: true,
+                customer: {
+                  select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                    storeCredit: true,
+                  },
+                },
                 payments: {
                   where: { isAbandoned: false },
                   select: {
@@ -76,6 +69,10 @@ export async function GET(
             },
           },
         },
+        storeCreditMoves: {
+          include: chequeVaultStoreCreditMoveInclude,
+          orderBy: { movedAt: "desc" },
+        },
       },
     });
 
@@ -83,7 +80,7 @@ export async function GET(
       return NextResponse.json({ error: "Cheque not found" }, { status: 404 });
     }
 
-    return NextResponse.json({ cheque: serializeCheque(cheque) });
+    return NextResponse.json({ cheque: serializeChequeVaultRecord(cheque) });
   } catch (error: any) {
     if (error.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -259,6 +256,10 @@ export async function PATCH(
         invoiceAllocations: {
           include: chequeVaultInvoiceAllocationInclude,
         },
+        storeCreditMoves: {
+          include: chequeVaultStoreCreditMoveInclude,
+          orderBy: { movedAt: "desc" },
+        },
       },
     });
 
@@ -268,7 +269,7 @@ export async function PATCH(
       (sum: number, a: any) => sum + Number(a.allocatedAmount),
       0,
     );
-    const response: any = { cheque: serializeCheque(updated) };
+    const response: any = { cheque: serializeChequeVaultRecord(updated) };
     if (totalAllocated > chequeAmount + 0.01) {
       response.warning = `Allocated total ($${totalAllocated.toFixed(2)}) exceeds cheque amount ($${chequeAmount.toFixed(2)})`;
     }

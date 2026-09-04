@@ -31,7 +31,7 @@ export async function resolveChequeVaultCustomer(
 
   if (customerIds.length > 1) {
     throw new ChequeVaultCustomerResolutionError(
-      "Linked invoices belong to different customers. All invoices must belong to the same customer before approving.",
+      "Linked invoices belong to different customers. Select which customer should receive the store credit.",
     );
   }
 
@@ -60,6 +60,19 @@ export function getChequeVaultUnallocatedAmount(
   return roundMoney(chequeAmount - totalAllocated);
 }
 
+export function getChequeVaultRemainingStoreCreditAmount(
+  chequeAmount: number,
+  allocations: { allocatedAmount: number | Prisma.Decimal }[],
+  storeCreditMoves: { amount: number | Prisma.Decimal }[],
+): number {
+  const unallocated = getChequeVaultUnallocatedAmount(chequeAmount, allocations);
+  const alreadyMoved = storeCreditMoves.reduce(
+    (sum, move) => sum + Number(move.amount),
+    0,
+  );
+  return roundMoney(Math.max(unallocated - alreadyMoved, 0));
+}
+
 export async function recordChequeVaultExcessAsStoreCredit(
   tx: Prisma.TransactionClient,
   input: {
@@ -70,12 +83,18 @@ export async function recordChequeVaultExcessAsStoreCredit(
     customerId: number;
     methodId: number;
     userId: number;
-    approvedByName: string;
+    movedByName: string;
+    notes: string;
   },
-): Promise<{ paymentId: number; paymentRef: string }> {
+): Promise<{ paymentId: number; paymentRef: string; moveId: number }> {
   const excessAmount = roundMoney(input.excessAmount);
   if (excessAmount <= 0.01) {
     throw new Error("Store credit amount must be greater than 0");
+  }
+
+  const notes = input.notes.trim();
+  if (!notes) {
+    throw new Error("Notes are required when moving amount to store credit");
   }
 
   const creditPayment = await tx.payment.create({
@@ -85,7 +104,7 @@ export async function recordChequeVaultExcessAsStoreCredit(
       amount: excessAmount,
       paymentDate: input.chequeDate,
       methodId: input.methodId,
-      notes: `Store credit from unallocated cheque vault #${input.chequeId} · Cheque #${input.chequeNumber} · Approved by ${input.approvedByName}`,
+      notes: `Store credit from unallocated cheque vault #${input.chequeId} · Cheque #${input.chequeNumber} · Moved by ${input.movedByName} · ${notes}`,
       userId: input.userId,
       isMatched: false,
       source: "store_credit_excess",
@@ -108,11 +127,26 @@ export async function recordChequeVaultExcessAsStoreCredit(
       customerId: input.customerId,
       amount: excessAmount,
       type: "credit",
-      reason: `Unallocated amount from cheque vault #${input.chequeId} · Cheque #${input.chequeNumber}`,
+      reason: `Unallocated amount from cheque vault #${input.chequeId} · Cheque #${input.chequeNumber} · ${notes}`,
       paymentId: creditPayment.id,
       createdById: input.userId,
     },
   });
 
-  return { paymentId: creditPayment.id, paymentRef };
+  const move = await tx.chequeVaultStoreCreditMove.create({
+    data: {
+      chequeVaultId: input.chequeId,
+      customerId: input.customerId,
+      amount: excessAmount,
+      notes,
+      paymentId: creditPayment.id,
+      movedById: input.userId,
+    },
+  });
+
+  return {
+    paymentId: creditPayment.id,
+    paymentRef,
+    moveId: move.id,
+  };
 }

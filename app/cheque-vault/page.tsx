@@ -247,6 +247,7 @@ function ChequeVaultContent() {
         onRequestCorrection={vault.handleRequestCorrection}
         onUpdateAllocations={vault.handleUpdateAllocations}
         onUpdateDetails={vault.handleUpdateDetails}
+        onMoveToStoreCredit={vault.handleMoveToStoreCredit}
         onDelete={vault.handleDelete}
       />
 

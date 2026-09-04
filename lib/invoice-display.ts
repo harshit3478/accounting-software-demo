@@ -508,6 +508,7 @@ type AbandonHistoryChanges = {
   receivedPayments?: { to?: AbandonedReceivedPaymentSnapshot[] };
   restockingFeeAmount?: { to?: number };
   depositFeeAmount?: { to?: number };
+  nonRefundableReason?: { to?: string | null };
   targetInvoiceId?: { to?: number | null };
 };
 
@@ -589,6 +590,13 @@ export function getAbandonedInvoicePaymentBreakdown(invoice: {
     }
     if (depositFromHistory > 0) {
       deductions.push({ label: "Deposit Fee:", amount: depositFromHistory });
+    }
+  } else if (feeType === "all") {
+    if (totalRetained > 0) {
+      deductions.push({
+        label: "Non-Refundable Amount:",
+        amount: totalRetained,
+      });
     }
   } else {
     const restockingFee = getPaymentSourceTotal(payments, "restocking_fee");
@@ -763,7 +771,7 @@ export function getAbandonedRetainedFeeDisplay(invoice: {
       ? retainedFromPayments
       : depositFromPayments > 0
         ? depositFromPayments
-        : feeType === "other"
+        : feeType === "other" || feeType === "all"
           ? feeAmountFromHistory
           : feeType === "deposit"
             ? feeAmountFromHistory
@@ -772,7 +780,7 @@ export function getAbandonedRetainedFeeDisplay(invoice: {
 
   return {
     label:
-      retainedFromPayments > 0 || feeType === "other"
+      retainedFromPayments > 0 || feeType === "other" || feeType === "all"
         ? "Non-Refundable Amount:"
         : "Deposit Fee:",
     amount: Number(amount.toFixed(2)),
@@ -949,6 +957,7 @@ export function getInvoicePdfPaymentLabel(payment: {
   paymentDate?: string;
   date?: string;
   isRefund?: boolean;
+  isReceivedPayment?: boolean;
   isAbandoned?: boolean;
   refundProofUrl?: string | null;
   method?: { name?: string } | string | null;

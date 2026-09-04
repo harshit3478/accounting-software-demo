@@ -48,6 +48,10 @@ interface ChequeDetailModalProps {
       memoText?: string | null;
     },
   ) => Promise<boolean>;
+  onMoveToStoreCredit?: (
+    chequeId: number,
+    payload: { notes: string; customerId: number; amount?: number },
+  ) => Promise<boolean>;
   onDelete?: (id: number) => Promise<boolean>;
 }
 
@@ -83,6 +87,7 @@ export default function ChequeDetailModal({
   onRequestCorrection,
   onUpdateAllocations,
   onUpdateDetails,
+  onMoveToStoreCredit,
   onDelete,
 }: ChequeDetailModalProps) {
   const { isSuperAdmin, canApproveCheques, canUploadCheques, user } = useAuth();
@@ -101,10 +106,15 @@ export default function ChequeDetailModal({
   const [customerEmail, setCustomerEmail] = useState("");
   const [isSavingDetails, setIsSavingDetails] = useState(false);
   const [actionMode, setActionMode] = useState<
-    "none" | "reject" | "correction"
+    "none" | "reject" | "correction" | "storeCredit"
   >("none");
   const [rejectionReason, setRejectionReason] = useState("");
   const [correctionNote, setCorrectionNote] = useState("");
+  const [storeCreditNotes, setStoreCreditNotes] = useState("");
+  const [storeCreditCustomerId, setStoreCreditCustomerId] = useState<number | "">(
+    "",
+  );
+  const [storeCreditAmount, setStoreCreditAmount] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [approveResult, setApproveResult] = useState<{
     paymentRefs?: string[];
@@ -125,6 +135,12 @@ export default function ChequeDetailModal({
     setBankName(cheque.bankName || "");
     setMemoText(cheque.memoText || "");
     setCustomerEmail(cheque.customerEmail || "");
+    setActionMode("none");
+    setStoreCreditNotes("");
+    const customers = cheque.linkedCustomers || [];
+    setStoreCreditCustomerId(customers.length === 1 ? customers[0].id : "");
+    const remaining = Number(cheque.remainingUnallocated ?? 0);
+    setStoreCreditAmount(remaining > 0 ? remaining.toFixed(2) : "");
   }, [cheque]);
 
   if (!isOpen || !cheque) return null;
@@ -172,6 +188,7 @@ export default function ChequeDetailModal({
     setActionMode("none");
     setRejectionReason("");
     setCorrectionNote("");
+    setStoreCreditNotes("");
     setApproveResult(null);
     onClose();
   };
@@ -191,6 +208,34 @@ export default function ChequeDetailModal({
     cheque.status === "PENDING" || cheque.status === "NEEDS_CORRECTION";
   const canDelete = !!onDelete && canDeleteChequeRequest(cheque, user?.id);
   const hasAllocations = cheque.invoiceAllocations.length > 0;
+  const totalAllocated =
+    cheque.totalAllocated ??
+    cheque.invoiceAllocations.reduce((s, a) => s + a.allocatedAmount, 0);
+  const remainingUnallocated = Number(cheque.remainingUnallocated ?? 0);
+  const linkedCustomers = cheque.linkedCustomers || [];
+  const storeCreditMoves = cheque.storeCreditMoves || [];
+  const canMoveToStoreCredit =
+    !!onMoveToStoreCredit &&
+    canReviewCheque &&
+    cheque.status === "APPROVED" &&
+    remainingUnallocated > 0.01 &&
+    linkedCustomers.length > 0;
+
+  const handleMoveToStoreCredit = async () => {
+    if (!onMoveToStoreCredit || !storeCreditNotes.trim()) return;
+    if (storeCreditCustomerId === "") return;
+    setIsSubmitting(true);
+    const ok = await onMoveToStoreCredit(cheque.id, {
+      notes: storeCreditNotes.trim(),
+      customerId: Number(storeCreditCustomerId),
+      amount: parseFloat(storeCreditAmount) || remainingUnallocated,
+    });
+    setIsSubmitting(false);
+    if (ok) {
+      setActionMode("none");
+      setStoreCreditNotes("");
+    }
+  };
 
   const handleDelete = async () => {
     if (!onDelete) return;
@@ -516,17 +561,17 @@ export default function ChequeDetailModal({
                           )}
                           <div className="flex justify-between text-xs text-gray-500 border-t border-gray-100 pt-1 mt-1">
                             <span>Total allocated</span>
-                            <span>
-                              $
-                              {cheque.invoiceAllocations
-                                .reduce(
-                                  (s: number, a: InvoiceAllocation) =>
-                                    s + a.allocatedAmount,
-                                  0,
-                                )
-                                .toFixed(2)}
-                            </span>
+                            <span>${totalAllocated.toFixed(2)}</span>
                           </div>
+                          {cheque.amount - totalAllocated > 0.01 && (
+                            <div className="flex justify-between text-xs text-amber-700 pt-0.5">
+                              <span>Unallocated</span>
+                              <span>
+                                $
+                                {(cheque.amount - totalAllocated).toFixed(2)}
+                              </span>
+                            </div>
+                          )}
                           {cheque.invoicesLinkedBy && (
                             <p className="text-xs text-gray-500 pt-1">
                               Linked by {cheque.invoicesLinkedBy.name}
@@ -539,6 +584,205 @@ export default function ChequeDetailModal({
                       ) : null}
                     </dd>
                   </div>
+
+                  {(canMoveToStoreCredit ||
+                    storeCreditMoves.length > 0 ||
+                    remainingUnallocated > 0.01) && (
+                    <div>
+                      <dt className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                        Store Credit
+                      </dt>
+                      <dd className="space-y-3">
+                        {linkedCustomers.length > 0 ? (
+                          <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 space-y-1.5">
+                            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                              Customer
+                              {linkedCustomers.length > 1 ? "s" : ""}
+                            </p>
+                            {linkedCustomers.map((c) => (
+                              <div
+                                key={c.id}
+                                className="flex items-center justify-between text-sm"
+                              >
+                                <div>
+                                  <span className="font-medium text-gray-900">
+                                    {c.name}
+                                  </span>
+                                  {c.email ? (
+                                    <span className="text-xs text-gray-500 ml-2">
+                                      {c.email}
+                                    </span>
+                                  ) : null}
+                                </div>
+                                <span className="text-xs text-gray-600">
+                                  Credit: ${c.storeCredit.toFixed(2)}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                            Linked invoices have no customer. Link a customer on
+                            the invoices before moving to store credit.
+                          </p>
+                        )}
+
+                        {remainingUnallocated > 0.01 && (
+                          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 flex items-center justify-between">
+                            <span className="text-sm text-amber-800">
+                              Remaining unallocated
+                            </span>
+                            <span className="text-sm font-semibold text-amber-900">
+                              ${remainingUnallocated.toFixed(2)}
+                            </span>
+                          </div>
+                        )}
+
+                        {storeCreditMoves.length > 0 && (
+                          <div className="space-y-2">
+                            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                              Move history
+                            </p>
+                            {storeCreditMoves.map((move) => (
+                              <div
+                                key={move.id}
+                                className="rounded-lg border border-emerald-100 bg-emerald-50/60 px-3 py-2 text-sm"
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="font-medium text-emerald-900">
+                                    ${move.amount.toFixed(2)} →{" "}
+                                    {move.customer?.name || "Customer"}
+                                  </span>
+                                  {move.payment?.paymentCode ? (
+                                    <span className="text-xs text-emerald-700">
+                                      {move.payment.paymentCode}
+                                    </span>
+                                  ) : null}
+                                </div>
+                                <p className="text-xs text-gray-600 mt-1">
+                                  {move.notes}
+                                </p>
+                                <p className="text-xs text-gray-500 mt-1">
+                                  Moved by {move.movedBy?.name || "—"}
+                                  {move.movedAt
+                                    ? ` on ${formatDateTime(move.movedAt)}`
+                                    : ""}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {canMoveToStoreCredit && actionMode === "storeCredit" && (
+                          <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-lg space-y-3">
+                            <p className="text-sm font-medium text-emerald-800">
+                              Move unallocated amount to store credit
+                            </p>
+                            {linkedCustomers.length > 1 ? (
+                              <div>
+                                <label className="block text-xs font-medium text-gray-600 mb-1">
+                                  Customer *
+                                </label>
+                                <select
+                                  value={storeCreditCustomerId}
+                                  onChange={(e) =>
+                                    setStoreCreditCustomerId(
+                                      e.target.value
+                                        ? Number(e.target.value)
+                                        : "",
+                                    )
+                                  }
+                                  className="w-full px-3 py-2 border border-emerald-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                                >
+                                  <option value="">Select customer...</option>
+                                  {linkedCustomers.map((c) => (
+                                    <option key={c.id} value={c.id}>
+                                      {c.name}
+                                      {c.email ? ` (${c.email})` : ""}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            ) : linkedCustomers.length === 1 ? (
+                              <p className="text-sm text-gray-700">
+                                Customer:{" "}
+                                <span className="font-medium">
+                                  {linkedCustomers[0].name}
+                                </span>
+                              </p>
+                            ) : null}
+                            <div>
+                              <label className="block text-xs font-medium text-gray-600 mb-1">
+                                Amount *
+                              </label>
+                              <div className="flex items-center gap-1">
+                                <span className="text-sm text-gray-500">$</span>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min="0.01"
+                                  max={remainingUnallocated}
+                                  value={storeCreditAmount}
+                                  onChange={(e) =>
+                                    setStoreCreditAmount(e.target.value)
+                                  }
+                                  className="w-full px-3 py-2 border border-emerald-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                                />
+                              </div>
+                              <p className="text-xs text-gray-500 mt-1">
+                                Max ${remainingUnallocated.toFixed(2)}
+                              </p>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-600 mb-1">
+                                Notes *
+                              </label>
+                              <textarea
+                                value={storeCreditNotes}
+                                onChange={(e) =>
+                                  setStoreCreditNotes(e.target.value)
+                                }
+                                placeholder="Why is this amount being moved to store credit?"
+                                rows={3}
+                                className="w-full px-3 py-2 border border-emerald-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                              />
+                            </div>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={handleMoveToStoreCredit}
+                                disabled={
+                                  isSubmitting ||
+                                  !storeCreditNotes.trim() ||
+                                  storeCreditCustomerId === "" ||
+                                  !(parseFloat(storeCreditAmount) > 0)
+                                }
+                                className="px-4 py-2 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition-colors"
+                              >
+                                {isSubmitting
+                                  ? "Moving..."
+                                  : "Confirm Move to Store Credit"}
+                              </button>
+                              <button
+                                onClick={() => setActionMode("none")}
+                                className="px-4 py-2 bg-gray-100 text-gray-700 text-sm rounded-lg hover:bg-gray-200 transition-colors"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {canMoveToStoreCredit && actionMode !== "storeCredit" && (
+                          <button
+                            onClick={() => setActionMode("storeCredit")}
+                            className="px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 transition-colors"
+                          >
+                            Move to Store Credit
+                          </button>
+                        )}
+                      </dd>
+                    </div>
+                  )}
                 </dl>
 
                 <div className="mt-6 pt-4 border-t border-gray-200">
@@ -566,6 +810,15 @@ export default function ChequeDetailModal({
                         at={cheque.approvedAt}
                       />
                     )}
+                    {storeCreditMoves.map((move) => (
+                      <ActivityRow
+                        key={`sc-${move.id}`}
+                        label="Store credit moved by"
+                        name={move.movedBy?.name}
+                        detail={`$${move.amount.toFixed(2)}${move.payment?.paymentCode ? ` · ${move.payment.paymentCode}` : ""}`}
+                        at={move.movedAt}
+                      />
+                    ))}
                     {cheque.rejectedBy && (
                       <ActivityRow
                         label="Rejected by"

@@ -994,9 +994,14 @@ export async function DELETE(
       | "deposit"
       | "both"
       | "other"
+      | "all"
       | "none"
       | undefined;
     const customFeeAmount = Number(body?.customFeeAmount ?? 0);
+    const nonRefundableReason =
+      typeof body?.nonRefundableReason === "string"
+        ? body.nonRefundableReason.trim()
+        : "";
     const refundProofDataUrl =
       typeof body?.refundProofDataUrl === "string"
         ? body.refundProofDataUrl
@@ -1063,8 +1068,13 @@ export async function DELETE(
     let resolvedTargetInvoiceId: number | null = null;
     let normalizedPaymentAction: "credit" | "transfer" | "refund" | "none" =
       paymentAction ?? "none";
-    let normalizedFeeAction: "restocking" | "deposit" | "both" | "other" | "none" =
-      feeAction ?? "none";
+    let normalizedFeeAction:
+      | "restocking"
+      | "deposit"
+      | "both"
+      | "other"
+      | "all"
+      | "none" = feeAction ?? "none";
     let feePaymentId: number | null = null;
     let restockingFeePaymentId: number | null = null;
     let depositFeePaymentId: number | null = null;
@@ -1099,6 +1109,16 @@ export async function DELETE(
           if (normalizedFeeAction === "other" && existingInvoice.isLayaway) {
             throw new Error(
               "Custom non-refundable amounts can only be applied to cash invoices.",
+            );
+          }
+
+          if (
+            (normalizedFeeAction === "all" ||
+              normalizedFeeAction === "other") &&
+            !nonRefundableReason
+          ) {
+            throw new Error(
+              "Reason for non-refundable amount is required.",
             );
           }
 
@@ -1257,6 +1277,13 @@ export async function DELETE(
               paymentTotal > 0
                 ? Math.min(roundedCustomFee, paymentTotal)
                 : roundedCustomFee;
+          } else if (normalizedFeeAction === "all") {
+            if (paymentTotal <= 0.009) {
+              throw new Error(
+                "Make all payments non-refundable requires invoice payments.",
+              );
+            }
+            feeAmount = paymentTotal;
           } else {
             feeAmount = 0;
           }
@@ -1330,12 +1357,19 @@ export async function DELETE(
 
           if (paymentTotal > 0.009) {
             if (
-              !normalizedPaymentAction ||
-              normalizedPaymentAction === "none"
+              (!normalizedPaymentAction ||
+                normalizedPaymentAction === "none") &&
+              movedAmount > 0.009
             ) {
               throw new Error(
                 "This invoice has payments. Please choose how to handle them.",
               );
+            }
+
+            // When the full paid balance is retained as a fee, treat remaining
+            // disposition as "none" even if the client sent credit/transfer.
+            if (movedAmount <= 0.009) {
+              normalizedPaymentAction = "none";
             }
 
             const affectedPaymentIds = new Set<number>([
@@ -1343,8 +1377,16 @@ export async function DELETE(
               ...matchedPayments.map((m) => m.paymentId),
             ]);
 
-            if (normalizedPaymentAction === "credit") {
-              if (!existingInvoice.customerId) {
+            const retainAllAsFeeReason = `Payments retained as non-refundable from abandoned invoice ${existingInvoice.invoiceNumber}. ${nonRefundableReason || reason}`;
+
+            if (
+              normalizedPaymentAction === "none" ||
+              normalizedPaymentAction === "credit"
+            ) {
+              if (
+                normalizedPaymentAction === "credit" &&
+                !existingInvoice.customerId
+              ) {
                 throw new Error(
                   "Cannot move payments to credit because this invoice has no linked customer.",
                 );
@@ -1358,7 +1400,10 @@ export async function DELETE(
                     isAbandoned: true,
                     abandonedAt: new Date(),
                     abandonedBy: user.id,
-                    abandonReason: `Payments moved to customer store credit from abandoned invoice ${existingInvoice.invoiceNumber}. ${reason}`,
+                    abandonReason:
+                      normalizedPaymentAction === "none"
+                        ? retainAllAsFeeReason
+                        : `Payments moved to customer store credit from abandoned invoice ${existingInvoice.invoiceNumber}. ${reason}`,
                   },
                 });
               }
@@ -1373,13 +1418,13 @@ export async function DELETE(
                 });
               }
 
-              if (!sourceMethodId) {
-                throw new Error(
-                  "No active payment method available for store credit.",
-                );
-              }
+              if (normalizedPaymentAction === "credit" && movedAmount > 0.009) {
+                if (!sourceMethodId) {
+                  throw new Error(
+                    "No active payment method available for store credit.",
+                  );
+                }
 
-              if (movedAmount > 0.009) {
                 const creditPayment = await tx.payment.create({
                   data: {
                     invoiceId: null,
@@ -1426,7 +1471,7 @@ export async function DELETE(
                       isAbandoned: true,
                       abandonedAt: new Date(),
                       abandonedBy: user.id,
-                      abandonReason: `Payments retained as fee from abandoned invoice ${existingInvoice.invoiceNumber}. ${reason}`,
+                      abandonReason: retainAllAsFeeReason,
                     },
                   });
                 }
@@ -1624,7 +1669,9 @@ export async function DELETE(
                       abandonReason:
                         normalizedPaymentAction === "refund"
                           ? `Payments refunded from abandoned invoice ${existingInvoice.invoiceNumber}. ${reason}`
-                          : `Payments moved to customer store credit from abandoned invoice ${existingInvoice.invoiceNumber}. ${reason}`,
+                          : normalizedPaymentAction === "none"
+                            ? retainAllAsFeeReason
+                            : `Payments moved to customer store credit from abandoned invoice ${existingInvoice.invoiceNumber}. ${reason}`,
                       ...(normalizedPaymentAction === "refund"
                         ? {
                             refundProofUrl,
@@ -1643,13 +1690,22 @@ export async function DELETE(
             source: "restocking_fee" | "deposit_fee" | "retained_fee",
             label: string,
           ) => {
+            const noteDetail =
+              (source === "retained_fee" && nonRefundableReason) ||
+              reason
+                ? ` | ${
+                    source === "retained_fee" && nonRefundableReason
+                      ? `Non-refundable reason: ${nonRefundableReason}`
+                      : reason
+                  }`
+                : "";
             const feePayment = await tx.payment.create({
               data: {
                 invoiceId,
                 amount: new Prisma.Decimal(amount),
                 paymentDate: new Date(),
                 methodId: sourceMethodId!,
-                notes: `${label} retained from abandoned invoice ${existingInvoice.invoiceNumber}${reason ? ` | ${reason}` : ""}`,
+                notes: `${label} retained from abandoned invoice ${existingInvoice.invoiceNumber}${noteDetail}`,
                 userId: user.id,
                 isMatched: true,
                 source,
@@ -1698,13 +1754,15 @@ export async function DELETE(
               const feeLabel =
                 normalizedFeeAction === "restocking"
                   ? "Restocking fee"
-                  : normalizedFeeAction === "other"
+                  : normalizedFeeAction === "other" ||
+                      normalizedFeeAction === "all"
                     ? "Non-refundable amount"
                     : "Deposit fee";
               const feeSource =
                 normalizedFeeAction === "restocking"
                   ? "restocking_fee"
-                  : normalizedFeeAction === "other"
+                  : normalizedFeeAction === "other" ||
+                      normalizedFeeAction === "all"
                     ? "retained_fee"
                     : "deposit_fee";
               feePaymentId = await createRetainedFeePayment(
@@ -1767,6 +1825,14 @@ export async function DELETE(
                           feeType: {
                             from: null,
                             to: normalizedFeeAction,
+                          },
+                        }
+                      : {}),
+                    ...(nonRefundableReason
+                      ? {
+                          nonRefundableReason: {
+                            from: null,
+                            to: nonRefundableReason,
                           },
                         }
                       : {}),
@@ -1888,7 +1954,9 @@ export async function DELETE(
                 : normalizedPaymentAction === "refund"
                   ? "Invoice marked as abandoned and payments refunded"
                   : "Invoice marked as abandoned and payments added to customer store credit"
-              : "Invoice marked as abandoned"
+              : normalizedFeeAction === "all"
+                ? "Invoice marked as abandoned and all payments retained as non-refundable"
+                : "Invoice marked as abandoned"
             : "Invoice reactivated successfully",
       status: updated.status,
       movedAmount,

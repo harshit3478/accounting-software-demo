@@ -95,6 +95,7 @@ model User {
   chequesRejected                 ChequeVault[]               @relation("ChequeRejectedBy")
   chequesCorrectionRequested      ChequeVault[]               @relation("ChequeCorrectionRequestedBy")
   chequesInvoicesLinked           ChequeVault[]               @relation("ChequeInvoicesLinkedBy")
+  chequeStoreCreditMoves          ChequeVaultStoreCreditMove[] @relation("ChequeStoreCreditMovedBy")
   unitDiscountSettingsCreated     UnitDiscountSetting[]
 
   @@map("users")
@@ -304,6 +305,7 @@ model Payment {
   layawayInstallments LayawayInstallment[]
   editHistory         PaymentEditHistory[]
   creditTransactions  CustomerCreditTransaction[]
+  chequeStoreCreditMoves ChequeVaultStoreCreditMove[]
 
   @@index([customerId])
   @@map("payments")
@@ -487,6 +489,7 @@ model Customer {
   invoices           Invoice[]
   payments           Payment[]
   creditTransactions CustomerCreditTransaction[]
+  chequeStoreCreditMoves ChequeVaultStoreCreditMove[]
 
   @@index([isDeleted])
   @@map("customers")
@@ -776,6 +779,7 @@ model ChequeVault {
   correctionRequestedBy User?                @relation("ChequeCorrectionRequestedBy", fields: [correctionRequestedById], references: [id], onDelete: SetNull)
   invoicesLinkedBy      User?                @relation("ChequeInvoicesLinkedBy", fields: [invoicesLinkedById], references: [id], onDelete: SetNull)
   invoiceAllocations    ChequeVaultInvoice[]
+  storeCreditMoves      ChequeVaultStoreCreditMove[]
 
   @@index([chequeNumber])
   @@index([status])
@@ -796,4 +800,25 @@ model ChequeVaultInvoice {
 
   @@unique([chequeVaultId, invoiceId])
   @@map("cheque_vault_invoices")
+}
+
+model ChequeVaultStoreCreditMove {
+  id            Int      @id @default(autoincrement())
+  chequeVaultId Int
+  customerId    Int
+  amount        Decimal  @db.Decimal(10, 2)
+  notes         String   @db.Text
+  paymentId     Int?
+  movedById     Int
+  movedAt       DateTime @default(now())
+  createdAt     DateTime @default(now())
+
+  chequeVault ChequeVault @relation(fields: [chequeVaultId], references: [id], onDelete: Cascade)
+  customer    Customer    @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  payment     Payment?    @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  movedBy     User        @relation("ChequeStoreCreditMovedBy", fields: [movedById], references: [id], onDelete: Restrict)
+
+  @@index([chequeVaultId, movedAt])
+  @@index([customerId])
+  @@map("cheque_vault_store_credit_moves")
 }

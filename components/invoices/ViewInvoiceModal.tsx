@@ -1155,7 +1155,7 @@ export default function ViewInvoiceModal({
             name:
               historyFeeType === "restocking"
                 ? "Restocking Fee"
-                : historyFeeType === "other"
+                : historyFeeType === "other" || historyFeeType === "all"
                   ? "Non-Refundable Amount"
                   : "Deposit Fee",
             icon: null,
@@ -1164,14 +1164,14 @@ export default function ViewInvoiceModal({
           source:
             historyFeeType === "restocking"
               ? "restocking_fee"
-              : historyFeeType === "other"
+              : historyFeeType === "other" || historyFeeType === "all"
                 ? "retained_fee"
                 : "deposit_fee",
         },
         role:
           historyFeeType === "restocking"
             ? "restocking_fee"
-            : historyFeeType === "other"
+            : historyFeeType === "other" || historyFeeType === "all"
               ? "retained_fee"
               : "deposit_fee",
       });
@@ -1260,10 +1260,17 @@ export default function ViewInvoiceModal({
       const feeLabel =
         feeType === "restocking"
           ? "Restocking fee"
-          : feeType === "other"
+          : feeType === "other" || feeType === "all"
             ? "Non-refundable amount"
             : "Deposit fee";
       parts.push(`${feeLabel} payment: ${feeCode}`);
+    }
+
+    const nonRefundableReason = entry.changes?.nonRefundableReason?.to as
+      | string
+      | undefined;
+    if (nonRefundableReason) {
+      parts.push(`Non-refundable reason: ${nonRefundableReason}`);
     }
 
     return parts.length > 0 ? parts.join(" · ") : null;

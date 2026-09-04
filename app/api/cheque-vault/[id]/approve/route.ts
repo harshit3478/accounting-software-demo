@@ -1,16 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireChequeVaultApprove } from "@/lib/auth";
-import {
-  ChequeVaultCustomerResolutionError,
-  getChequeVaultUnallocatedAmount,
-  recordChequeVaultExcessAsStoreCredit,
-  resolveChequeVaultCustomer,
-} from "@/lib/cheque-vault-store-credit";
 import { stampPaymentCode } from "@/lib/payment-code";
 import { updateInvoiceAfterPayment } from "@/lib/invoice-utils";
 import { invalidateDashboard, invalidatePayments } from "@/lib/cache-helpers";
 import { sendChequeStatusNotification } from "@/lib/email";
+import { getChequeVaultUnallocatedAmount } from "@/lib/cheque-vault-store-credit";
 
 export async function PUT(
   request: NextRequest,
@@ -42,6 +37,9 @@ export async function PUT(
             },
           },
         },
+        storeCreditMoves: {
+          select: { amount: true },
+        },
       },
     });
 
@@ -67,34 +65,15 @@ export async function PUT(
     const paymentIds: number[] = [];
     const warnings: string[] = [];
     const chequeAmount = Number(cheque.amount);
-    const excessAmount = getChequeVaultUnallocatedAmount(
+    const unallocatedAmount = getChequeVaultUnallocatedAmount(
       chequeAmount,
       cheque.invoiceAllocations,
     );
 
-    let storeCreditCustomerId: number | null = null;
-    if (excessAmount > 0.01) {
-      try {
-        storeCreditCustomerId = await resolveChequeVaultCustomer(
-          prisma,
-          cheque.invoiceAllocations.map((allocation) => allocation.invoice),
-          cheque.customerEmail,
-        );
-      } catch (error) {
-        if (error instanceof ChequeVaultCustomerResolutionError) {
-          return NextResponse.json({ error: error.message }, { status: 400 });
-        }
-        throw error;
-      }
-
-      if (!storeCreditCustomerId) {
-        return NextResponse.json(
-          {
-            error: `Cannot approve: $${excessAmount.toFixed(2)} is unallocated but no customer is linked to the invoices. Link a customer to the invoices before approving.`,
-          },
-          { status: 400 },
-        );
-      }
+    if (unallocatedAmount > 0.01) {
+      warnings.push(
+        `$${unallocatedAmount.toFixed(2)} remains unallocated. After approval, use Move to Store Credit to credit the customer.`,
+      );
     }
 
     // Check for overpayment per invoice
@@ -144,21 +123,6 @@ export async function PUT(
         paymentIds.push(payment.id);
       }
 
-      if (excessAmount > 0.01 && storeCreditCustomerId) {
-        const storeCredit = await recordChequeVaultExcessAsStoreCredit(tx, {
-          chequeId,
-          chequeNumber: cheque.chequeNumber,
-          chequeDate: cheque.chequeDate,
-          excessAmount,
-          customerId: storeCreditCustomerId,
-          methodId: chequeMethod.id,
-          userId: admin.id,
-          approvedByName: admin.name,
-        });
-        paymentRefs.push(storeCredit.paymentRef);
-        paymentIds.push(storeCredit.paymentId);
-      }
-
       // Mark cheque as approved
       await tx.chequeVault.update({
         where: { id: chequeId },
@@ -190,14 +154,11 @@ export async function PUT(
     }
 
     const response: any = {
-      message:
-        excessAmount > 0.01
-          ? `Cheque approved. $${excessAmount.toFixed(2)} saved as store credit.`
-          : "Cheque approved and payments recorded",
+      message: "Cheque approved and payments recorded",
       paymentRefs,
       paymentIds,
       paymentsCreated: paymentIds.length,
-      storeCreditAdded: excessAmount > 0.01 ? excessAmount : 0,
+      unallocatedAmount: unallocatedAmount > 0.01 ? unallocatedAmount : 0,
     };
 
     if (warnings.length) {

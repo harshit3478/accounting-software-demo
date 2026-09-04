@@ -54,8 +54,9 @@ interface AbandonInvoiceModalProps {
   onConfirm: (payload: {
     editReason: string;
     paymentAction: "credit" | "transfer" | "refund" | "none";
-    feeAction: "restocking" | "deposit" | "both" | "other" | "none";
+    feeAction: "restocking" | "deposit" | "both" | "other" | "all" | "none";
     customFeeAmount?: number;
+    nonRefundableReason?: string;
     targetInvoiceId?: number;
     feeMethodId?: number;
     refundProof?: RefundProof;
@@ -70,11 +71,12 @@ export default function AbandonInvoiceModal({
   onConfirm,
 }: AbandonInvoiceModalProps) {
   const [reason, setReason] = useState("");
+  const [nonRefundableReason, setNonRefundableReason] = useState("");
   const [paymentAction, setPaymentAction] = useState<
     "credit" | "transfer" | "refund" | "none"
   >("credit");
   const [feeAction, setFeeAction] = useState<
-    "restocking" | "deposit" | "both" | "other" | "none"
+    "restocking" | "deposit" | "both" | "other" | "all" | "none"
   >("none");
   const [customFeeAmount, setCustomFeeAmount] = useState("");
   const [targetInvoiceId, setTargetInvoiceId] = useState<number | null>(null);
@@ -117,8 +119,9 @@ export default function AbandonInvoiceModal({
   const canApplyDeposit = effectiveDepositFee > 0;
   const canApplyBoth = canApplyRestocking && canApplyDeposit;
   const canApplyOther = !isLayaway && hasPayments;
+  const canApplyAllPayments = hasPayments;
   const showFeeHandling = isLayaway
-    ? canApplyRestocking || canApplyDeposit
+    ? canApplyRestocking || canApplyDeposit || canApplyAllPayments
     : hasPayments || canApplyDeposit;
   const parsedCustomFee = Number.parseFloat(customFeeAmount);
   const effectiveOtherFee =
@@ -157,11 +160,16 @@ export default function AbandonInvoiceModal({
           ? bothFeeAmounts.total
           : feeAction === "other"
             ? effectiveOtherFee
-            : 0;
+            : feeAction === "all"
+              ? paidAmount
+              : 0;
   const refundableBalance = hasPayments
     ? Math.max(paidAmount - selectedFeeAmount, 0)
     : 0;
   const canRefund = refundableBalance > 0.009;
+  const requiresNonRefundableReason =
+    feeAction === "all" || feeAction === "other";
+  const showPaymentHandling = hasPayments && feeAction !== "all";
 
   useEffect(() => {
     if (!isOpen) return;
@@ -187,8 +195,21 @@ export default function AbandonInvoiceModal({
   }, [canRefund, paymentAction, hasPayments]);
 
   useEffect(() => {
+    if (feeAction === "all" && hasPayments) {
+      setPaymentAction("none");
+    } else if (
+      feeAction !== "all" &&
+      hasPayments &&
+      paymentAction === "none"
+    ) {
+      setPaymentAction("credit");
+    }
+  }, [feeAction, hasPayments, paymentAction]);
+
+  useEffect(() => {
     if (!isOpen) return;
     setReason("");
+    setNonRefundableReason("");
     setError("");
     setTargetInvoiceId(null);
     setCustomerInvoices([]);
@@ -297,7 +318,12 @@ export default function AbandonInvoiceModal({
       return;
     }
 
-    if (hasPayments) {
+    if (requiresNonRefundableReason && !nonRefundableReason.trim()) {
+      setError("Please enter the reason for making the amount non-refundable.");
+      return;
+    }
+
+    if (showPaymentHandling) {
       if (paymentAction === "transfer" && !targetInvoiceId) {
         setError("Please select target invoice.");
         return;
@@ -330,6 +356,11 @@ export default function AbandonInvoiceModal({
       return;
     }
 
+    if (feeAction === "all" && paidAmount <= 0.009) {
+      setError("There are no payments to retain as non-refundable.");
+      return;
+    }
+
     if (feeAction !== "none" && selectedFeeAmount > 0 && !feeMethodId) {
       setError("Please select a payment method for the fee payment.");
       return;
@@ -338,9 +369,12 @@ export default function AbandonInvoiceModal({
     setError("");
     onConfirm({
       editReason: reason.trim(),
-      paymentAction: hasPayments ? paymentAction : "none",
+      paymentAction: showPaymentHandling ? paymentAction : "none",
       feeAction,
       ...(feeAction === "other" ? { customFeeAmount: effectiveOtherFee } : {}),
+      ...(requiresNonRefundableReason
+        ? { nonRefundableReason: nonRefundableReason.trim() }
+        : {}),
       ...(targetInvoiceId ? { targetInvoiceId } : {}),
       ...(feeMethodId ? { feeMethodId } : {}),
       ...(refundProof ? { refundProof } : {}),
@@ -497,6 +531,30 @@ export default function AbandonInvoiceModal({
               </div>
             )}
 
+            {canApplyAllPayments && (
+              <label className="flex items-start gap-2 text-sm text-gray-700">
+                <input
+                  type="radio"
+                  checked={feeAction === "all"}
+                  onChange={() => setFeeAction("all")}
+                  className="mt-0.5"
+                />
+                Make all payments non-refundable
+                <span className="text-xs text-gray-500">
+                  (${paidAmount.toFixed(2)} paid — nothing left to refund or
+                  credit)
+                </span>
+              </label>
+            )}
+
+            {canApplyAllPayments && feeAction === "all" && (
+              <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">
+                The full paid amount (${paidAmount.toFixed(2)}) will be retained
+                as non-refundable. No store credit, transfer, or refund will be
+                issued.
+              </div>
+            )}
+
             {canApplyBoth && (
               <label className="flex items-start gap-2 text-sm text-gray-700">
                 <input
@@ -528,6 +586,22 @@ export default function AbandonInvoiceModal({
               {getInvoiceAbandonWithoutFeeLabel(invoice.isLayaway)}
             </label>
 
+            {requiresNonRefundableReason && (
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  Reason for non-refundable{" "}
+                  <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  value={nonRefundableReason}
+                  onChange={(e) => setNonRefundableReason(e.target.value)}
+                  rows={2}
+                  className="w-full px-3 py-2 border border-gray-300 text-gray-900 rounded-lg"
+                  placeholder="Why is this amount non-refundable?"
+                />
+              </div>
+            )}
+
             {feeAction !== "none" && selectedFeeAmount > 0 && (
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">
@@ -558,7 +632,7 @@ export default function AbandonInvoiceModal({
                       payments totaling ${selectedFeeAmount.toFixed(2)} will be
                       linked to this {invoiceReference}.
                     </>
-                  ) : feeAction === "other" ? (
+                  ) : feeAction === "other" || feeAction === "all" ? (
                     <>
                       A non-refundable amount of ${selectedFeeAmount.toFixed(2)}{" "}
                       will be linked to this {invoiceReference}.
@@ -576,7 +650,7 @@ export default function AbandonInvoiceModal({
           </div>
         )}
 
-        {hasPayments && (
+        {showPaymentHandling && (
           <div className="space-y-3 rounded-lg border border-gray-200 p-3">
             <label className="block text-sm font-medium text-gray-700">
               Payment Handling

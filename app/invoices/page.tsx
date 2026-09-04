@@ -344,6 +344,7 @@ function InvoicesPageContent() {
               paymentAction: payload.paymentAction,
               feeAction: payload.feeAction,
               customFeeAmount: payload.customFeeAmount,
+              nonRefundableReason: payload.nonRefundableReason,
               feeMethodId: payload.feeMethodId,
               targetInvoiceId: payload.targetInvoiceId || null,
               refundProofDataUrl: payload.refundProof?.dataUrl,

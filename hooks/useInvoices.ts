@@ -73,7 +73,7 @@ export interface Invoice {
   layawayPlan?: {
     id: number;
     months: number;
-    paymentFrequency: string;
+    paymentFrequency: "monthly" | "bi-weekly" | "weekly";
     downPayment: number;
     isCancelled: boolean;
     notes?: string | null;
@@ -216,8 +216,9 @@ interface UseInvoicesReturn {
     editReason?: string;
     targetStatus?: "abandoned" | "inactive" | "reactivate";
     paymentAction?: "credit" | "transfer" | "refund" | "none";
-    feeAction?: "restocking" | "deposit" | "both" | "other" | "none";
+    feeAction?: "restocking" | "deposit" | "both" | "other" | "all" | "none";
     customFeeAmount?: number;
+    nonRefundableReason?: string;
     feeMethodId?: number;
     targetInvoiceId?: number | null;
     refundProofDataUrl?: string;
@@ -626,8 +627,9 @@ export function useInvoices(
     editReason?: string;
     targetStatus?: "abandoned" | "inactive" | "reactivate";
     paymentAction?: "credit" | "transfer" | "refund" | "none";
-    feeAction?: "restocking" | "deposit" | "both" | "other" | "none";
+    feeAction?: "restocking" | "deposit" | "both" | "other" | "all" | "none";
     customFeeAmount?: number;
+    nonRefundableReason?: string;
     feeMethodId?: number;
     targetInvoiceId?: number | null;
     refundProofDataUrl?: string;
@@ -661,6 +663,7 @@ export function useInvoices(
           paymentAction: options?.paymentAction,
           feeAction: options?.feeAction,
           customFeeAmount: options?.customFeeAmount,
+          nonRefundableReason: options?.nonRefundableReason,
           feeMethodId: options?.feeMethodId,
           targetInvoiceId: options?.targetInvoiceId ?? null,
           refundProofDataUrl: options?.refundProofDataUrl,

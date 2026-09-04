@@ -22,7 +22,28 @@ export interface InvoiceAllocation {
     amount?: number;
     paidAmount?: number;
     status?: string;
+    customerId?: number | null;
+    customer?: {
+      id: number;
+      name: string;
+      email: string | null;
+      storeCredit: number;
+    } | null;
   } | null;
+}
+
+export interface ChequeVaultStoreCreditMove {
+  id: number;
+  chequeVaultId: number;
+  customerId: number;
+  amount: number;
+  notes: string;
+  paymentId: number | null;
+  movedById: number;
+  movedAt: string;
+  customer?: { id: number; name: string; email: string | null } | null;
+  movedBy?: { id: number; name: string } | null;
+  payment?: { id: number; paymentCode: string | null } | null;
 }
 
 export type ChequeVaultDocumentType = "CHEQUE" | "MEMO";
@@ -61,6 +82,16 @@ export interface ChequeVaultRecord {
   correctionRequestedBy: { id: number; name: string } | null;
   invoicesLinkedBy: { id: number; name: string } | null;
   invoiceAllocations: InvoiceAllocation[];
+  storeCreditMoves?: ChequeVaultStoreCreditMove[];
+  totalAllocated?: number;
+  totalMovedToStoreCredit?: number;
+  remainingUnallocated?: number;
+  linkedCustomers?: {
+    id: number;
+    name: string;
+    email: string | null;
+    storeCredit: number;
+  }[];
 }
 
 export interface ChequeVaultStats {
@@ -173,13 +204,13 @@ export function useChequeVault() {
       if (!res.ok) throw new Error(data.error || "Failed to approve");
       const refs: string[] = data.paymentRefs || [];
       const count = data.paymentsCreated ?? refs.length;
-      const storeCreditAdded = Number(data.storeCreditAdded || 0);
-      const storeCreditMessage =
-        storeCreditAdded > 0
-          ? ` $${storeCreditAdded.toFixed(2)} saved as store credit.`
+      const unallocatedAmount = Number(data.unallocatedAmount || 0);
+      const unallocatedMessage =
+        unallocatedAmount > 0
+          ? ` $${unallocatedAmount.toFixed(2)} unallocated — use Move to Store Credit to credit the customer.`
           : "";
       showSuccess(
-        `Cheque approved. ${count} payment${count === 1 ? "" : "s"} created (${refs.join(", ")}) — visible on the Payments tab.${storeCreditMessage}`,
+        `Cheque approved. ${count} payment${count === 1 ? "" : "s"} created (${refs.join(", ")}) — visible on the Payments tab.${unallocatedMessage}`,
       );
       await fetchCheques();
       return data;
@@ -309,6 +340,37 @@ export function useChequeVault() {
     }
   };
 
+  const handleMoveToStoreCredit = async (
+    chequeId: number,
+    payload: { notes: string; customerId: number; amount?: number },
+  ): Promise<boolean> => {
+    try {
+      const res = await fetch(
+        `/api/cheque-vault/${chequeId}/move-to-store-credit`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      );
+      const data = await res.json();
+      if (!res.ok)
+        throw new Error(data.error || "Failed to move to store credit");
+      showSuccess(
+        data.message ||
+          `$${Number(data.storeCreditAdded || 0).toFixed(2)} moved to store credit`,
+      );
+      if (selectedCheque?.id === chequeId && data.cheque) {
+        setSelectedCheque(data.cheque);
+      }
+      await fetchCheques();
+      return true;
+    } catch (error: any) {
+      showError(error.message || "Failed to move to store credit");
+      return false;
+    }
+  };
+
   const stats: ChequeVaultStats = {
     pendingCount: cheques.filter((c) => c.status === "PENDING").length,
     approvedTotal: cheques
@@ -367,6 +429,7 @@ export function useChequeVault() {
     handleRequestCorrection,
     handleUpdateDetails,
     handleUpdateAllocations,
+    handleMoveToStoreCredit,
     handleDelete,
     canDeleteChequeRequest,
 

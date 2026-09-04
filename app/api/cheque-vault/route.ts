@@ -18,7 +18,7 @@ import {
   isAllowedChequeVaultMimeType,
   parseChequeVaultDocumentType,
 } from "@/lib/cheque-vault-upload";
-import { chequeVaultUserInclude } from "@/lib/cheque-vault-include";
+import { chequeVaultUserInclude, serializeChequeVaultRecord } from "@/lib/cheque-vault-include";
 import {
   endOfBusinessDay,
   parseBusinessDateInput,
@@ -28,24 +28,6 @@ import {
   buildChequeVaultTextSearchConditions,
   normalizeAmountSearchTerm,
 } from "@/lib/cheque-vault-search";
-
-function serializeCheque(cheque: any) {
-  return {
-    ...cheque,
-    amount: Number(cheque.amount),
-    invoiceAllocations: (cheque.invoiceAllocations || []).map((a: any) => ({
-      ...a,
-      allocatedAmount: Number(a.allocatedAmount),
-      invoice: a.invoice
-        ? {
-            ...a.invoice,
-            amount: Number(a.invoice.amount),
-            paidAmount: Number(a.invoice.paidAmount),
-          }
-        : null,
-    })),
-  };
-}
 
 export async function GET(request: NextRequest) {
   try {
@@ -124,9 +106,34 @@ export async function GET(request: NextRequest) {
           invoiceAllocations: {
             include: {
               invoice: {
-                select: { id: true, invoiceNumber: true, clientName: true },
+                select: {
+                  id: true,
+                  invoiceNumber: true,
+                  clientName: true,
+                  customerId: true,
+                  customer: {
+                    select: {
+                      id: true,
+                      name: true,
+                      email: true,
+                      storeCredit: true,
+                    },
+                  },
+                },
               },
             },
+          },
+          storeCreditMoves: {
+            select: {
+              id: true,
+              amount: true,
+              notes: true,
+              movedAt: true,
+              customer: { select: { id: true, name: true, email: true } },
+              movedBy: { select: { id: true, name: true } },
+              payment: { select: { id: true, paymentCode: true } },
+            },
+            orderBy: { movedAt: "desc" },
           },
         },
       }),
@@ -134,7 +141,7 @@ export async function GET(request: NextRequest) {
     ]);
 
     return NextResponse.json({
-      cheques: cheques.map(serializeCheque),
+      cheques: cheques.map(serializeChequeVaultRecord),
       pagination: {
         total,
         page,
@@ -281,7 +288,7 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json({
-      cheque: serializeCheque(cheque),
+      cheque: serializeChequeVaultRecord(cheque),
       ocrResult,
     });
   } catch (error: any) {
