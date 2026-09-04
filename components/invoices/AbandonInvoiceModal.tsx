@@ -167,9 +167,9 @@ export default function AbandonInvoiceModal({
     ? Math.max(paidAmount - selectedFeeAmount, 0)
     : 0;
   const canRefund = refundableBalance > 0.009;
-  const requiresNonRefundableReason =
-    feeAction === "all" || feeAction === "other";
+  const requiresNonRefundableReason = feeAction === "other";
   const showPaymentHandling = hasPayments && feeAction !== "all";
+  const usesSingleAbandonReason = feeAction === "all";
 
   useEffect(() => {
     if (!isOpen) return;
@@ -314,7 +314,11 @@ export default function AbandonInvoiceModal({
 
   const handleSubmit = () => {
     if (!reason.trim()) {
-      setError("Reason is required.");
+      setError(
+        usesSingleAbandonReason
+          ? "Please enter the reason for abandoning with all payments non-refundable."
+          : "Reason is required.",
+      );
       return;
     }
 
@@ -361,20 +365,28 @@ export default function AbandonInvoiceModal({
       return;
     }
 
-    if (feeAction !== "none" && selectedFeeAmount > 0 && !feeMethodId) {
+    if (
+      feeAction !== "none" &&
+      feeAction !== "all" &&
+      selectedFeeAmount > 0 &&
+      !feeMethodId
+    ) {
       setError("Please select a payment method for the fee payment.");
       return;
     }
 
+    const trimmedReason = reason.trim();
     setError("");
     onConfirm({
-      editReason: reason.trim(),
+      editReason: trimmedReason,
       paymentAction: showPaymentHandling ? paymentAction : "none",
       feeAction,
       ...(feeAction === "other" ? { customFeeAmount: effectiveOtherFee } : {}),
-      ...(requiresNonRefundableReason
-        ? { nonRefundableReason: nonRefundableReason.trim() }
-        : {}),
+      ...(usesSingleAbandonReason
+        ? { nonRefundableReason: trimmedReason }
+        : requiresNonRefundableReason
+          ? { nonRefundableReason: nonRefundableReason.trim() }
+          : {}),
       ...(targetInvoiceId ? { targetInvoiceId } : {}),
       ...(feeMethodId ? { feeMethodId } : {}),
       ...(refundProof ? { refundProof } : {}),
@@ -602,7 +614,9 @@ export default function AbandonInvoiceModal({
               </div>
             )}
 
-            {feeAction !== "none" && selectedFeeAmount > 0 && (
+            {feeAction !== "none" &&
+              feeAction !== "all" &&
+              selectedFeeAmount > 0 && (
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">
                   Fee Payment Method
@@ -632,7 +646,7 @@ export default function AbandonInvoiceModal({
                       payments totaling ${selectedFeeAmount.toFixed(2)} will be
                       linked to this {invoiceReference}.
                     </>
-                  ) : feeAction === "other" || feeAction === "all" ? (
+                  ) : feeAction === "other" ? (
                     <>
                       A non-refundable amount of ${selectedFeeAmount.toFixed(2)}{" "}
                       will be linked to this {invoiceReference}.
@@ -646,6 +660,15 @@ export default function AbandonInvoiceModal({
                   )}
                 </p>
               </div>
+            )}
+
+            {feeAction === "all" && selectedFeeAmount > 0 && (
+              <p className="text-xs text-gray-500">
+                Existing invoice payments totaling $
+                {selectedFeeAmount.toFixed(2)} will stay on this{" "}
+                {invoiceReference} as non-refundable. No new fee payment is
+                created.
+              </p>
             )}
           </div>
         )}
@@ -758,14 +781,21 @@ export default function AbandonInvoiceModal({
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Reason <span className="text-red-500">*</span>
+            {usesSingleAbandonReason
+              ? "Reason for abandon & non-refundable"
+              : "Reason"}{" "}
+            <span className="text-red-500">*</span>
           </label>
           <textarea
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             rows={3}
             className="w-full px-3 py-2 border border-gray-300 text-gray-900 rounded-lg"
-            placeholder={getInvoiceAbandonReasonPlaceholder(invoice.isLayaway)}
+            placeholder={
+              usesSingleAbandonReason
+                ? "Why are you abandoning this invoice and retaining all payments as non-refundable?"
+                : getInvoiceAbandonReasonPlaceholder(invoice.isLayaway)
+            }
           />
         </div>
 

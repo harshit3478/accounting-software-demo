@@ -500,6 +500,7 @@ export type AbandonedInvoicePaymentBreakdown = {
 };
 
 type AbandonHistoryChanges = {
+  status?: { to?: string };
   paymentDisposition?: { to?: string };
   movedAmount?: { to?: number };
   feeAmount?: { to?: number };
@@ -508,20 +509,124 @@ type AbandonHistoryChanges = {
   receivedPayments?: { to?: AbandonedReceivedPaymentSnapshot[] };
   restockingFeeAmount?: { to?: number };
   depositFeeAmount?: { to?: number };
+  lateFeeRetained?: { to?: number };
+  creditPaymentAmount?: { to?: number };
+  refundDue?: number;
+  allocatedToLaInvoice?: number;
+  paidAmount?: { to?: number };
   nonRefundableReason?: { to?: string | null };
   targetInvoiceId?: { to?: number | null };
 };
+
+function asAbandonHistoryChanges(
+  changes: unknown,
+): AbandonHistoryChanges | null {
+  if (!changes || typeof changes !== "object" || Array.isArray(changes)) {
+    return null;
+  }
+  return changes as AbandonHistoryChanges;
+}
 
 function getAbandonHistoryChanges(
   editHistory?: InvoiceEditHistoryLike[] | null,
 ): AbandonHistoryChanges | null {
   const entry = (editHistory || []).find(
     (historyEntry) =>
-      (historyEntry.changes as { status?: { to?: string } })?.status?.to ===
-      "abandoned",
+      asAbandonHistoryChanges(historyEntry.changes)?.status?.to === "abandoned",
   );
   if (!entry?.changes) return null;
-  return entry.changes as AbandonHistoryChanges;
+  return asAbandonHistoryChanges(entry.changes);
+}
+
+/** Later edit-history rows (e.g. PROD CORRECTION) can override abandon money fields. */
+function getAbandonedMoneyOverrides(
+  editHistory?: InvoiceEditHistoryLike[] | null,
+): {
+  restockingFeeAmount: number | null;
+  depositFeeAmount: number | null;
+  lateFeeRetained: number | null;
+  feeAmount: number | null;
+  creditPaymentAmount: number | null;
+  refundDue: number | null;
+  movedAmount: number | null;
+  allocatedToLaInvoice: number | null;
+  correctedPaidAmount: number | null;
+} {
+  let restockingFeeAmount: number | null = null;
+  let depositFeeAmount: number | null = null;
+  let lateFeeRetained: number | null = null;
+  let feeAmount: number | null = null;
+  let creditPaymentAmount: number | null = null;
+  let refundDue: number | null = null;
+  let movedAmount: number | null = null;
+  let allocatedToLaInvoice: number | null = null;
+  let correctedPaidAmount: number | null = null;
+
+  const entries = [...(editHistory || [])].sort((a, b) => {
+    const aTime = new Date(a.createdAt).getTime();
+    const bTime = new Date(b.createdAt).getTime();
+    return aTime - bTime;
+  });
+
+  for (const entry of entries) {
+    const changes = asAbandonHistoryChanges(entry.changes);
+    if (!changes) continue;
+
+    const isAbandonSnapshot = changes.status?.to === "abandoned";
+    const isAbandonMoneyCorrection =
+      changes.restockingFeeAmount != null ||
+      changes.depositFeeAmount != null ||
+      changes.lateFeeRetained != null ||
+      changes.creditPaymentAmount != null ||
+      changes.refundDue != null ||
+      changes.allocatedToLaInvoice != null ||
+      (changes.feeAmount != null && !isAbandonSnapshot);
+
+    if (changes.restockingFeeAmount?.to != null) {
+      restockingFeeAmount = Number(changes.restockingFeeAmount.to);
+    }
+    if (changes.depositFeeAmount?.to != null) {
+      depositFeeAmount = Number(changes.depositFeeAmount.to);
+    }
+    if (changes.lateFeeRetained?.to != null) {
+      lateFeeRetained = Number(changes.lateFeeRetained.to);
+    }
+    if (changes.feeAmount?.to != null && (isAbandonSnapshot || isAbandonMoneyCorrection)) {
+      feeAmount = Number(changes.feeAmount.to);
+    }
+    if (changes.creditPaymentAmount?.to != null) {
+      creditPaymentAmount = Number(changes.creditPaymentAmount.to);
+    }
+    if (changes.refundDue != null) {
+      refundDue = Number(changes.refundDue);
+    }
+    if (changes.movedAmount?.to != null && (isAbandonSnapshot || isAbandonMoneyCorrection)) {
+      movedAmount = Number(changes.movedAmount.to);
+    }
+    if (changes.allocatedToLaInvoice != null) {
+      allocatedToLaInvoice = Number(changes.allocatedToLaInvoice);
+    }
+    // Only trust paidAmount from abandon money corrections — never from random invoice edits.
+    if (
+      changes.paidAmount?.to != null &&
+      isAbandonMoneyCorrection &&
+      !isAbandonSnapshot
+    ) {
+      correctedPaidAmount = Number(changes.paidAmount.to);
+    }
+  }
+
+  return {
+    restockingFeeAmount,
+    depositFeeAmount,
+    lateFeeRetained,
+    feeAmount,
+    creditPaymentAmount,
+    refundDue,
+    movedAmount,
+    allocatedToLaInvoice,
+    correctedPaidAmount,
+  };
 }
 
 function getAbandonedFinalAmountLabel(
@@ -552,36 +657,135 @@ export function getAbandonedInvoicePaymentBreakdown(invoice: {
   }
 
   const history = getAbandonHistoryChanges(invoice.editHistory);
+  const overrides = getAbandonedMoneyOverrides(invoice.editHistory);
   const payments = invoice.payments || [];
 
   const disposition = history?.paymentDisposition?.to ?? null;
-  let movedAmount = Number(history?.movedAmount?.to ?? 0);
-  let totalRetained = Number(history?.feeAmount?.to ?? 0);
-  let totalPaymentsReceived = Number(history?.paymentTotal?.to ?? 0);
   const receivedPayments = Array.isArray(history?.receivedPayments?.to)
     ? history.receivedPayments.to
     : [];
 
-  if (totalPaymentsReceived <= 0 && totalRetained + movedAmount > 0) {
-    totalPaymentsReceived = Number((totalRetained + movedAmount).toFixed(2));
+  const liveRestockingFee = getPaymentSourceTotal(payments, "restocking_fee");
+  const liveDepositFee = getPaymentSourceTotal(payments, "deposit_fee");
+  const liveRetainedFee = getPaymentSourceTotal(payments, "retained_fee");
+  const liveFeeTotal = Number(
+    (liveRestockingFee + liveDepositFee + liveRetainedFee).toFixed(2),
+  );
+
+  const correctionFeeTotal = Number(
+    (
+      Math.max(overrides.restockingFeeAmount || 0, 0) +
+      Math.max(overrides.depositFeeAmount || 0, 0) +
+      Math.max(overrides.lateFeeRetained || 0, 0)
+    ).toFixed(2),
+  );
+
+  // Prefer live fee payment rows, then correction overrides, then original abandon snapshot.
+  // Never let a stale feeAmount override corrected live fee rows (PDF blunder).
+  let totalRetained =
+    liveFeeTotal > 0.009
+      ? liveFeeTotal
+      : correctionFeeTotal > 0.009
+        ? correctionFeeTotal
+        : overrides.feeAmount != null && overrides.feeAmount > 0.009
+          ? Number(overrides.feeAmount.toFixed(2))
+          : Number(history?.feeAmount?.to ?? 0);
+
+  if (
+    overrides.correctedPaidAmount != null &&
+    overrides.correctedPaidAmount > 0.009 &&
+    liveFeeTotal <= 0.009 &&
+    correctionFeeTotal <= 0.009
+  ) {
+    totalRetained = Number(overrides.correctedPaidAmount.toFixed(2));
+  }
+
+  let movedAmount = Number(history?.movedAmount?.to ?? 0);
+  const refundTotal = (invoice.abandonmentRefunds || []).reduce(
+    (sum, payment) => sum + Number(payment.amount || 0),
+    0,
+  );
+
+  if (disposition === "refund" && refundTotal > 0.009) {
+    movedAmount = Number(refundTotal.toFixed(2));
+  } else if (
+    disposition === "credit" &&
+    overrides.creditPaymentAmount != null &&
+    overrides.creditPaymentAmount >= 0
+  ) {
+    movedAmount = Number(overrides.creditPaymentAmount.toFixed(2));
+  } else if (
+    disposition === "refund" &&
+    overrides.refundDue != null &&
+    overrides.refundDue >= 0
+  ) {
+    movedAmount = Number(overrides.refundDue.toFixed(2));
+  } else if (
+    overrides.creditPaymentAmount != null &&
+    overrides.creditPaymentAmount >= 0
+  ) {
+    // Correction rows may omit disposition; still prefer corrected credit.
+    movedAmount = Number(overrides.creditPaymentAmount.toFixed(2));
+  } else if (overrides.refundDue != null && overrides.refundDue >= 0) {
+    movedAmount = Number(overrides.refundDue.toFixed(2));
+  } else if (overrides.movedAmount != null && overrides.movedAmount >= 0) {
+    movedAmount = Number(overrides.movedAmount.toFixed(2));
+  } else if (refundTotal > 0.009) {
+    movedAmount = Number(refundTotal.toFixed(2));
+  }
+
+  let totalPaymentsReceived = Number(history?.paymentTotal?.to ?? 0);
+  const originalRetainedSnapshot = Number(history?.feeAmount?.to ?? 0);
+  const originalMovedSnapshot = Number(history?.movedAmount?.to ?? 0);
+
+  if (totalPaymentsReceived <= 0 && originalRetainedSnapshot + originalMovedSnapshot > 0) {
+    totalPaymentsReceived = Number(
+      (originalRetainedSnapshot + originalMovedSnapshot).toFixed(2),
+    );
   }
 
   if (!history) {
-    totalRetained = getInvoicePaidAmountForDisplay(invoice);
-    const refundTotal = (invoice.abandonmentRefunds || []).reduce(
-      (sum, payment) => sum + Number(payment.amount || 0),
-      0,
-    );
+    totalRetained =
+      liveFeeTotal > 0.009
+        ? liveFeeTotal
+        : getInvoicePaidAmountForDisplay(invoice);
     movedAmount = refundTotal;
+    totalPaymentsReceived = Number((totalRetained + movedAmount).toFixed(2));
+  }
+
+  if (
+    totalPaymentsReceived <= 0.009 &&
+    totalRetained + movedAmount > 0.009
+  ) {
     totalPaymentsReceived = Number((totalRetained + movedAmount).toFixed(2));
   }
 
   const deductions: AbandonedInvoiceDeduction[] = [];
   const feeType = history?.feeType?.to;
-  const restockingFromHistory = Number(history?.restockingFeeAmount?.to ?? 0);
-  const depositFromHistory = Number(history?.depositFeeAmount?.to ?? 0);
+  const restockingFromHistory =
+    overrides.restockingFeeAmount != null
+      ? overrides.restockingFeeAmount
+      : Number(history?.restockingFeeAmount?.to ?? 0);
+  const depositFromHistory =
+    overrides.depositFeeAmount != null
+      ? overrides.depositFeeAmount
+      : Number(history?.depositFeeAmount?.to ?? 0);
+  const lateFromHistory = Math.max(overrides.lateFeeRetained || 0, 0);
 
-  if (feeType === "both") {
+  if (liveFeeTotal > 0.009) {
+    if (liveRestockingFee > 0) {
+      deductions.push({ label: "Restocking Fee:", amount: liveRestockingFee });
+    }
+    if (liveDepositFee > 0) {
+      deductions.push({ label: "Deposit Fee:", amount: liveDepositFee });
+    }
+    if (liveRetainedFee > 0) {
+      deductions.push({
+        label: "Non-Refundable Amount:",
+        amount: liveRetainedFee,
+      });
+    }
+  } else if (feeType === "both") {
     if (restockingFromHistory > 0) {
       deductions.push({
         label: "Restocking Fee:",
@@ -591,6 +795,12 @@ export function getAbandonedInvoicePaymentBreakdown(invoice: {
     if (depositFromHistory > 0) {
       deductions.push({ label: "Deposit Fee:", amount: depositFromHistory });
     }
+    if (lateFromHistory > 0) {
+      deductions.push({
+        label: "Non-Refundable Amount:",
+        amount: lateFromHistory,
+      });
+    }
   } else if (feeType === "all") {
     if (totalRetained > 0) {
       deductions.push({
@@ -598,39 +808,53 @@ export function getAbandonedInvoicePaymentBreakdown(invoice: {
         amount: totalRetained,
       });
     }
-  } else {
-    const restockingFee = getPaymentSourceTotal(payments, "restocking_fee");
-    const depositFee = getPaymentSourceTotal(payments, "deposit_fee");
-    const retainedFee = getPaymentSourceTotal(payments, "retained_fee");
-
-    if (restockingFee > 0) {
-      deductions.push({ label: "Restocking Fee:", amount: restockingFee });
-    }
-    if (depositFee > 0) {
-      deductions.push({ label: "Deposit Fee:", amount: depositFee });
-    }
-    if (retainedFee > 0) {
+  } else if (correctionFeeTotal > 0.009) {
+    if ((overrides.restockingFeeAmount || 0) > 0) {
       deductions.push({
-        label: "Non-Refundable Amount:",
-        amount: retainedFee,
+        label: "Restocking Fee:",
+        amount: Number(overrides.restockingFeeAmount),
       });
     }
-
-    if (deductions.length === 0 && totalRetained > 0) {
-      const retainedDisplay = getAbandonedRetainedFeeDisplay(invoice);
-      if (retainedDisplay) {
-        deductions.push({
-          label: retainedDisplay.label,
-          amount: retainedDisplay.amount,
-        });
-      }
+    if ((overrides.depositFeeAmount || 0) > 0) {
+      deductions.push({
+        label: "Deposit Fee:",
+        amount: Number(overrides.depositFeeAmount),
+      });
+    }
+    if ((overrides.lateFeeRetained || 0) > 0) {
+      deductions.push({
+        label: "Non-Refundable Amount:",
+        amount: Number(overrides.lateFeeRetained),
+      });
+    }
+  } else if (totalRetained > 0) {
+    const retainedDisplay = getAbandonedRetainedFeeDisplay(invoice);
+    if (retainedDisplay) {
+      deductions.push({
+        label: retainedDisplay.label,
+        amount: retainedDisplay.amount,
+      });
     }
   }
 
+  const allocatedAmount = Math.max(overrides.allocatedToLaInvoice || 0, 0);
+  if (allocatedAmount > 0.009) {
+    deductions.push({
+      label: "Allocated to Other Invoice:",
+      amount: Number(allocatedAmount.toFixed(2)),
+    });
+  }
+
+  const feeDeductionTotal = deductions
+    .filter((deduction) => deduction.label !== "Allocated to Other Invoice:")
+    .reduce((sum, deduction) => sum + deduction.amount, 0);
+
   const computedRetained =
-    totalRetained > 0
+    liveFeeTotal > 0.009 || correctionFeeTotal > 0.009
       ? totalRetained
-      : deductions.reduce((sum, deduction) => sum + deduction.amount, 0);
+      : feeDeductionTotal > 0.009
+        ? feeDeductionTotal
+        : totalRetained;
 
   return {
     disposition,
@@ -725,24 +949,38 @@ export function getAbandonedRetainedFeeDisplay(invoice: {
   const feeAmountFromHistory = Number(changes?.feeAmount?.to || 0);
 
   if (invoice.isLayaway) {
-    const combinedFromPayments = restockingFromPayments + depositFromPayments;
+    const combinedFromPayments =
+      restockingFromPayments + depositFromPayments + retainedFromPayments;
     if (combinedFromPayments > 0) {
-      if (restockingFromPayments > 0 && depositFromPayments > 0) {
+      const feeParts = [
+        restockingFromPayments > 0,
+        depositFromPayments > 0,
+        retainedFromPayments > 0,
+      ].filter(Boolean).length;
+
+      if (feeParts > 1) {
         return {
           label: "Retained Fees:",
           amount: Number(combinedFromPayments.toFixed(2)),
         };
       }
 
-      return restockingFromPayments > 0
-        ? {
-            label: "Restocking Fee:",
-            amount: Number(restockingFromPayments.toFixed(2)),
-          }
-        : {
-            label: "Deposit Fee:",
-            amount: Number(depositFromPayments.toFixed(2)),
-          };
+      if (restockingFromPayments > 0) {
+        return {
+          label: "Restocking Fee:",
+          amount: Number(restockingFromPayments.toFixed(2)),
+        };
+      }
+      if (depositFromPayments > 0) {
+        return {
+          label: "Deposit Fee:",
+          amount: Number(depositFromPayments.toFixed(2)),
+        };
+      }
+      return {
+        label: "Non-Refundable Amount:",
+        amount: Number(retainedFromPayments.toFixed(2)),
+      };
     }
 
     const amount =

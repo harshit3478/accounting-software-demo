@@ -1356,7 +1356,58 @@ export async function DELETE(
           }
 
           if (paymentTotal > 0.009) {
-            if (
+            // Keep existing invoice payments in place when the full paid
+            // balance is marked non-refundable — no new fee payment/method.
+            if (normalizedFeeAction === "all") {
+              normalizedPaymentAction = "none";
+              const retainNote = `Non-refundable on abandoned invoice ${existingInvoice.invoiceNumber}${
+                nonRefundableReason
+                  ? ` | Reason: ${nonRefundableReason}`
+                  : reason
+                    ? ` | ${reason}`
+                    : ""
+              }`;
+
+              for (const payment of realDirectPayments) {
+                const existingNotes = (
+                  await tx.payment.findUnique({
+                    where: { id: payment.id },
+                    select: { notes: true },
+                  })
+                )?.notes;
+                await tx.payment.update({
+                  where: { id: payment.id },
+                  data: {
+                    notes: existingNotes
+                      ? `${existingNotes} | ${retainNote}`
+                      : retainNote,
+                  },
+                });
+              }
+
+              for (const match of matchedPaymentsWithoutDirectOverlap) {
+                const existing = await tx.payment.findUnique({
+                  where: { id: match.paymentId },
+                  select: { notes: true },
+                });
+                if (!existing) continue;
+                const retainMatchNote = `Non-refundable allocation on abandoned invoice ${existingInvoice.invoiceNumber}${
+                  nonRefundableReason
+                    ? ` | Reason: ${nonRefundableReason}`
+                    : reason
+                      ? ` | ${reason}`
+                      : ""
+                }`;
+                await tx.payment.update({
+                  where: { id: match.paymentId },
+                  data: {
+                    notes: existing.notes
+                      ? `${existing.notes} | ${retainMatchNote}`
+                      : retainMatchNote,
+                  },
+                });
+              }
+            } else if (
               (!normalizedPaymentAction ||
                 normalizedPaymentAction === "none") &&
               movedAmount > 0.009
@@ -1364,8 +1415,7 @@ export async function DELETE(
               throw new Error(
                 "This invoice has payments. Please choose how to handle them.",
               );
-            }
-
+            } else {
             // When the full paid balance is retained as a fee, treat remaining
             // disposition as "none" even if the client sent credit/transfer.
             if (movedAmount <= 0.009) {
@@ -1683,6 +1733,7 @@ export async function DELETE(
                 }
               }
             }
+            }
           }
 
           const createRetainedFeePayment = async (
@@ -1716,7 +1767,11 @@ export async function DELETE(
             return feePayment.id;
           };
 
-          if (normalizedFeeAction !== "none" && feeAmount > 0.009) {
+          if (
+            normalizedFeeAction !== "none" &&
+            normalizedFeeAction !== "all" &&
+            feeAmount > 0.009
+          ) {
             if (
               paymentTotal <= 0.009 &&
               !Number.isFinite(requestedFeeMethodId as number)
@@ -1754,15 +1809,13 @@ export async function DELETE(
               const feeLabel =
                 normalizedFeeAction === "restocking"
                   ? "Restocking fee"
-                  : normalizedFeeAction === "other" ||
-                      normalizedFeeAction === "all"
+                  : normalizedFeeAction === "other"
                     ? "Non-refundable amount"
                     : "Deposit fee";
               const feeSource =
                 normalizedFeeAction === "restocking"
                   ? "restocking_fee"
-                  : normalizedFeeAction === "other" ||
-                      normalizedFeeAction === "all"
+                  : normalizedFeeAction === "other"
                     ? "retained_fee"
                     : "deposit_fee";
               feePaymentId = await createRetainedFeePayment(

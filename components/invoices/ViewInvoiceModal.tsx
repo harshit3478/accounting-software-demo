@@ -1264,6 +1264,21 @@ export default function ViewInvoiceModal({
             ? "Non-refundable amount"
             : "Deposit fee";
       parts.push(`${feeLabel} payment: ${feeCode}`);
+    } else if (feeType === "all") {
+      const receivedCodes = (
+        (entry.changes?.receivedPayments?.to as
+          | Array<{ paymentCode?: string }>
+          | undefined) || []
+      )
+        .map((payment) => payment.paymentCode)
+        .filter(Boolean);
+      if (receivedCodes.length > 0) {
+        parts.push(
+          `Non-refundable payment${receivedCodes.length > 1 ? "s" : ""}: ${receivedCodes.join(", ")}`,
+        );
+      } else {
+        parts.push("All payments retained as non-refundable");
+      }
     }
 
     const nonRefundableReason = entry.changes?.nonRefundableReason?.to as
