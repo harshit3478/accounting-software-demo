@@ -430,7 +430,14 @@ export async function PUT(
       });
 
     const existingLateFee = Number(
-      existingInvoiceAny.lateFee?.toNumber?.() ?? existingInvoiceAny.lateFee ?? 0,
+      existingInvoiceAny.lateFee?.toNumber?.() ??
+        existingInvoiceAny.lateFee ??
+        0,
+    );
+    const existingProcessingFee = Number(
+      existingInvoiceAny.processingFee?.toNumber?.() ??
+        existingInvoiceAny.processingFee ??
+        0,
     );
     const totalAmount =
       parseFloat(subtotal) +
@@ -440,7 +447,8 @@ export async function PUT(
       insuranceFeeAmount +
       layawayFeeAmount +
       appliedRemovedItemDepositFee +
-      existingLateFee;
+      existingLateFee +
+      existingProcessingFee;
     const paidAmount = Number(existingInvoiceAny.paidAmount?.toNumber?.() ?? 0);
 
     let resolvedTermsId: number | null = existingTermsId;
@@ -752,13 +760,13 @@ export async function PUT(
             );
             const hasLayawayPlanConfigChanged = Boolean(
               existingPlan &&
-                (existingPlan.months !== normalizedLayawayPlan.months ||
-                  existingPlan.paymentFrequency !==
-                    normalizedLayawayPlan.paymentFrequency ||
-                  Number(existingPlan.downPayment) !==
-                    normalizedLayawayPlan.downPayment ||
-                  String(existingPlan.notes || "").trim() !==
-                    String(normalizedLayawayPlan.notes || "").trim()),
+              (existingPlan.months !== normalizedLayawayPlan.months ||
+                existingPlan.paymentFrequency !==
+                  normalizedLayawayPlan.paymentFrequency ||
+                Number(existingPlan.downPayment) !==
+                  normalizedLayawayPlan.downPayment ||
+                String(existingPlan.notes || "").trim() !==
+                  String(normalizedLayawayPlan.notes || "").trim()),
             );
             const shouldApplyRecalculationFee =
               !isMigratedInvoiceEdit &&
@@ -1117,9 +1125,7 @@ export async function DELETE(
               normalizedFeeAction === "other") &&
             !nonRefundableReason
           ) {
-            throw new Error(
-              "Reason for non-refundable amount is required.",
-            );
+            throw new Error("Reason for non-refundable amount is required.");
           }
 
           const directPayments = await tx.payment.findMany({
@@ -1178,8 +1184,7 @@ export async function DELETE(
             },
           );
           const calculatedDepositFee = Number(depositFeeTotal.toFixed(2));
-          paymentTotal =
-            Math.round((directTotal + matchedTotal) * 100) / 100;
+          paymentTotal = Math.round((directTotal + matchedTotal) * 100) / 100;
 
           const snapshotPaymentIds = [
             ...new Set([
@@ -1271,7 +1276,9 @@ export async function DELETE(
             const roundedCustomFee =
               Math.round(Math.max(customFeeAmount, 0) * 100) / 100;
             if (roundedCustomFee <= 0) {
-              throw new Error("Non-refundable amount must be greater than zero.");
+              throw new Error(
+                "Non-refundable amount must be greater than zero.",
+              );
             }
             feeAmount =
               paymentTotal > 0
@@ -1416,103 +1423,32 @@ export async function DELETE(
                 "This invoice has payments. Please choose how to handle them.",
               );
             } else {
-            // When the full paid balance is retained as a fee, treat remaining
-            // disposition as "none" even if the client sent credit/transfer.
-            if (movedAmount <= 0.009) {
-              normalizedPaymentAction = "none";
-            }
+              // When the full paid balance is retained as a fee, treat remaining
+              // disposition as "none" even if the client sent credit/transfer.
+              if (movedAmount <= 0.009) {
+                normalizedPaymentAction = "none";
+              }
 
-            const affectedPaymentIds = new Set<number>([
-              ...realDirectPayments.map((p) => p.id),
-              ...matchedPayments.map((m) => m.paymentId),
-            ]);
+              const affectedPaymentIds = new Set<number>([
+                ...realDirectPayments.map((p) => p.id),
+                ...matchedPayments.map((m) => m.paymentId),
+              ]);
 
-            const retainAllAsFeeReason = `Payments retained as non-refundable from abandoned invoice ${existingInvoice.invoiceNumber}. ${nonRefundableReason || reason}`;
+              const retainAllAsFeeReason = `Payments retained as non-refundable from abandoned invoice ${existingInvoice.invoiceNumber}. ${nonRefundableReason || reason}`;
 
-            if (
-              normalizedPaymentAction === "none" ||
-              normalizedPaymentAction === "credit"
-            ) {
               if (
-                normalizedPaymentAction === "credit" &&
-                !existingInvoice.customerId
+                normalizedPaymentAction === "none" ||
+                normalizedPaymentAction === "credit"
               ) {
-                throw new Error(
-                  "Cannot move payments to credit because this invoice has no linked customer.",
-                );
-              }
-
-              if (realDirectPayments.length > 0) {
-                await tx.payment.updateMany({
-                  where: { id: { in: realDirectPayments.map((p) => p.id) } },
-                  data: {
-                    invoiceId: null,
-                    isAbandoned: true,
-                    abandonedAt: new Date(),
-                    abandonedBy: user.id,
-                    abandonReason:
-                      normalizedPaymentAction === "none"
-                        ? retainAllAsFeeReason
-                        : `Payments moved to customer store credit from abandoned invoice ${existingInvoice.invoiceNumber}. ${reason}`,
-                  },
-                });
-              }
-
-              if (matchedPaymentsWithoutDirectOverlap.length > 0) {
-                await tx.paymentInvoiceMatch.deleteMany({
-                  where: {
-                    id: {
-                      in: matchedPaymentsWithoutDirectOverlap.map((m) => m.id),
-                    },
-                  },
-                });
-              }
-
-              if (normalizedPaymentAction === "credit" && movedAmount > 0.009) {
-                if (!sourceMethodId) {
+                if (
+                  normalizedPaymentAction === "credit" &&
+                  !existingInvoice.customerId
+                ) {
                   throw new Error(
-                    "No active payment method available for store credit.",
+                    "Cannot move payments to credit because this invoice has no linked customer.",
                   );
                 }
 
-                const creditPayment = await tx.payment.create({
-                  data: {
-                    invoiceId: null,
-                    amount: new Prisma.Decimal(movedAmount),
-                    paymentDate: new Date(),
-                    methodId: sourceMethodId,
-                    notes: `Store credit from abandoned invoice ${existingInvoice.invoiceNumber}${reason ? ` | ${reason}` : ""}`,
-                    userId: user.id,
-                    isMatched: false,
-                    source: "store_credit_excess",
-                  },
-                });
-
-                await stampPaymentCode(tx, creditPayment.id);
-
-                await (tx as any).customer.update({
-                  where: { id: existingInvoice.customerId },
-                  data: {
-                    storeCredit: { increment: new Prisma.Decimal(movedAmount) },
-                  },
-                });
-
-                await (tx as any).customerCreditTransaction.create({
-                  data: {
-                    customerId: existingInvoice.customerId,
-                    amount: new Prisma.Decimal(movedAmount),
-                    type: "credit",
-                    reason: `Payments moved from abandoned invoice ${existingInvoice.invoiceNumber}. ${reason}`,
-                    paymentId: creditPayment.id,
-                    invoiceId,
-                    createdById: user.id,
-                  },
-                });
-              }
-            }
-
-            if (normalizedPaymentAction === "transfer") {
-              if (movedAmount <= 0.009) {
                 if (realDirectPayments.length > 0) {
                   await tx.payment.updateMany({
                     where: { id: { in: realDirectPayments.map((p) => p.id) } },
@@ -1521,10 +1457,14 @@ export async function DELETE(
                       isAbandoned: true,
                       abandonedAt: new Date(),
                       abandonedBy: user.id,
-                      abandonReason: retainAllAsFeeReason,
+                      abandonReason:
+                        normalizedPaymentAction === "none"
+                          ? retainAllAsFeeReason
+                          : `Payments moved to customer store credit from abandoned invoice ${existingInvoice.invoiceNumber}. ${reason}`,
                     },
                   });
                 }
+
                 if (matchedPaymentsWithoutDirectOverlap.length > 0) {
                   await tx.paymentInvoiceMatch.deleteMany({
                     where: {
@@ -1536,203 +1476,283 @@ export async function DELETE(
                     },
                   });
                 }
-              } else {
-                if (!Number.isFinite(targetInvoiceId as number)) {
-                  throw new Error("Target invoice is required for transfer.");
-                }
 
-                const target = await tx.invoice.findUnique({
-                  where: { id: targetInvoiceId as number },
-                  select: { id: true, customerId: true, status: true },
-                });
-
-                if (!target) {
-                  throw new Error("Target invoice not found.");
-                }
-                if (target.id === invoiceId) {
-                  throw new Error(
-                    "Target invoice must be different from the abandoned invoice.",
-                  );
-                }
                 if (
-                  !existingInvoice.customerId ||
-                  target.customerId !== existingInvoice.customerId
+                  normalizedPaymentAction === "credit" &&
+                  movedAmount > 0.009
                 ) {
-                  throw new Error(
-                    "Target invoice must belong to the same customer.",
-                  );
-                }
-                if (
-                  target.status === "inactive" ||
-                  target.status === "abandoned"
-                ) {
-                  throw new Error(
-                    "Target invoice cannot be inactive or abandoned.",
-                  );
-                }
+                  if (!sourceMethodId) {
+                    throw new Error(
+                      "No active payment method available for store credit.",
+                    );
+                  }
 
-                resolvedTargetInvoiceId = target.id;
+                  const creditPayment = await tx.payment.create({
+                    data: {
+                      invoiceId: null,
+                      amount: new Prisma.Decimal(movedAmount),
+                      paymentDate: new Date(),
+                      methodId: sourceMethodId,
+                      notes: `Store credit from abandoned invoice ${existingInvoice.invoiceNumber}${reason ? ` | ${reason}` : ""}`,
+                      userId: user.id,
+                      isMatched: false,
+                      source: "store_credit_excess",
+                    },
+                  });
 
-                if (realDirectPayments.length > 0) {
-                  await tx.payment.updateMany({
-                    where: { id: { in: realDirectPayments.map((p) => p.id) } },
-                    data: { invoiceId: target.id, isMatched: true },
+                  await stampPaymentCode(tx, creditPayment.id);
+
+                  await (tx as any).customer.update({
+                    where: { id: existingInvoice.customerId },
+                    data: {
+                      storeCredit: {
+                        increment: new Prisma.Decimal(movedAmount),
+                      },
+                    },
+                  });
+
+                  await (tx as any).customerCreditTransaction.create({
+                    data: {
+                      customerId: existingInvoice.customerId,
+                      amount: new Prisma.Decimal(movedAmount),
+                      type: "credit",
+                      reason: `Payments moved from abandoned invoice ${existingInvoice.invoiceNumber}. ${reason}`,
+                      paymentId: creditPayment.id,
+                      invoiceId,
+                      createdById: user.id,
+                    },
+                  });
+                }
+              }
+
+              if (normalizedPaymentAction === "transfer") {
+                if (movedAmount <= 0.009) {
+                  if (realDirectPayments.length > 0) {
+                    await tx.payment.updateMany({
+                      where: {
+                        id: { in: realDirectPayments.map((p) => p.id) },
+                      },
+                      data: {
+                        invoiceId: null,
+                        isAbandoned: true,
+                        abandonedAt: new Date(),
+                        abandonedBy: user.id,
+                        abandonReason: retainAllAsFeeReason,
+                      },
+                    });
+                  }
+                  if (matchedPaymentsWithoutDirectOverlap.length > 0) {
+                    await tx.paymentInvoiceMatch.deleteMany({
+                      where: {
+                        id: {
+                          in: matchedPaymentsWithoutDirectOverlap.map(
+                            (m) => m.id,
+                          ),
+                        },
+                      },
+                    });
+                  }
+                } else {
+                  if (!Number.isFinite(targetInvoiceId as number)) {
+                    throw new Error("Target invoice is required for transfer.");
+                  }
+
+                  const target = await tx.invoice.findUnique({
+                    where: { id: targetInvoiceId as number },
+                    select: { id: true, customerId: true, status: true },
+                  });
+
+                  if (!target) {
+                    throw new Error("Target invoice not found.");
+                  }
+                  if (target.id === invoiceId) {
+                    throw new Error(
+                      "Target invoice must be different from the abandoned invoice.",
+                    );
+                  }
+                  if (
+                    !existingInvoice.customerId ||
+                    target.customerId !== existingInvoice.customerId
+                  ) {
+                    throw new Error(
+                      "Target invoice must belong to the same customer.",
+                    );
+                  }
+                  if (
+                    target.status === "inactive" ||
+                    target.status === "abandoned"
+                  ) {
+                    throw new Error(
+                      "Target invoice cannot be inactive or abandoned.",
+                    );
+                  }
+
+                  resolvedTargetInvoiceId = target.id;
+
+                  if (realDirectPayments.length > 0) {
+                    await tx.payment.updateMany({
+                      where: {
+                        id: { in: realDirectPayments.map((p) => p.id) },
+                      },
+                      data: { invoiceId: target.id, isMatched: true },
+                    });
+                  }
+
+                  for (const match of matchedPayments) {
+                    const existingTargetMatch =
+                      await tx.paymentInvoiceMatch.findUnique({
+                        where: {
+                          paymentId_invoiceId: {
+                            paymentId: match.paymentId,
+                            invoiceId: target.id,
+                          },
+                        },
+                      });
+
+                    if (existingTargetMatch) {
+                      await tx.paymentInvoiceMatch.update({
+                        where: { id: existingTargetMatch.id },
+                        data: {
+                          amount: {
+                            increment: match.amount,
+                          },
+                        },
+                      });
+                      await tx.paymentInvoiceMatch.delete({
+                        where: { id: match.id },
+                      });
+                    } else {
+                      await tx.paymentInvoiceMatch.update({
+                        where: { id: match.id },
+                        data: { invoiceId: target.id },
+                      });
+                    }
+                  }
+                }
+              }
+
+              if (normalizedPaymentAction === "refund") {
+                const refundReason = `Payments refunded from abandoned invoice ${existingInvoice.invoiceNumber}. ${reason}`;
+                const refundAllocationItems: Array<{
+                  id: number;
+                  amount: number;
+                }> = [];
+
+                for (const payment of realDirectPayments) {
+                  refundAllocationItems.push({
+                    id: payment.id,
+                    amount: payment.amount.toNumber(),
                   });
                 }
 
-                for (const match of matchedPayments) {
-                  const existingTargetMatch =
-                    await tx.paymentInvoiceMatch.findUnique({
-                      where: {
-                        paymentId_invoiceId: {
-                          paymentId: match.paymentId,
-                          invoiceId: target.id,
-                        },
-                      },
-                    });
+                const matchedAmountByPaymentId = new Map<number, number>();
+                for (const match of matchedPaymentsWithoutDirectOverlap) {
+                  if (directPaymentIds.has(match.paymentId)) continue;
+                  matchedAmountByPaymentId.set(
+                    match.paymentId,
+                    (matchedAmountByPaymentId.get(match.paymentId) || 0) +
+                      match.amount.toNumber(),
+                  );
+                }
+                for (const [paymentId, amount] of matchedAmountByPaymentId) {
+                  refundAllocationItems.push({ id: paymentId, amount });
+                }
 
-                  if (existingTargetMatch) {
-                    await tx.paymentInvoiceMatch.update({
-                      where: { id: existingTargetMatch.id },
-                      data: {
-                        amount: {
-                          increment: match.amount,
-                        },
+                const refundAllocations = allocatePaymentAmounts(
+                  refundAllocationItems,
+                  movedAmount,
+                );
+
+                const refundPaymentUpdate = {
+                  invoiceId: null,
+                  isMatched: false,
+                  isAbandoned: true,
+                  abandonedAt: new Date(),
+                  abandonedBy: user.id,
+                  abandonReason: refundReason,
+                  refundProofUrl,
+                  refundProofFileName: storedRefundProofFileName,
+                };
+
+                for (const payment of realDirectPayments) {
+                  const refundAmount = refundAllocations.get(payment.id) ?? 0;
+                  await tx.payment.update({
+                    where: { id: payment.id },
+                    data: {
+                      ...refundPaymentUpdate,
+                      amount: new Prisma.Decimal(refundAmount),
+                    },
+                  });
+                }
+
+                if (matchedPaymentsWithoutDirectOverlap.length > 0) {
+                  await tx.paymentInvoiceMatch.deleteMany({
+                    where: {
+                      id: {
+                        in: matchedPaymentsWithoutDirectOverlap.map(
+                          (m) => m.id,
+                        ),
                       },
-                    });
-                    await tx.paymentInvoiceMatch.delete({
-                      where: { id: match.id },
-                    });
-                  } else {
-                    await tx.paymentInvoiceMatch.update({
-                      where: { id: match.id },
-                      data: { invoiceId: target.id },
+                    },
+                  });
+                }
+
+                for (const paymentId of matchedAmountByPaymentId.keys()) {
+                  const refundAmount = refundAllocations.get(paymentId) ?? 0;
+                  await tx.payment.update({
+                    where: { id: paymentId },
+                    data: {
+                      ...refundPaymentUpdate,
+                      amount: new Prisma.Decimal(refundAmount),
+                    },
+                  });
+                }
+
+                refundPaymentIds = refundAllocationItems.map((item) => item.id);
+              }
+
+              for (const pid of affectedPaymentIds) {
+                const payment = await tx.payment.findUnique({
+                  where: { id: pid },
+                  include: { paymentMatches: true },
+                });
+                if (!payment) continue;
+
+                const shouldBeMatched =
+                  !!payment.invoiceId || payment.paymentMatches.length > 0;
+                if (payment.isMatched !== shouldBeMatched) {
+                  await tx.payment.update({
+                    where: { id: pid },
+                    data: { isMatched: shouldBeMatched },
+                  });
+                }
+
+                if (!payment.invoiceId && payment.paymentMatches.length === 0) {
+                  const abandonedAt = payment.abandonedAt || new Date();
+                  if (!payment.isAbandoned) {
+                    await tx.payment.update({
+                      where: { id: pid },
+                      data: {
+                        isAbandoned: true,
+                        abandonedAt,
+                        abandonedBy: user.id,
+                        abandonReason:
+                          normalizedPaymentAction === "refund"
+                            ? `Payments refunded from abandoned invoice ${existingInvoice.invoiceNumber}. ${reason}`
+                            : normalizedPaymentAction === "none"
+                              ? retainAllAsFeeReason
+                              : `Payments moved to customer store credit from abandoned invoice ${existingInvoice.invoiceNumber}. ${reason}`,
+                        ...(normalizedPaymentAction === "refund"
+                          ? {
+                              refundProofUrl,
+                              refundProofFileName: storedRefundProofFileName,
+                            }
+                          : {}),
+                      },
                     });
                   }
                 }
               }
-            }
-
-            if (normalizedPaymentAction === "refund") {
-              const refundReason = `Payments refunded from abandoned invoice ${existingInvoice.invoiceNumber}. ${reason}`;
-              const refundAllocationItems: Array<{
-                id: number;
-                amount: number;
-              }> = [];
-
-              for (const payment of realDirectPayments) {
-                refundAllocationItems.push({
-                  id: payment.id,
-                  amount: payment.amount.toNumber(),
-                });
-              }
-
-              const matchedAmountByPaymentId = new Map<number, number>();
-              for (const match of matchedPaymentsWithoutDirectOverlap) {
-                if (directPaymentIds.has(match.paymentId)) continue;
-                matchedAmountByPaymentId.set(
-                  match.paymentId,
-                  (matchedAmountByPaymentId.get(match.paymentId) || 0) +
-                    match.amount.toNumber(),
-                );
-              }
-              for (const [paymentId, amount] of matchedAmountByPaymentId) {
-                refundAllocationItems.push({ id: paymentId, amount });
-              }
-
-              const refundAllocations = allocatePaymentAmounts(
-                refundAllocationItems,
-                movedAmount,
-              );
-
-              const refundPaymentUpdate = {
-                invoiceId: null,
-                isMatched: false,
-                isAbandoned: true,
-                abandonedAt: new Date(),
-                abandonedBy: user.id,
-                abandonReason: refundReason,
-                refundProofUrl,
-                refundProofFileName: storedRefundProofFileName,
-              };
-
-              for (const payment of realDirectPayments) {
-                const refundAmount = refundAllocations.get(payment.id) ?? 0;
-                await tx.payment.update({
-                  where: { id: payment.id },
-                  data: {
-                    ...refundPaymentUpdate,
-                    amount: new Prisma.Decimal(refundAmount),
-                  },
-                });
-              }
-
-              if (matchedPaymentsWithoutDirectOverlap.length > 0) {
-                await tx.paymentInvoiceMatch.deleteMany({
-                  where: {
-                    id: {
-                      in: matchedPaymentsWithoutDirectOverlap.map((m) => m.id),
-                    },
-                  },
-                });
-              }
-
-              for (const paymentId of matchedAmountByPaymentId.keys()) {
-                const refundAmount = refundAllocations.get(paymentId) ?? 0;
-                await tx.payment.update({
-                  where: { id: paymentId },
-                  data: {
-                    ...refundPaymentUpdate,
-                    amount: new Prisma.Decimal(refundAmount),
-                  },
-                });
-              }
-
-              refundPaymentIds = refundAllocationItems.map((item) => item.id);
-            }
-
-            for (const pid of affectedPaymentIds) {
-              const payment = await tx.payment.findUnique({
-                where: { id: pid },
-                include: { paymentMatches: true },
-              });
-              if (!payment) continue;
-
-              const shouldBeMatched =
-                !!payment.invoiceId || payment.paymentMatches.length > 0;
-              if (payment.isMatched !== shouldBeMatched) {
-                await tx.payment.update({
-                  where: { id: pid },
-                  data: { isMatched: shouldBeMatched },
-                });
-              }
-
-              if (!payment.invoiceId && payment.paymentMatches.length === 0) {
-                const abandonedAt = payment.abandonedAt || new Date();
-                if (!payment.isAbandoned) {
-                  await tx.payment.update({
-                    where: { id: pid },
-                    data: {
-                      isAbandoned: true,
-                      abandonedAt,
-                      abandonedBy: user.id,
-                      abandonReason:
-                        normalizedPaymentAction === "refund"
-                          ? `Payments refunded from abandoned invoice ${existingInvoice.invoiceNumber}. ${reason}`
-                          : normalizedPaymentAction === "none"
-                            ? retainAllAsFeeReason
-                            : `Payments moved to customer store credit from abandoned invoice ${existingInvoice.invoiceNumber}. ${reason}`,
-                      ...(normalizedPaymentAction === "refund"
-                        ? {
-                            refundProofUrl,
-                            refundProofFileName: storedRefundProofFileName,
-                          }
-                        : {}),
-                    },
-                  });
-                }
-              }
-            }
             }
           }
 
@@ -1742,8 +1762,7 @@ export async function DELETE(
             label: string,
           ) => {
             const noteDetail =
-              (source === "retained_fee" && nonRefundableReason) ||
-              reason
+              (source === "retained_fee" && nonRefundableReason) || reason
                 ? ` | ${
                     source === "retained_fee" && nonRefundableReason
                       ? `Non-refundable reason: ${nonRefundableReason}`
