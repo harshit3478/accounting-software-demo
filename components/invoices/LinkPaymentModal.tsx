@@ -20,6 +20,7 @@ import {
 } from "../../lib/business-date";
 import EarlyPaymentDiscountNotice from "./EarlyPaymentDiscountNotice";
 import UnitDiscountOfferNotice from "./UnitDiscountOfferNotice";
+import { getInvoiceTotalForDisplay } from "../../lib/invoice-display";
 import {
   getUnitDiscountDisplayState,
   getUnitDiscountedRemaining,
@@ -43,6 +44,7 @@ interface Invoice {
   }> | null;
   earlyPaymentDiscount?: number;
   unitDiscountAmount?: number;
+  processingFee?: number;
   unitDiscountOffer?: unknown;
   status?: string;
   customerId?: number | null;
@@ -170,6 +172,29 @@ export default function LinkPaymentModal({
           setIsLoading(false);
         });
 
+      fetch(
+        `/api/invoices/unpaid?${
+          invoice.customerId
+            ? new URLSearchParams({
+                customerId: String(invoice.customerId),
+                includeUnassigned: "true",
+              }).toString()
+            : "includeUnassigned=true"
+        }`,
+      )
+        .then((res) => (res.ok ? res.json() : []))
+        .then((data) => {
+          const refreshedInvoice = Array.isArray(data)
+            ? data.find((item) => item.id === invoice.id)
+            : null;
+          if (refreshedInvoice) {
+            setCurrentInvoice(refreshedInvoice);
+          }
+        })
+        .catch((err) => {
+          console.error("Failed to refresh invoice before linking:", err);
+        });
+
       // Reset state
       setSelectedPaymentId(null);
       setLinkAmount(0);
@@ -217,11 +242,13 @@ export default function LinkPaymentModal({
         if (!invoice) return 0;
         const remaining = getUnitDiscountedRemaining({
           ...invoice,
+          amount: getInvoiceTotalForDisplay(invoice),
           paymentDate: a.paymentDate,
           settings: unitDiscountSettings,
         });
         const remainingB = getUnitDiscountedRemaining({
           ...invoice,
+          amount: getInvoiceTotalForDisplay(invoice),
           paymentDate: b.paymentDate,
           settings: unitDiscountSettings,
         });
@@ -246,9 +273,11 @@ export default function LinkPaymentModal({
     setSelectedPaymentId(payment.id);
     setApplyProcessingFee(false);
 
-    const invoiceRemaining = invoice.amount - invoice.paidAmount;
+    const invoiceRemaining =
+      getInvoiceTotalForDisplay(invoice) - invoice.paidAmount;
     let dueAmount = getUnitDiscountedRemaining({
       ...invoice,
+      amount: getInvoiceTotalForDisplay(invoice),
       paymentDate: payment.paymentDate,
       settings: unitDiscountSettings,
     });
@@ -378,7 +407,8 @@ export default function LinkPaymentModal({
   if (!invoice) return null;
 
   const invoiceForDiscount = currentInvoice ?? invoice;
-  const grossRemaining = invoiceForDiscount.amount - invoiceForDiscount.paidAmount;
+  const displayInvoiceTotal = getInvoiceTotalForDisplay(invoiceForDiscount);
+  const grossRemaining = displayInvoiceTotal - invoiceForDiscount.paidAmount;
   const selectedPayment = processedPayments.find(
     (p) => p.id === selectedPaymentId,
   );
@@ -397,6 +427,7 @@ export default function LinkPaymentModal({
   });
   const unitDiscountState = getUnitDiscountDisplayState({
     ...invoiceForDiscount,
+    amount: displayInvoiceTotal,
     unitDiscountOffer: resolvedUnitDiscountOffer,
     paymentDate: previewPaymentDate,
     additionalPaymentAmount: grossRemaining,
@@ -588,8 +619,8 @@ export default function LinkPaymentModal({
                 </p>
                 <p className="text-xs text-amber-800 mt-1">
                   {overdueInstallment.label} was due on{" "}
-                  {formatBusinessDate(overdueInstallment.dueDate)}.
-                  Apply late fee to this invoice? Admin late fee: $
+                  {formatBusinessDate(overdueInstallment.dueDate)}. Apply late
+                  fee to this invoice? Admin late fee: $
                   {lateFeeSetting.amount.toFixed(2)}
                 </p>
               </div>
@@ -762,8 +793,8 @@ export default function LinkPaymentModal({
 
               {leftoverGoesToStoreCredit && (
                 <p className="text-sm text-emerald-700 mt-3">
-                  Remaining ${leftoverAfterLink.toFixed(2)} of this payment
-                  will be saved as Store Credit.
+                  Remaining ${leftoverAfterLink.toFixed(2)} of this payment will
+                  be saved as Store Credit.
                 </p>
               )}
 

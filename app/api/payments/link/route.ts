@@ -9,6 +9,7 @@ import { recordStoreCreditApplication } from "../../../../lib/store-credit-apply
 import { createOrIncrementPaymentInvoiceMatch } from "../../../../lib/payment-invoice-match";
 import { applyPaymentOverageAsProcessingFee } from "../../../../lib/processing-fee";
 import { getCreditCardProcessingFeeSuggestion } from "../../../../lib/processing-fee-client";
+import { getInvoiceTotalForDisplay } from "../../../../lib/invoice-display";
 
 export async function POST(request: NextRequest) {
   try {
@@ -141,7 +142,24 @@ export async function POST(request: NextRequest) {
         paymentCustomerId = invoice.customerId;
       }
 
-      const invoiceRemaining = invoice.amount.sub(invoice.paidAmount);
+      const invoiceDisplayTotal = new Prisma.Decimal(
+        getInvoiceTotalForDisplay({
+          status: invoice.status,
+          amount: invoice.amount.toNumber(),
+          subtotal: invoice.subtotal.toNumber(),
+          tax: invoice.tax.toNumber(),
+          discount: invoice.discount.toNumber(),
+          earlyPaymentDiscount: invoice.earlyPaymentDiscount.toNumber(),
+          unitDiscountAmount: invoice.unitDiscountAmount.toNumber(),
+          shippingFee: invoice.shippingFee.toNumber(),
+          insuranceAmount: invoice.insuranceAmount.toNumber(),
+          layawayFee: invoice.layawayFee.toNumber(),
+          lateFee: invoice.lateFee.toNumber(),
+          processingFee: invoice.processingFee.toNumber(),
+          isLayaway: invoice.isLayaway,
+        }),
+      );
+      const invoiceRemaining = invoiceDisplayTotal.sub(invoice.paidAmount);
 
       if (amountToLink.gt(invoiceRemaining)) {
         throw new Error(
@@ -310,9 +328,7 @@ export async function POST(request: NextRequest) {
     const processingFeeApplied = Number(
       (result as any).processingFeeApplied || 0,
     );
-    const residualStoreCredit = Number(
-      (result as any).remainingAfterLink || 0,
-    );
+    const residualStoreCredit = Number((result as any).remainingAfterLink || 0);
     const storeCreditAdded =
       Math.round(
         (residualStoreCredit + invoiceUpdateResult.earlyDiscountStoreCredit) *
