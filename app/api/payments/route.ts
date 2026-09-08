@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "../../../lib/prisma";
 import { requireAuth } from "../../../lib/auth";
+import { hasPermission } from "../../../lib/permissions";
 import { updateInvoiceAfterPayment } from "../../../lib/invoice-utils";
 import { invalidateDashboard } from "../../../lib/cache-helpers";
 import { serializeInvoiceEditHistoryEntry } from "../../../lib/user-display";
@@ -247,6 +248,19 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(
           { error: "Invoice not found" },
           { status: 404 },
+        );
+      }
+
+      if (
+        invoice.status === "abandoned" &&
+        !hasPermission(user, "invoices.addPaymentOnAbandoned")
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "You do not have permission to add payments to abandoned invoices",
+          },
+          { status: 403 },
         );
       }
 

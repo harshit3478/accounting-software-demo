@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "../../../../lib/prisma";
 import { requireAuth } from "../../../../lib/auth";
+import { hasPermission } from "../../../../lib/permissions";
 import { updateInvoiceAfterPayment } from "../../../../lib/invoice-utils";
 import { Prisma } from "@prisma/client";
 import { stampPaymentCode } from "../../../../lib/payment-code";
@@ -93,6 +94,15 @@ export async function POST(request: NextRequest) {
 
       if (!invoice) {
         throw new Error("Invoice not found");
+      }
+
+      if (
+        invoice.status === "abandoned" &&
+        !hasPermission(user, "invoices.addPaymentOnAbandoned")
+      ) {
+        throw new Error(
+          "You do not have permission to add payments to abandoned invoices",
+        );
       }
 
       if (

@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Button } from "../ui/button";
+import { useAuth } from "../../lib/AuthContext";
 import type { Invoice } from "../../hooks/useInvoices";
 import {
   getInvoiceAbandonActionLabel,
@@ -57,6 +58,7 @@ export default function InvoiceTableRow({
   onToggleSelect,
 }: InvoiceTableRowProps) {
   const [showActionsMenu, setShowActionsMenu] = useState(false);
+  const { canAddPaymentOnAbandonedInvoices } = useAuth();
 
   const formatDate = (dateString: string) => formatBusinessDate(dateString);
 
@@ -75,7 +77,7 @@ export default function InvoiceTableRow({
   const canPay =
     invoice.status !== "paid" &&
     invoice.status !== "inactive" &&
-    invoice.status !== "abandoned" &&
+    (invoice.status !== "abandoned" || canAddPaymentOnAbandonedInvoices) &&
     !invoice.isHold;
 
   const displayAmount = getInvoiceTotalForDisplay(invoice);

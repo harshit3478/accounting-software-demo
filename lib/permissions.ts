@@ -1,5 +1,6 @@
 export const DOCUMENT_PERMISSIONS = ["upload", "delete", "rename"] as const;
 export const CHEQUE_VAULT_PERMISSIONS = ["upload", "approve"] as const;
+export const INVOICE_PERMISSIONS = ["addPaymentOnAbandoned"] as const;
 
 export const SETTINGS_PERMISSIONS = [
   "payment-methods",
@@ -26,17 +27,20 @@ export const SETTINGS_PERMISSIONS = [
 export type DocumentPermission = (typeof DOCUMENT_PERMISSIONS)[number];
 export type ChequeVaultPermission = (typeof CHEQUE_VAULT_PERMISSIONS)[number];
 export type SettingsPermission = (typeof SETTINGS_PERMISSIONS)[number];
+export type InvoicePermission = (typeof INVOICE_PERMISSIONS)[number];
 
 export type UserPrivileges = {
   documents?: Partial<Record<DocumentPermission, boolean>>;
   settings?: Partial<Record<SettingsPermission, boolean>>;
   chequeVault?: Partial<Record<ChequeVaultPermission, boolean>>;
+  invoices?: Partial<Record<InvoicePermission, boolean>>;
 };
 
 export type PermissionString =
   | `documents.${DocumentPermission}`
   | `settings.${SettingsPermission}`
-  | `chequeVault.${ChequeVaultPermission}`;
+  | `chequeVault.${ChequeVaultPermission}`
+  | `invoices.${InvoicePermission}`;
 
 type PrivilegeUser = {
   id?: number;
@@ -70,6 +74,7 @@ export function defaultPrivilegesForRole(role: string): UserPrivileges {
       documents: { upload: true, delete: true, rename: true },
       settings: settingsDefaults,
       chequeVault: { upload: false, approve: false },
+      invoices: { addPaymentOnAbandoned: false },
     };
   }
 
@@ -77,6 +82,7 @@ export function defaultPrivilegesForRole(role: string): UserPrivileges {
     documents: { upload: true, delete: true, rename: true },
     settings: settingsDefaults,
     chequeVault: { upload: false, approve: false },
+    invoices: { addPaymentOnAbandoned: false },
   };
 }
 
@@ -94,6 +100,7 @@ export function mergePrivileges(
       role === "admin"
         ? { ...defaults.chequeVault, ...stored.chequeVault }
         : { upload: false, approve: false },
+    invoices: { ...defaults.invoices, ...stored.invoices },
   };
 
   return merged;
@@ -132,6 +139,10 @@ export function hasPermission(
     return privileges.chequeVault?.[action as ChequeVaultPermission] === true;
   }
 
+  if (category === "invoices") {
+    return privileges.invoices?.[action as InvoicePermission] === true;
+  }
+
   return false;
 }
 
@@ -167,6 +178,10 @@ export function buildPermissionsPayload(user: PrivilegeUser) {
     approve: hasPermission(user, "chequeVault.approve"),
   };
 
+  const invoices: Record<InvoicePermission, boolean> = {
+    addPaymentOnAbandoned: hasPermission(user, "invoices.addPaymentOnAbandoned"),
+  };
+
   return {
     privileges,
     permissions: {
@@ -177,6 +192,7 @@ export function buildPermissionsPayload(user: PrivilegeUser) {
       },
       settings,
       chequeVault,
+      invoices,
     },
   };
 }
@@ -209,4 +225,8 @@ export const CHEQUE_VAULT_PERMISSION_LABELS: Record<
 > = {
   upload: "Upload Cheques Without Memo / With Memo",
   approve: "Approve Cheque Requests",
+};
+
+export const INVOICE_PERMISSION_LABELS: Record<InvoicePermission, string> = {
+  addPaymentOnAbandoned: "Add Payments on Abandoned Invoices",
 };

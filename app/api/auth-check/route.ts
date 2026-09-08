@@ -37,6 +37,7 @@ export async function GET(request: NextRequest) {
       canDeleteDocuments: permissions.documents.delete,
       canUploadCheques: permissions.chequeVault.upload,
       canApproveCheques: permissions.chequeVault.approve,
+      canAddPaymentOnAbandonedInvoices: permissions.invoices.addPaymentOnAbandoned,
       settingsPermissions: permissions.settings,
       isSuperAdmin: isSuperAdmin(dbUser),
     };

@@ -21,6 +21,7 @@ interface User {
   canDeleteDocuments: boolean;
   canUploadCheques: boolean;
   canApproveCheques: boolean;
+  canAddPaymentOnAbandonedInvoices: boolean;
   settingsPermissions?: Partial<Record<SettingsPermission, boolean>>;
   isSuperAdmin?: boolean;
 }
@@ -36,6 +37,7 @@ interface AuthContextType {
   canDelete: boolean;
   canUploadCheques: boolean;
   canApproveCheques: boolean;
+  canAddPaymentOnAbandonedInvoices: boolean;
   hasPermission: (permission: string) => boolean;
   hasSettingPermission: (setting: SettingsPermission) => boolean;
   logout: () => void;
@@ -52,6 +54,7 @@ const AuthContext = createContext<AuthContextType>({
   canDelete: false,
   canUploadCheques: false,
   canApproveCheques: false,
+  canAddPaymentOnAbandonedInvoices: false,
   hasPermission: () => false,
   hasSettingPermission: () => false,
   logout: () => {},
@@ -147,6 +150,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const canDelete = user?.canDeleteDocuments ?? false;
   const canUploadCheques = user?.canUploadCheques ?? false;
   const canApproveCheques = user?.canApproveCheques ?? false;
+  const canAddPaymentOnAbandonedInvoices =
+    user?.canAddPaymentOnAbandonedInvoices ?? false;
 
   const hasPermission = (permission: string): boolean => {
     if (isSuperAdmin) return true;
@@ -162,6 +167,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return user?.canUploadCheques ?? false;
       case "chequeVault.approve":
         return user?.canApproveCheques ?? false;
+      case "invoices.addPaymentOnAbandoned":
+        return user?.canAddPaymentOnAbandonedInvoices ?? false;
       default:
         if (permission.startsWith("settings.")) {
           const setting = permission.replace(
@@ -190,6 +197,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         canDelete,
         canUploadCheques,
         canApproveCheques,
+        canAddPaymentOnAbandonedInvoices,
         hasPermission,
         hasSettingPermission,
         logout,

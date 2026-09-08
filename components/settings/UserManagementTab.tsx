@@ -13,6 +13,8 @@ import {
   CHEQUE_VAULT_PERMISSION_LABELS,
   CHEQUE_VAULT_PERMISSIONS,
   defaultPrivilegesForRole,
+  INVOICE_PERMISSION_LABELS,
+  INVOICE_PERMISSIONS,
   mergePrivileges,
   SETTINGS_PERMISSION_LABELS,
   SETTINGS_PERMISSIONS,
@@ -292,6 +294,47 @@ export default function UserManagementTab({
     </div>
   );
 
+  const renderInvoicePermissions = (
+    privileges: UserPrivileges,
+    onChange: (next: UserPrivileges) => void,
+  ) => (
+    <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+      <h3 className="text-sm font-semibold text-gray-700 mb-1">
+        Invoice Permissions
+      </h3>
+      <p className="text-xs text-gray-500 mb-3">
+        Off by default for everyone, including admins. Only users explicitly
+        granted this can record or link payments on abandoned invoices.
+      </p>
+      <div className="flex flex-wrap gap-4">
+        {INVOICE_PERMISSIONS.map((perm) => (
+          <label
+            key={perm}
+            className="flex items-center space-x-2 cursor-pointer"
+          >
+            <input
+              type="checkbox"
+              checked={privileges.invoices?.[perm] ?? false}
+              onChange={(e) =>
+                onChange({
+                  ...privileges,
+                  invoices: {
+                    ...privileges.invoices,
+                    [perm]: e.target.checked,
+                  },
+                })
+              }
+              className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+            />
+            <span className="text-sm text-gray-700">
+              {INVOICE_PERMISSION_LABELS[perm]}
+            </span>
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+
   const renderStaffAccountantPermissions = (
     privileges: UserPrivileges,
     onChange: (next: UserPrivileges) => void,
@@ -299,6 +342,7 @@ export default function UserManagementTab({
     <>
       {renderDocumentPermissions(privileges, onChange)}
       {renderSettingsPermissions(privileges, onChange)}
+      {renderInvoicePermissions(privileges, onChange)}
     </>
   );
 
@@ -532,6 +576,11 @@ export default function UserManagementTab({
                                 {countEnabledSettings(user.privileges)})
                               </span>
                             )}
+                            {user.privileges?.invoices?.addPaymentOnAbandoned && (
+                              <span className="px-1.5 py-0.5 text-xs rounded bg-green-100 text-green-700">
+                                Abandoned Invoice Pay
+                              </span>
+                            )}
                           </div>
                         ) : user.role === "admin" ? (
                           <div className="flex flex-wrap gap-1">
@@ -545,8 +594,15 @@ export default function UserManagementTab({
                                 Cheque Approve
                               </span>
                             )}
+                            {user.privileges?.invoices?.addPaymentOnAbandoned && (
+                              <span className="px-1.5 py-0.5 text-xs rounded bg-green-100 text-green-700">
+                                Abandoned Invoice Pay
+                              </span>
+                            )}
                             {!user.privileges?.chequeVault?.upload &&
-                              !user.privileges?.chequeVault?.approve && (
+                              !user.privileges?.chequeVault?.approve &&
+                              !user.privileges?.invoices
+                                ?.addPaymentOnAbandoned && (
                                 <span className="text-gray-500 text-xs">
                                   Settings Access
                                 </span>
@@ -714,6 +770,10 @@ export default function UserManagementTab({
                         newUser.privileges,
                         (privileges) => setNewUser({ ...newUser, privileges }),
                       )}
+                      {renderInvoicePermissions(
+                        newUser.privileges,
+                        (privileges) => setNewUser({ ...newUser, privileges }),
+                      )}
                     </>
                   )}
                 </div>
@@ -840,6 +900,14 @@ export default function UserManagementTab({
                           setEditingUser({ ...editingUser, privileges }),
                       )}
                       {renderChequeVaultPermissions(
+                        mergePrivileges(
+                          editingUser.role,
+                          editingUser.privileges,
+                        ),
+                        (privileges) =>
+                          setEditingUser({ ...editingUser, privileges }),
+                      )}
+                      {renderInvoicePermissions(
                         mergePrivileges(
                           editingUser.role,
                           editingUser.privileges,
