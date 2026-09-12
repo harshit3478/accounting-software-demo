@@ -1,4 +1,5 @@
 import { formatBusinessDate } from "./business-date";
+import { parseShippingDiscountOffer } from "./unit-discount-shared";
 
 export interface InvoiceDisplayLike {
   isLayaway?: boolean;
@@ -12,6 +13,8 @@ export interface InvoiceDisplayLike {
   earlyPaymentDiscount?: number | null;
   unitDiscountAmount?: number | null;
   unitDiscountOffer?: unknown;
+  shippingDiscountAmount?: number | null;
+  shippingDiscountOffer?: unknown;
   shippingFee?: number | null;
   insuranceAmount?: number | null;
   amount?: number | null;
@@ -54,6 +57,7 @@ export function getVisibleLayawayFee(invoice: InvoiceDisplayLike): number {
   const discount = Number(invoice.discount || 0);
   const earlyPaymentDiscount = Number(invoice.earlyPaymentDiscount || 0);
   const unitDiscountAmount = Number(invoice.unitDiscountAmount || 0);
+  const shippingDiscountAmount = Number(invoice.shippingDiscountAmount || 0);
   const shippingFee = Number(invoice.shippingFee || 0);
   const insuranceAmount = Number(invoice.insuranceAmount || 0);
   const lateFee = Number(invoice.lateFee || 0);
@@ -67,7 +71,8 @@ export function getVisibleLayawayFee(invoice: InvoiceDisplayLike): number {
     tax +
     discount +
     earlyPaymentDiscount +
-    unitDiscountAmount -
+    unitDiscountAmount +
+    shippingDiscountAmount -
     shippingFee -
     insuranceAmount -
     lateFee -
@@ -276,6 +281,7 @@ export function computeInvoiceAmountFromComponents(invoice: {
   tax?: number | null;
   discount?: number | null;
   shippingFee?: number | null;
+  shippingDiscountAmount?: number | null;
   insuranceAmount?: number | null;
   layawayFee?: number | null;
   editHistory?: InvoiceEditHistoryChangesLike[] | null;
@@ -290,7 +296,8 @@ export function computeInvoiceAmountFromComponents(invoice: {
       Number(invoice.subtotal || 0) +
       Number(invoice.tax || 0) -
       Number(invoice.discount || 0) +
-      Number(invoice.shippingFee || 0) +
+      Number(invoice.shippingFee || 0) -
+      Number(invoice.shippingDiscountAmount || 0) +
       Number(invoice.insuranceAmount || 0) +
       Number(invoice.layawayFee || 0) +
       appliedRemovedDepositFee +
@@ -392,6 +399,7 @@ export function getInvoiceAmountDue(invoice: {
   discount?: number | null;
   earlyPaymentDiscount?: number | null;
   unitDiscountAmount?: number | null;
+  shippingDiscountAmount?: number | null;
   shippingFee?: number | null;
   insuranceAmount?: number | null;
   layawayFee?: number | null;
@@ -421,7 +429,8 @@ export function computeInvoiceLineItemTotal(
     Number(invoice.discount || 0) -
     Number(invoice.earlyPaymentDiscount || 0) -
     Number(invoice.unitDiscountAmount || 0) +
-    Number(invoice.shippingFee || 0) +
+    Number(invoice.shippingFee || 0) -
+    Number(invoice.shippingDiscountAmount || 0) +
     Number(invoice.insuranceAmount || 0) +
     getVisibleLayawayFee(invoice) +
     getVisibleLateFee(invoice) +
@@ -441,6 +450,7 @@ export function getInvoiceTotalForDisplay(
     discount?: number | null;
     earlyPaymentDiscount?: number | null;
     unitDiscountAmount?: number | null;
+    shippingDiscountAmount?: number | null;
     shippingFee?: number | null;
     insuranceAmount?: number | null;
     layawayFee?: number | null;
@@ -1034,6 +1044,13 @@ export function formatInvoiceSummaryRowValue(value: number): string {
   return value < 0 ? `-$${formatted}` : `$${formatted}`;
 }
 
+export function getShippingDiscountLabel(offerValue?: unknown): string {
+  const offer = parseShippingDiscountOffer(offerValue);
+  if (offer?.label) return `${offer.label}:`;
+  if (offer?.name) return `${offer.name}:`;
+  return "Shipping Promo:";
+}
+
 export function buildInvoicePdfSummaryRows(
   invoice: InvoiceDisplayLike & {
     status?: string;
@@ -1091,6 +1108,14 @@ export function buildInvoicePdfSummaryRows(
         ]
       : []),
     { label: "Shipping Fee:", value: Number(invoice.shippingFee || 0) },
+    ...(Number(invoice.shippingDiscountAmount || 0) > 0
+      ? [
+          {
+            label: getShippingDiscountLabel(invoice.shippingDiscountOffer),
+            value: -Number(invoice.shippingDiscountAmount || 0),
+          },
+        ]
+      : []),
     { label: "Insurance:", value: Number(invoice.insuranceAmount || 0) },
     { label: "Layaway Fee:", value: layawayFee },
     {

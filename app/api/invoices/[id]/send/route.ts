@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "../../../../../lib/prisma";
 import { requireAuth } from "../../../../../lib/auth";
 import { sendInvoiceEmail } from "../../../../../lib/email";
-import { serializeUnitDiscountOfferField } from "../../../../../lib/unit-discount";
+import { serializeShippingDiscountOfferField, serializeUnitDiscountOfferField } from "../../../../../lib/unit-discount";
 
 export async function POST(
   request: NextRequest,
@@ -72,6 +72,13 @@ export async function POST(
         serializeUnitDiscountOfferField(
           (invoice as any).unitDiscountOffer,
           invoice.invoiceDate || invoice.createdAt,
+        ) || null,
+      shippingDiscountAmount: Number(
+        (invoice as any).shippingDiscountAmount || 0,
+      ),
+      shippingDiscountOffer:
+        serializeShippingDiscountOfferField(
+          (invoice as any).shippingDiscountOffer,
         ) || null,
       payments: invoice.payments.map((payment) => ({
         amount: Number(payment.amount),

@@ -10,6 +10,8 @@ type InvoiceLike = {
   tax: number;
   discount: number;
   earlyPaymentDiscount: number;
+  unitDiscountAmount?: number;
+  shippingDiscountAmount?: number;
   shippingFee: number;
   insuranceAmount: number;
   layawayFee: number;
@@ -37,6 +39,13 @@ function toInvoiceLike(invoice: {
     tax: Number(invoice.tax),
     discount: Number(invoice.discount),
     earlyPaymentDiscount: Number(invoice.earlyPaymentDiscount),
+    unitDiscountAmount: Number(
+      (invoice as { unitDiscountAmount?: unknown }).unitDiscountAmount || 0,
+    ),
+    shippingDiscountAmount: Number(
+      (invoice as { shippingDiscountAmount?: unknown }).shippingDiscountAmount ||
+        0,
+    ),
     shippingFee: Number(invoice.shippingFee),
     insuranceAmount: Number(invoice.insuranceAmount),
     layawayFee: Number(invoice.layawayFee),

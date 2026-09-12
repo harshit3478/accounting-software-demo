@@ -22,6 +22,7 @@ import {
   isFutureBusinessDate,
 } from "../../lib/business-date";
 import {
+  calculateShippingDiscountOffer,
   calculateUnitDiscountOffer,
   getUnitDiscountInvoiceDateChangeNotice,
   type UnitDiscountDateChangeNotice,
@@ -480,7 +481,7 @@ export default function EditInvoiceModal({
     );
   };
 
-  const calculateTotal = () => {
+  const calculateTotalBeforeShippingDiscount = () => {
     return (
       calculateSubtotal() +
       calculateTaxAmount() -
@@ -488,6 +489,45 @@ export default function EditInvoiceModal({
       shippingFee +
       insuranceAmount +
       calculateLayawayFeeAmount()
+    );
+  };
+
+  const shippingDiscountOffer = useMemo(
+    () =>
+      calculateShippingDiscountOffer({
+        items,
+        invoiceDate,
+        isLayaway,
+        shippingFee,
+        invoiceTotal: calculateTotalBeforeShippingDiscount(),
+        settings: unitDiscountSettings,
+      }),
+    [
+      items,
+      invoiceDate,
+      isLayaway,
+      shippingFee,
+      insuranceAmount,
+      tax,
+      taxType,
+      discount,
+      discountType,
+      unitDiscountSettings,
+      waiveLayawayFee,
+      layawayMonths,
+      layawayFeeRates,
+      layawayBasisUnit,
+      editMigratedInvoice,
+      invoice,
+    ],
+  );
+
+  const calculateTotal = () => {
+    return Number(
+      (
+        calculateTotalBeforeShippingDiscount() -
+        (shippingDiscountOffer?.creditAmount || 0)
+      ).toFixed(2),
     );
   };
 
@@ -1508,6 +1548,7 @@ export default function EditInvoiceModal({
                 layawayFee={calculateLayawayFeeAmount()}
                 total={calculateTotal()}
                 unitDiscountOffer={unitDiscountOffer}
+                shippingDiscountOffer={shippingDiscountOffer}
               />
 
             </div>

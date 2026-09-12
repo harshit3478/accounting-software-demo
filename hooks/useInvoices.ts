@@ -26,6 +26,8 @@ export interface Invoice {
   earlyPaymentDiscount?: number;
   unitDiscountAmount?: number;
   unitDiscountOffer?: unknown;
+  shippingDiscountAmount?: number;
+  shippingDiscountOffer?: unknown;
   insuranceBaseAmount?: number | null;
   lateFee?: number;
   layawayFee?: number;

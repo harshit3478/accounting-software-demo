@@ -21,6 +21,10 @@ import {
   calculateDepositFeeForItem,
   normalizeDepositFeeRules,
 } from "../../../../../lib/deposit-fees";
+import {
+  buildShippingDiscountOfferForInvoice,
+  toShippingDiscountOfferJson,
+} from "../../../../../lib/unit-discount";
 
 async function getConfiguredDepositFeeRules() {
   const ruleModel = (prisma as any)?.depositFeeRule;
@@ -195,7 +199,7 @@ export async function POST(request: NextRequest) {
         );
         const tax = 0;
         const discount = 0;
-        const amount = subtotal + insuranceAmount + shippingFee;
+        const grossAmount = subtotal + insuranceAmount + shippingFee;
         const dueDateRow = group.rows.find((row) => row.dueDate);
         const dueDate = dueDateRow?.dueDate
           ? new Date(dueDateRow.dueDate)
@@ -294,6 +298,21 @@ export async function POST(request: NextRequest) {
         });
 
         // Calculate initial status
+        const shippingDiscountOffer = await buildShippingDiscountOfferForInvoice(
+          {
+            items,
+            invoiceDate: new Date(),
+            isLayaway,
+            shippingFee,
+            invoiceTotal: grossAmount,
+          },
+        );
+        const shippingDiscountAmount = Number(
+          shippingDiscountOffer?.creditAmount || 0,
+        );
+        const amount = Number(
+          (grossAmount - shippingDiscountAmount).toFixed(2),
+        );
         const status = calculateInvoiceStatus(amount, 0, dueDate);
 
         // Create invoice
@@ -319,6 +338,10 @@ export async function POST(request: NextRequest) {
             source: "xlsx_upload",
             liveTypeId,
             liveTypeSnapshot,
+            shippingDiscountAmount,
+            shippingDiscountOffer: toShippingDiscountOfferJson(
+              shippingDiscountOffer,
+            ),
           },
         });
 

@@ -64,6 +64,8 @@ interface Invoice {
   earlyPaymentDiscount?: number;
   unitDiscountAmount?: number;
   unitDiscountOffer?: unknown;
+  shippingDiscountAmount?: number;
+  shippingDiscountOffer?: unknown;
   shippingFee?: number;
   insuranceAmount?: number;
   isLayaway?: boolean;

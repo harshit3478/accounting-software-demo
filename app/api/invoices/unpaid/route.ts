@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "../../../../lib/prisma";
 import { requireAuth } from "../../../../lib/auth";
-import { serializeUnitDiscountOfferField } from "../../../../lib/unit-discount";
+import {
+  serializeShippingDiscountOfferField,
+  serializeUnitDiscountOfferField,
+} from "../../../../lib/unit-discount";
 
 export async function GET(request: NextRequest) {
   try {
@@ -35,6 +38,8 @@ export async function GET(request: NextRequest) {
         earlyPaymentDiscount: true,
         unitDiscountAmount: true,
         unitDiscountOffer: true,
+        shippingDiscountAmount: true,
+        shippingDiscountOffer: true,
         status: true,
         customerId: true,
         isLayaway: true,
@@ -84,6 +89,14 @@ export async function GET(request: NextRequest) {
           invoice.unitDiscountOffer,
           invoice.invoiceDate || invoice.createdAt,
         ) ?? null,
+      shippingDiscountAmount: Number(
+        invoice.shippingDiscountAmount?.toNumber?.() ??
+          invoice.shippingDiscountAmount ??
+          0,
+      ),
+      shippingDiscountOffer:
+        serializeShippingDiscountOfferField(invoice.shippingDiscountOffer) ??
+        null,
       invoiceDate:
         invoice.invoiceDate instanceof Date
           ? invoice.invoiceDate.toISOString()

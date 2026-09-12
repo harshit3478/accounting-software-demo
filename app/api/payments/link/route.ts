@@ -161,6 +161,11 @@ export async function POST(request: NextRequest) {
           discount: invoice.discount.toNumber(),
           earlyPaymentDiscount: invoice.earlyPaymentDiscount.toNumber(),
           unitDiscountAmount: invoice.unitDiscountAmount.toNumber(),
+          shippingDiscountAmount: Number(
+            (invoice as any).shippingDiscountAmount?.toNumber?.() ??
+              (invoice as any).shippingDiscountAmount ??
+              0,
+          ),
           shippingFee: invoice.shippingFee.toNumber(),
           insuranceAmount: invoice.insuranceAmount.toNumber(),
           layawayFee: invoice.layawayFee.toNumber(),

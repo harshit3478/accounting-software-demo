@@ -10,14 +10,44 @@ export { roundMoney };
 
 export const UNIT_DISCOUNT_PAYMENT_WINDOW_DAYS = 14;
 
+export const DISCOUNT_KIND_UNIT_PERCENT = "unit_percent";
+export const DISCOUNT_KIND_SHIPPING_CREDIT = "shipping_credit";
+
+export type DiscountKind =
+  | typeof DISCOUNT_KIND_UNIT_PERCENT
+  | typeof DISCOUNT_KIND_SHIPPING_CREDIT;
+
+export interface ShippingDiscountThreshold {
+  minAmount: number | null;
+  maxAmount: number | null;
+  creditAmount: number;
+  label: string;
+}
+
 export interface UnitDiscountSettingSnapshot {
   id?: number;
+  kind?: DiscountKind;
+  name?: string;
   unitName: string;
   discountPercent: number;
   periodStart: string;
   periodEnd: string;
   paymentDueDate?: string;
   isActive?: boolean;
+  liveTypeId?: number | null;
+  liveTypeName?: string | null;
+  liveTypeCountry?: string | null;
+  thresholds?: ShippingDiscountThreshold[];
+}
+
+export interface ShippingDiscountOfferSnapshot {
+  name: string;
+  label: string;
+  creditCap: number;
+  creditAmount: number;
+  invoiceTotal: number;
+  shippingFee: number;
+  unitName: string;
 }
 
 export interface UnitDiscountBreakdownLine {
@@ -43,6 +73,261 @@ export function normalizeUnitKey(unitName: string): string {
   return String(unitName || "")
     .trim()
     .toLowerCase();
+}
+
+export function getDiscountKind(
+  setting?: { kind?: string | null } | null,
+): DiscountKind {
+  return setting?.kind === DISCOUNT_KIND_SHIPPING_CREDIT
+    ? DISCOUNT_KIND_SHIPPING_CREDIT
+    : DISCOUNT_KIND_UNIT_PERCENT;
+}
+
+export function parseOptionalAmount(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return null;
+  return roundMoney(amount);
+}
+
+export function parseShippingThresholds(
+  value: unknown,
+): ShippingDiscountThreshold[] {
+  let parsed: unknown = value;
+  if (typeof parsed === "string") {
+    try {
+      parsed = JSON.parse(parsed);
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(parsed)) return [];
+
+  return parsed
+    .map((row) => {
+      if (!row || typeof row !== "object") return null;
+      const item = row as {
+        minAmount?: unknown;
+        maxAmount?: unknown;
+        creditAmount?: unknown;
+        label?: unknown;
+      };
+      const creditAmount = roundMoney(Number(item.creditAmount || 0));
+      if (creditAmount <= 0) return null;
+      return {
+        minAmount: parseOptionalAmount(item.minAmount),
+        maxAmount: parseOptionalAmount(item.maxAmount),
+        creditAmount,
+        label: String(item.label || "").trim(),
+      } satisfies ShippingDiscountThreshold;
+    })
+    .filter((row): row is ShippingDiscountThreshold => row !== null);
+}
+
+export function validateShippingThresholds(
+  thresholds: ShippingDiscountThreshold[],
+): string | null {
+  if (thresholds.length === 0) {
+    return "Add at least one shipping credit threshold";
+  }
+
+  for (const threshold of thresholds) {
+    if (threshold.creditAmount <= 0) {
+      return "Each threshold credit must be greater than 0";
+    }
+    if (
+      threshold.minAmount != null &&
+      threshold.maxAmount != null &&
+      threshold.minAmount > threshold.maxAmount
+    ) {
+      return "Threshold minimum cannot be greater than maximum";
+    }
+  }
+
+  const sorted = [...thresholds].sort(
+    (a, b) => (a.minAmount ?? Number.NEGATIVE_INFINITY) -
+      (b.minAmount ?? Number.NEGATIVE_INFINITY),
+  );
+  for (let i = 0; i < sorted.length; i += 1) {
+    for (let j = i + 1; j < sorted.length; j += 1) {
+      const left = sorted[i];
+      const right = sorted[j];
+      const leftMax = left.maxAmount ?? Number.POSITIVE_INFINITY;
+      const rightMin = right.minAmount ?? Number.NEGATIVE_INFINITY;
+      if (leftMax >= rightMin) {
+        return "Shipping credit thresholds cannot overlap";
+      }
+    }
+  }
+
+  return null;
+}
+
+export function matchShippingThreshold(
+  invoiceTotal: number,
+  thresholds: ShippingDiscountThreshold[],
+): ShippingDiscountThreshold | null {
+  const total = roundMoney(invoiceTotal);
+  const sorted = [...thresholds].sort(
+    (a, b) =>
+      (a.minAmount ?? Number.NEGATIVE_INFINITY) -
+      (b.minAmount ?? Number.NEGATIVE_INFINITY),
+  );
+  return (
+    sorted.find((threshold) => {
+      if (threshold.minAmount != null && total < threshold.minAmount) {
+        return false;
+      }
+      if (threshold.maxAmount != null && total > threshold.maxAmount) {
+        return false;
+      }
+      return true;
+    }) || null
+  );
+}
+
+export function formatShippingThresholdSummary(
+  threshold: ShippingDiscountThreshold,
+): string {
+  const credit = `up to $${threshold.creditAmount.toFixed(2)}`;
+  const label = threshold.label || "Shipping credit";
+  if (threshold.minAmount == null && threshold.maxAmount == null) {
+    return `${label}: ${credit}`;
+  }
+  if (threshold.minAmount == null && threshold.maxAmount != null) {
+    return `$${threshold.maxAmount.toFixed(2)} or less → ${label}, ${credit}`;
+  }
+  if (threshold.minAmount != null && threshold.maxAmount == null) {
+    return `$${threshold.minAmount.toFixed(2)} and above → ${label}, ${credit}`;
+  }
+  return `$${threshold.minAmount!.toFixed(2)}–$${threshold.maxAmount!.toFixed(2)} → ${label}, ${credit}`;
+}
+
+export function parseShippingDiscountOffer(
+  value: unknown,
+): ShippingDiscountOfferSnapshot | null {
+  let parsed: unknown = value;
+  if (typeof parsed === "string") {
+    try {
+      parsed = JSON.parse(parsed);
+    } catch {
+      return null;
+    }
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return null;
+  }
+
+  const raw = parsed as {
+    name?: unknown;
+    label?: unknown;
+    creditCap?: unknown;
+    creditAmount?: unknown;
+    invoiceTotal?: unknown;
+    shippingFee?: unknown;
+    unitName?: unknown;
+  };
+  const creditAmount = roundMoney(Number(raw.creditAmount || 0));
+  if (creditAmount <= 0) return null;
+
+  return {
+    name: String(raw.name || "").trim(),
+    label: String(raw.label || "Shipping credit").trim() || "Shipping credit",
+    creditCap: roundMoney(Number(raw.creditCap || creditAmount)),
+    creditAmount,
+    invoiceTotal: roundMoney(Number(raw.invoiceTotal || 0)),
+    shippingFee: roundMoney(Number(raw.shippingFee || 0)),
+    unitName: String(raw.unitName || "").trim(),
+  };
+}
+
+export function liveTypeScopesOverlap(
+  left?: number | null,
+  right?: number | null,
+): boolean {
+  if (left == null || right == null) return true;
+  return Number(left) === Number(right);
+}
+
+export function calculateShippingDiscountOffer(input: {
+  items?: UnitDiscountItemLike[] | null;
+  invoiceDate?: string | Date | null;
+  isLayaway?: boolean;
+  shippingFee?: number | string | null;
+  invoiceTotal?: number | string | null;
+  settings?: UnitDiscountSettingSnapshot[] | null;
+}): ShippingDiscountOfferSnapshot | null {
+  if (input.isLayaway) return null;
+
+  const invoiceDate = input.invoiceDate
+    ? toBusinessDateStringFromInput(input.invoiceDate)
+    : "";
+  if (!invoiceDate) return null;
+
+  const shippingFee = roundMoney(Number(input.shippingFee || 0));
+  if (shippingFee <= 0) return null;
+
+  const invoiceTotal = roundMoney(Number(input.invoiceTotal || 0));
+  if (invoiceTotal <= 0) return null;
+
+  const itemUnits = new Set(
+    (Array.isArray(input.items) ? input.items : [])
+      .map((item) =>
+        normalizeUnitKey(String(item.unit || "grams").trim() || "grams"),
+      )
+      .filter(Boolean),
+  );
+  if (itemUnits.size === 0) return null;
+
+  const settings = (input.settings || [])
+    .map((setting) => ({
+      ...setting,
+      kind: getDiscountKind(setting),
+      unitName: String(setting.unitName || "").trim(),
+      periodStart: toBusinessDateStringFromInput(setting.periodStart || ""),
+      periodEnd: toBusinessDateStringFromInput(setting.periodEnd || ""),
+      thresholds: parseShippingThresholds(setting.thresholds),
+    }))
+    .filter(
+      (setting) =>
+        setting?.isActive !== false &&
+        setting.kind === DISCOUNT_KIND_SHIPPING_CREDIT &&
+        setting.unitName &&
+        setting.periodStart &&
+        setting.periodEnd &&
+        setting.thresholds.length > 0 &&
+        itemUnits.has(normalizeUnitKey(setting.unitName)) &&
+        isCivilDateInInclusiveRange(
+          invoiceDate,
+          setting.periodStart,
+          setting.periodEnd,
+        ),
+    );
+
+  if (settings.length === 0) return null;
+
+  let best: ShippingDiscountOfferSnapshot | null = null;
+  for (const setting of settings) {
+    const matched = matchShippingThreshold(invoiceTotal, setting.thresholds);
+    if (!matched) continue;
+    const creditAmount = roundMoney(
+      Math.min(shippingFee, matched.creditAmount),
+    );
+    if (creditAmount <= 0) continue;
+    if (!best || creditAmount > best.creditAmount) {
+      best = {
+        name: String(setting.name || "").trim(),
+        label: matched.label || "Shipping credit",
+        creditCap: matched.creditAmount,
+        creditAmount,
+        invoiceTotal,
+        shippingFee,
+        unitName: setting.unitName,
+      };
+    }
+  }
+
+  return best;
 }
 
 export function getUnitDiscountPayByDate(
@@ -165,6 +450,7 @@ export function calculateUnitDiscountOffer(input: {
     .filter(
       (setting) =>
         setting?.isActive !== false &&
+        getDiscountKind(setting) === DISCOUNT_KIND_UNIT_PERCENT &&
         Number(setting.discountPercent) > 0 &&
         setting.periodStart &&
         setting.periodEnd,

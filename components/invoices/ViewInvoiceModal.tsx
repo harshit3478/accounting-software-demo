@@ -21,9 +21,11 @@ import {
   getInvoiceAmountDue,
   getAbandonedInvoicePaymentBreakdown,
   resolveInvoiceDate,
+  getShippingDiscountLabel,
 } from "../../lib/invoice-display";
-import { getUnitDiscountDisplayState } from "../../lib/unit-discount-client";
+import { getUnitDiscountDisplayState, parseShippingDiscountOffer } from "../../lib/unit-discount-client";
 import UnitDiscountOfferNotice from "./UnitDiscountOfferNotice";
+import ShippingDiscountNotice from "./ShippingDiscountNotice";
 import {
   buildLateFeeReason,
   findOverdueLayawayInstallmentClient,
@@ -115,6 +117,8 @@ interface Invoice {
   earlyPaymentDiscount?: number;
   unitDiscountAmount?: number;
   unitDiscountOffer?: unknown;
+  shippingDiscountAmount?: number;
+  shippingDiscountOffer?: unknown;
   lateFee?: number;
   layawayFee?: number;
   waiveLayawayFee?: boolean;
@@ -921,6 +925,10 @@ export default function ViewInvoiceModal({
     invoiceDate: resolveInvoiceDate(invoice.invoiceDate, invoice.createdAt),
   });
   const unitDiscountAmount = Number(invoice.unitDiscountAmount || 0);
+  const shippingDiscountAmount = Number(invoice.shippingDiscountAmount || 0);
+  const shippingDiscountOffer = parseShippingDiscountOffer(
+    invoice.shippingDiscountOffer,
+  );
   const layawayFee = getVisibleLayawayFee(invoice);
   const depositFeeNotInTotal = getCurrentItemDepositFeeTotal(invoice.items);
   const appliedRemovedItemDepositFeeTotal =
@@ -1870,6 +1878,19 @@ export default function ViewInvoiceModal({
                   </span>
                 </div>
               )}
+              {shippingDiscountAmount > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">
+                    {getShippingDiscountLabel(invoice.shippingDiscountOffer).replace(
+                      /:$/,
+                      "",
+                    )}
+                  </span>
+                  <span className="font-medium text-sky-700">
+                    -{formatCurrency(shippingDiscountAmount)}
+                  </span>
+                </div>
+              )}
               {insuranceAmount > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Insurance:</span>
@@ -2135,6 +2156,12 @@ export default function ViewInvoiceModal({
                 <UnitDiscountOfferNotice
                   offer={unitDiscountState.offer}
                   applied
+                  className="mt-4 mb-0"
+                />
+              )}
+              {shippingDiscountOffer && shippingDiscountAmount > 0 && (
+                <ShippingDiscountNotice
+                  offer={shippingDiscountOffer}
                   className="mt-4 mb-0"
                 />
               )}

@@ -32,9 +32,12 @@ import {
   startOfBusinessDay,
 } from "../../../lib/business-date";
 import {
+  buildShippingDiscountOfferForInvoice,
   buildUnitDiscountOfferForInvoice,
   persistNormalizedUnitDiscountOffers,
+  serializeShippingDiscountOfferField,
   serializeUnitDiscountOfferField,
+  toShippingDiscountOfferJson,
   toUnitDiscountOfferJson,
 } from "../../../lib/unit-discount";
 
@@ -453,6 +456,12 @@ export async function GET(request: NextRequest) {
           invoice.unitDiscountOffer,
           invoice.invoiceDate || invoice.createdAt,
         ) ?? null,
+      shippingDiscountAmount: invoice.shippingDiscountAmount?.toNumber
+        ? invoice.shippingDiscountAmount.toNumber()
+        : (invoice.shippingDiscountAmount ?? 0),
+      shippingDiscountOffer:
+        serializeShippingDiscountOfferField(invoice.shippingDiscountOffer) ??
+        null,
       amount: invoice.amount?.toNumber
         ? invoice.amount.toNumber()
         : invoice.amount,
@@ -801,6 +810,16 @@ export async function POST(request: NextRequest) {
       invoiceDate: invoiceDateValue,
       isLayaway: isLayaway || false,
     });
+    const shippingDiscountOffer = await buildShippingDiscountOfferForInvoice({
+      items: normalizedItems,
+      invoiceDate: invoiceDateValue,
+      isLayaway: isLayaway || false,
+      shippingFee: shippingFeeAmount,
+      invoiceTotal: totalAmount,
+    });
+    const shippingDiscountAmount = Number(
+      shippingDiscountOffer?.creditAmount || 0,
+    );
     const invoice = await (prisma as any).invoice.create({
       data: {
         userId: user.id,
@@ -813,7 +832,7 @@ export async function POST(request: NextRequest) {
         shippingFee: parseFloat(shippingFeeAmount),
         insuranceAmount: insuranceFeeAmount,
         layawayFee: layawayFeeAmount,
-        amount: totalAmount,
+        amount: Number((totalAmount - shippingDiscountAmount).toFixed(2)),
         paidAmount: 0,
         invoiceDate: invoiceDateValue,
         dueDate: dueDateValue,
@@ -832,6 +851,10 @@ export async function POST(request: NextRequest) {
         shippingFeeRuleId: shippingFeeRuleId || null,
         unitDiscountAmount: 0,
         unitDiscountOffer: toUnitDiscountOfferJson(unitDiscountOffer),
+        shippingDiscountAmount,
+        shippingDiscountOffer: toShippingDiscountOfferJson(
+          shippingDiscountOffer,
+        ),
       },
     });
 
@@ -957,6 +980,12 @@ export async function POST(request: NextRequest) {
           invAny.unitDiscountOffer,
           invAny.invoiceDate || invAny.createdAt,
         ) ?? null,
+      shippingDiscountAmount: invAny.shippingDiscountAmount?.toNumber
+        ? invAny.shippingDiscountAmount.toNumber()
+        : (invAny.shippingDiscountAmount ?? 0),
+      shippingDiscountOffer:
+        serializeShippingDiscountOfferField(invAny.shippingDiscountOffer) ??
+        null,
       insuranceBaseAmount:
         normalizedInsuranceBaseAmount ??
         (invAny.insuranceBaseAmount?.toNumber

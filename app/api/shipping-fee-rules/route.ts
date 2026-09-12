@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    await requireSettingPermission("shipping-fee-rules");
+    const user = await requireSettingPermission("shipping-fee-rules");
 
     const { name, minAmount, maxAmount, fee, isActive, sortOrder } =
       await request.json();

@@ -5,33 +5,53 @@ import {
 } from "./business-date";
 import { creditEarlyDiscountOverpaymentAsStoreCredit } from "./early-payment-discount";
 import {
+  calculateShippingDiscountOffer,
   calculateUnitDiscountOffer,
   getUnitDiscountPayByDate,
   normalizeUnitDiscountOfferJson,
+  parseShippingDiscountOffer,
+  parseShippingThresholds,
   parseUnitDiscountOffer,
   roundMoney,
+  type ShippingDiscountOfferSnapshot,
   type UnitDiscountItemLike,
   type UnitDiscountOfferSnapshot,
   type UnitDiscountSettingSnapshot,
 } from "./unit-discount-shared";
 
 export type {
+  DiscountKind,
+  ShippingDiscountOfferSnapshot,
+  ShippingDiscountThreshold,
   UnitDiscountBreakdownLine,
   UnitDiscountOfferSnapshot,
   UnitDiscountSettingSnapshot,
 } from "./unit-discount-shared";
 
 export {
+  calculateShippingDiscountOffer,
   calculateUnitDiscountOffer,
+  DISCOUNT_KIND_SHIPPING_CREDIT,
+  DISCOUNT_KIND_UNIT_PERCENT,
+  formatShippingThresholdSummary,
+  getDiscountKind,
   getUnitDiscountDisplayState,
+  liveTypeScopesOverlap,
+  parseShippingDiscountOffer,
+  parseShippingThresholds,
   parseUnitDiscountOffer,
   normalizeUnitDiscountOfferJson,
   roundMoney,
+  validateShippingThresholds,
 } from "./unit-discount-shared";
 
 function serializeSetting(row: any): UnitDiscountSettingSnapshot {
+  const liveType = row.liveType || null;
   return {
     id: Number(row.id),
+    kind:
+      row.kind === "shipping_credit" ? "shipping_credit" : "unit_percent",
+    name: String(row.name || ""),
     unitName: String(row.unitName || ""),
     discountPercent: Number(
       row.discountPercent?.toNumber?.() ?? row.discountPercent ?? 0,
@@ -39,6 +59,10 @@ function serializeSetting(row: any): UnitDiscountSettingSnapshot {
     periodStart: toBusinessDateStringFromInput(row.periodStart),
     periodEnd: toBusinessDateStringFromInput(row.periodEnd),
     isActive: !!row.isActive,
+    liveTypeId: row.liveTypeId == null ? null : Number(row.liveTypeId),
+    liveTypeName: liveType?.name ? String(liveType.name) : null,
+    liveTypeCountry: liveType?.country ? String(liveType.country) : null,
+    thresholds: parseShippingThresholds(row.thresholds),
   };
 }
 
@@ -50,8 +74,18 @@ export async function getUnitDiscountSettings(options?: {
 
   const rows = await model.findMany({
     where: options?.activeOnly ? { isActive: true } : undefined,
+    include: {
+      liveType: {
+        select: { id: true, name: true, country: true },
+      },
+    },
     orderBy: [{ periodStart: "desc" }, { unitName: "asc" }, { id: "desc" }],
-  });
+  }).catch(async () =>
+    model.findMany({
+      where: options?.activeOnly ? { isActive: true } : undefined,
+      orderBy: [{ periodStart: "desc" }, { unitName: "asc" }, { id: "desc" }],
+    }),
+  );
 
   return Array.isArray(rows) ? rows.map(serializeSetting) : [];
 }
@@ -66,6 +100,24 @@ export async function buildUnitDiscountOfferForInvoice(input: {
     items: input.items,
     invoiceDate: input.invoiceDate,
     isLayaway: input.isLayaway,
+    settings,
+  });
+}
+
+export async function buildShippingDiscountOfferForInvoice(input: {
+  items?: UnitDiscountItemLike[] | null;
+  invoiceDate?: string | Date | null;
+  isLayaway?: boolean;
+  shippingFee?: number | string | null;
+  invoiceTotal?: number | string | null;
+}): Promise<ShippingDiscountOfferSnapshot | null> {
+  const settings = await getUnitDiscountSettings({ activeOnly: true });
+  return calculateShippingDiscountOffer({
+    items: input.items,
+    invoiceDate: input.invoiceDate,
+    isLayaway: input.isLayaway,
+    shippingFee: input.shippingFee,
+    invoiceTotal: input.invoiceTotal,
     settings,
   });
 }
@@ -181,11 +233,24 @@ export function toUnitDiscountOfferJson(
   return JSON.parse(JSON.stringify(offer)) as unknown as Prisma.InputJsonValue;
 }
 
+export function toShippingDiscountOfferJson(
+  offer: ShippingDiscountOfferSnapshot | null,
+): Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput {
+  if (!offer) return Prisma.JsonNull;
+  return JSON.parse(JSON.stringify(offer)) as unknown as Prisma.InputJsonValue;
+}
+
 export function serializeUnitDiscountOfferField(
   offerValue: unknown,
   invoiceDate?: string | Date | null,
 ): UnitDiscountOfferSnapshot | null {
   return normalizeUnitDiscountOfferJson(offerValue, invoiceDate);
+}
+
+export function serializeShippingDiscountOfferField(
+  offerValue: unknown,
+): ShippingDiscountOfferSnapshot | null {
+  return parseShippingDiscountOffer(offerValue);
 }
 
 export async function persistNormalizedUnitDiscountOffers(

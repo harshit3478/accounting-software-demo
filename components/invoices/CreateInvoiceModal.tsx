@@ -30,6 +30,7 @@ import {
   isFutureBusinessDate,
 } from "../../lib/business-date";
 import {
+  calculateShippingDiscountOffer,
   calculateUnitDiscountOffer,
   getUnitDiscountInvoiceDateChangeNotice,
   type UnitDiscountDateChangeNotice,
@@ -455,7 +456,7 @@ export default function CreateInvoiceModal({
     );
   };
 
-  const calculateTotal = () => {
+  const calculateTotalBeforeShippingDiscount = () => {
     return (
       calculateSubtotal() +
       calculateTaxAmount() -
@@ -463,6 +464,43 @@ export default function CreateInvoiceModal({
       shippingFee +
       insuranceAmount +
       calculateLayawayFeeAmount()
+    );
+  };
+
+  const shippingDiscountOffer = useMemo(
+    () =>
+      calculateShippingDiscountOffer({
+        items,
+        invoiceDate,
+        isLayaway,
+        shippingFee,
+        invoiceTotal: calculateTotalBeforeShippingDiscount(),
+        settings: unitDiscountSettings,
+      }),
+    [
+      items,
+      invoiceDate,
+      isLayaway,
+      shippingFee,
+      insuranceAmount,
+      tax,
+      taxType,
+      discount,
+      discountType,
+      unitDiscountSettings,
+      waiveLayawayFee,
+      layawayMonths,
+      layawayFeeRates,
+      layawayBasisUnit,
+    ],
+  );
+
+  const calculateTotal = () => {
+    return Number(
+      (
+        calculateTotalBeforeShippingDiscount() -
+        (shippingDiscountOffer?.creditAmount || 0)
+      ).toFixed(2),
     );
   };
 
@@ -1849,6 +1887,7 @@ export default function CreateInvoiceModal({
                 layawayFee={calculateLayawayFeeAmount()}
                 total={calculateTotal()}
                 unitDiscountOffer={unitDiscountOffer}
+                shippingDiscountOffer={shippingDiscountOffer}
               />
             </div>
           </div>
@@ -1881,6 +1920,7 @@ export default function CreateInvoiceModal({
         total={calculateTotal()}
         isLayaway={isLayaway}
         unitDiscountOffer={unitDiscountOffer}
+        shippingDiscountOffer={shippingDiscountOffer}
         isSubmitting={isCreating}
         useDefaultTerms={false}
         availableStoreCredit={

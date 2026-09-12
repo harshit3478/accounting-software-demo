@@ -37,8 +37,11 @@ import { uploadToR2 } from "../../../../lib/r2-client";
 import { allocatePaymentAmounts } from "../../../../lib/allocate-payment-amounts";
 import { resolveAppliedRemovedItemDepositFeeAmount } from "../../../../lib/invoice-display";
 import {
+  buildShippingDiscountOfferForInvoice,
   buildUnitDiscountOfferForInvoice,
+  serializeShippingDiscountOfferField,
   serializeUnitDiscountOfferField,
+  toShippingDiscountOfferJson,
   toUnitDiscountOfferJson,
 } from "../../../../lib/unit-discount";
 
@@ -570,6 +573,17 @@ export async function PUT(
       }
     }
 
+    const shippingDiscountOffer = await buildShippingDiscountOfferForInvoice({
+      items: normalizedItems,
+      invoiceDate: invoiceDateValue,
+      isLayaway: isLayaway || false,
+      shippingFee: shippingFeeAmount,
+      invoiceTotal: totalAmount,
+    });
+    const shippingDiscountAmount = Number(
+      shippingDiscountOffer?.creditAmount || 0,
+    );
+
     const nextData = {
       clientName: normalizedClientName,
       items: normalizedItems as any,
@@ -579,7 +593,7 @@ export async function PUT(
       shippingFee: shippingFeeAmount,
       insuranceAmount: insuranceFeeAmount,
       layawayFee: layawayFeeAmount,
-      amount: totalAmount,
+      amount: Number((totalAmount - shippingDiscountAmount).toFixed(2)),
       invoiceDate: invoiceDateValue,
       dueDate: dueDateValue,
       dueDateReason: requiresDueDateReason ? normalizedDueDateReason : null,
@@ -600,6 +614,10 @@ export async function PUT(
           invoiceDate: invoiceDateValue,
           isLayaway: isLayaway || false,
         }),
+      ),
+      shippingDiscountAmount,
+      shippingDiscountOffer: toShippingDiscountOfferJson(
+        shippingDiscountOffer,
       ),
     };
 
@@ -631,6 +649,15 @@ export async function PUT(
       "shippingFee",
       existingInvoice.shippingFee.toNumber(),
       nextData.shippingFee,
+    );
+    trackChange(
+      "shippingDiscountAmount",
+      Number(
+        existingInvoiceAny.shippingDiscountAmount?.toNumber?.() ??
+          existingInvoiceAny.shippingDiscountAmount ??
+          0,
+      ),
+      nextData.shippingDiscountAmount,
     );
     trackChange(
       "insuranceAmount",
@@ -943,6 +970,15 @@ export async function PUT(
         serializeUnitDiscountOfferField(
           (invoice as any).unitDiscountOffer,
           invoice.invoiceDate || invoice.createdAt,
+        ) ?? null,
+      shippingDiscountAmount: Number(
+        (invoice as any).shippingDiscountAmount?.toNumber?.() ??
+          (invoice as any).shippingDiscountAmount ??
+          0,
+      ),
+      shippingDiscountOffer:
+        serializeShippingDiscountOfferField(
+          (invoice as any).shippingDiscountOffer,
         ) ?? null,
       amount: invoice.amount.toNumber(),
       paidAmount: invoice.paidAmount.toNumber(),

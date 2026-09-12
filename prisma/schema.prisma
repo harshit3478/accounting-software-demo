@@ -127,6 +127,8 @@ model Invoice {
   earlyPaymentDiscount Decimal @default(0) @db.Decimal(10, 2)
   unitDiscountAmount   Decimal @default(0) @db.Decimal(10, 2)
   unitDiscountOffer    Json?
+  shippingDiscountAmount Decimal @default(0) @db.Decimal(10, 2)
+  shippingDiscountOffer  Json?
   insuranceBaseAmount Decimal? @db.Decimal(10, 2)
   amount              Decimal  @db.Decimal(10, 2) // Total amount
   paidAmount          Decimal  @default(0) @db.Decimal(10, 2) // Track partial payments
@@ -187,6 +189,7 @@ model LiveType {
 
   creator  User      @relation(fields: [createdBy], references: [id], onDelete: Cascade)
   invoices Invoice[]
+  unitDiscountSettings UnitDiscountSetting[]
 
   @@index([isActive, sortOrder])
   @@map("live_types")
@@ -564,19 +567,25 @@ model EarlyPaymentDiscountSetting {
 
 model UnitDiscountSetting {
   id              Int      @id @default(autoincrement())
-  unitName        String
-  discountPercent Decimal  @db.Decimal(10, 2)
+  kind            String   @default("unit_percent") // "unit_percent" | "shipping_credit"
+  name            String   @default("")
+  unitName        String   @default("")
+  discountPercent Decimal  @default(0) @db.Decimal(10, 2)
   periodStart     DateTime
   periodEnd       DateTime
   isActive        Boolean  @default(true)
+  liveTypeId      Int?
+  thresholds      Json? // [{ minAmount, maxAmount, creditAmount, label }]
   createdBy       Int
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  creator User @relation(fields: [createdBy], references: [id], onDelete: Restrict)
+  creator  User      @relation(fields: [createdBy], references: [id], onDelete: Restrict)
+  liveType LiveType? @relation(fields: [liveTypeId], references: [id], onDelete: SetNull)
 
   @@index([unitName, isActive])
   @@index([isActive, periodStart, periodEnd])
+  @@index([kind, isActive])
   @@map("unit_discount_settings")
 }
 

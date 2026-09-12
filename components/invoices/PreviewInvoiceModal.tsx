@@ -5,6 +5,8 @@ import { InvoiceItem } from "./types";
 import { useEffect, useState } from "react";
 import { formatBusinessDate } from "../../lib/business-date";
 import UnitDiscountOfferNotice from "./UnitDiscountOfferNotice";
+import ShippingDiscountNotice from "./ShippingDiscountNotice";
+import type { ShippingDiscountOfferSnapshot } from "../../lib/unit-discount-client";
 
 interface PreviewInvoiceModalProps {
   isOpen: boolean;
@@ -42,6 +44,7 @@ interface PreviewInvoiceModalProps {
       discountAmount: number;
     }>;
   } | null;
+  shippingDiscountOffer?: ShippingDiscountOfferSnapshot | null;
 }
 
 export default function PreviewInvoiceModal({
@@ -71,6 +74,7 @@ export default function PreviewInvoiceModal({
   applyStoreCredit = false,
   onApplyStoreCreditChange,
   unitDiscountOffer = null,
+  shippingDiscountOffer = null,
 }: PreviewInvoiceModalProps) {
   const [defaultTerms, setDefaultTerms] = useState<string[] | null>(null);
 
@@ -296,6 +300,16 @@ export default function PreviewInvoiceModal({
               ${shippingFee.toFixed(2)}
             </span>
           </div>
+          {shippingDiscountOffer && shippingDiscountOffer.creditAmount > 0 && (
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-600">
+                {shippingDiscountOffer.label || "Shipping Promo"}:
+              </span>
+              <span className="font-medium text-sky-700">
+                -${shippingDiscountOffer.creditAmount.toFixed(2)}
+              </span>
+            </div>
+          )}
           <div className="flex justify-between text-sm">
             <span className="text-gray-600">Insurance:</span>
             <span className="font-medium text-gray-900">
@@ -327,6 +341,12 @@ export default function PreviewInvoiceModal({
           {unitDiscountOffer && unitDiscountOffer.totalDiscount > 0 && (
             <UnitDiscountOfferNotice
               offer={unitDiscountOffer}
+              className="mt-3 mb-0"
+            />
+          )}
+          {shippingDiscountOffer && shippingDiscountOffer.creditAmount > 0 && (
+            <ShippingDiscountNotice
+              offer={shippingDiscountOffer}
               className="mt-3 mb-0"
             />
           )}

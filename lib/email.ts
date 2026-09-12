@@ -334,6 +334,8 @@ export async function sendInvoiceEmail(invoice: {
   }> | null;
   unitDiscountAmount?: number;
   unitDiscountOffer?: unknown;
+  shippingDiscountAmount?: number;
+  shippingDiscountOffer?: unknown;
 }) {
   const {
     name: businessName,

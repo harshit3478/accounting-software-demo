@@ -81,7 +81,7 @@ const ADMIN_TABS = [
 
 const UNIT_DISCOUNT_TAB = {
   id: "unit-discount",
-  label: "Unit Discount",
+  label: "Discounts & Promos",
   icon: Percent,
 } as const;
 
