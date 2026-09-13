@@ -304,7 +304,6 @@ export async function POST(request: NextRequest) {
             invoiceDate: new Date(),
             isLayaway,
             shippingFee,
-            invoiceTotal: grossAmount,
           },
         );
         const shippingDiscountAmount = Number(

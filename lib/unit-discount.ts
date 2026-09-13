@@ -109,7 +109,6 @@ export async function buildShippingDiscountOfferForInvoice(input: {
   invoiceDate?: string | Date | null;
   isLayaway?: boolean;
   shippingFee?: number | string | null;
-  invoiceTotal?: number | string | null;
 }): Promise<ShippingDiscountOfferSnapshot | null> {
   const settings = await getUnitDiscountSettings({ activeOnly: true });
   return calculateShippingDiscountOffer({
@@ -117,7 +116,6 @@ export async function buildShippingDiscountOfferForInvoice(input: {
     invoiceDate: input.invoiceDate,
     isLayaway: input.isLayaway,
     shippingFee: input.shippingFee,
-    invoiceTotal: input.invoiceTotal,
     settings,
   });
 }

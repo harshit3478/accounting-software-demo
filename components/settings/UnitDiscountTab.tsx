@@ -397,12 +397,12 @@ export default function UnitDiscountTab({
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-900">
-                    Invoice total thresholds
+                    Item total thresholds
                   </p>
                   <p className="text-xs text-gray-500">
-                    The system checks the invoice total before this credit,
-                    then applies the matching shipping credit, capped at the
-                    shipping fee.
+                    Thresholds use the item total for the selected unit only.
+                    Shipping, insurance, tax, and other fees are not included.
+                    If two items share that unit, both are added together.
                   </p>
                 </div>
                 <button
@@ -434,7 +434,7 @@ export default function UnitDiscountTab({
                 >
                   <div className="md:col-span-2">
                     <label className="block text-xs text-gray-600 mb-1">
-                      Min total ($)
+                      Min item total ($)
                     </label>
                     <input
                       type="number"
@@ -450,7 +450,7 @@ export default function UnitDiscountTab({
                   </div>
                   <div className="md:col-span-2">
                     <label className="block text-xs text-gray-600 mb-1">
-                      Max total ($)
+                      Max item total ($)
                     </label>
                     <input
                       type="number"

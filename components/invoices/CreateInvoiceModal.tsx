@@ -474,7 +474,6 @@ export default function CreateInvoiceModal({
         invoiceDate,
         isLayaway,
         shippingFee,
-        invoiceTotal: calculateTotalBeforeShippingDiscount(),
         settings: unitDiscountSettings,
       }),
     [

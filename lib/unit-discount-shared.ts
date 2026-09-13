@@ -249,12 +249,32 @@ export function liveTypeScopesOverlap(
   return Number(left) === Number(right);
 }
 
+function getItemAmountsByUnit(
+  items?: UnitDiscountItemLike[] | null,
+): Map<string, { unitName: string; amount: number }> {
+  const amountsByUnit = new Map<string, { unitName: string; amount: number }>();
+  for (const item of Array.isArray(items) ? items : []) {
+    const unitName = String(item.unit || "grams").trim() || "grams";
+    const lineAmount = roundMoney(
+      Number(item.quantity || 0) * Number(item.price || 0),
+    );
+    if (lineAmount <= 0) continue;
+    const key = normalizeUnitKey(unitName);
+    const existing = amountsByUnit.get(key);
+    if (existing) {
+      existing.amount = roundMoney(existing.amount + lineAmount);
+    } else {
+      amountsByUnit.set(key, { unitName, amount: lineAmount });
+    }
+  }
+  return amountsByUnit;
+}
+
 export function calculateShippingDiscountOffer(input: {
   items?: UnitDiscountItemLike[] | null;
   invoiceDate?: string | Date | null;
   isLayaway?: boolean;
   shippingFee?: number | string | null;
-  invoiceTotal?: number | string | null;
   settings?: UnitDiscountSettingSnapshot[] | null;
 }): ShippingDiscountOfferSnapshot | null {
   if (input.isLayaway) return null;
@@ -267,17 +287,8 @@ export function calculateShippingDiscountOffer(input: {
   const shippingFee = roundMoney(Number(input.shippingFee || 0));
   if (shippingFee <= 0) return null;
 
-  const invoiceTotal = roundMoney(Number(input.invoiceTotal || 0));
-  if (invoiceTotal <= 0) return null;
-
-  const itemUnits = new Set(
-    (Array.isArray(input.items) ? input.items : [])
-      .map((item) =>
-        normalizeUnitKey(String(item.unit || "grams").trim() || "grams"),
-      )
-      .filter(Boolean),
-  );
-  if (itemUnits.size === 0) return null;
+  const amountsByUnit = getItemAmountsByUnit(input.items);
+  if (amountsByUnit.size === 0) return null;
 
   const settings = (input.settings || [])
     .map((setting) => ({
@@ -296,7 +307,7 @@ export function calculateShippingDiscountOffer(input: {
         setting.periodStart &&
         setting.periodEnd &&
         setting.thresholds.length > 0 &&
-        itemUnits.has(normalizeUnitKey(setting.unitName)) &&
+        amountsByUnit.has(normalizeUnitKey(setting.unitName)) &&
         isCivilDateInInclusiveRange(
           invoiceDate,
           setting.periodStart,
@@ -308,7 +319,10 @@ export function calculateShippingDiscountOffer(input: {
 
   let best: ShippingDiscountOfferSnapshot | null = null;
   for (const setting of settings) {
-    const matched = matchShippingThreshold(invoiceTotal, setting.thresholds);
+    const unitAmount = amountsByUnit.get(normalizeUnitKey(setting.unitName));
+    const itemTotal = unitAmount?.amount ?? 0;
+    if (itemTotal <= 0) continue;
+    const matched = matchShippingThreshold(itemTotal, setting.thresholds);
     if (!matched) continue;
     const creditAmount = roundMoney(
       Math.min(shippingFee, matched.creditAmount),
@@ -320,7 +334,7 @@ export function calculateShippingDiscountOffer(input: {
         label: matched.label || "Shipping credit",
         creditCap: matched.creditAmount,
         creditAmount,
-        invoiceTotal,
+        invoiceTotal: itemTotal,
         shippingFee,
         unitName: setting.unitName,
       };

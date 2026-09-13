@@ -35,8 +35,8 @@ export default function ShippingDiscountNotice({
       <p className="text-sm font-semibold text-sky-900">{title}</p>
       <p className="mt-1 text-xs text-sky-800">
         {parsed.label}: credit capped at {formatCurrency(parsed.creditCap)}{" "}
-        based on invoice total {formatCurrency(parsed.invoiceTotal)}. Actual
-        credit is {formatCurrency(parsed.creditAmount)} of{" "}
+        based on promo unit item total {formatCurrency(parsed.invoiceTotal)}.
+        Actual credit is {formatCurrency(parsed.creditAmount)} of{" "}
         {formatCurrency(parsed.shippingFee)} shipping.
       </p>
       <p className="mt-1 text-xs text-sky-700">

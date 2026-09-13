@@ -815,7 +815,6 @@ export async function POST(request: NextRequest) {
       invoiceDate: invoiceDateValue,
       isLayaway: isLayaway || false,
       shippingFee: shippingFeeAmount,
-      invoiceTotal: totalAmount,
     });
     const shippingDiscountAmount = Number(
       shippingDiscountOffer?.creditAmount || 0,
