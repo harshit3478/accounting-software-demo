@@ -42,13 +42,20 @@ export async function POST(request: NextRequest) {
     }
 
     const token = signMagicLoginToken(user);
-    const origin = getMagicLoginOrigin(request.nextUrl.origin);
+    const forwardedHost = request.headers.get("x-forwarded-host");
+    const forwardedProto = request.headers.get("x-forwarded-proto");
+    const requestOrigin =
+      forwardedHost && forwardedProto
+        ? `${forwardedProto.split(",")[0].trim()}://${forwardedHost.split(",")[0].trim()}`
+        : request.nextUrl.origin;
+    const origin = getMagicLoginOrigin(requestOrigin);
     const loginUrl = buildMagicLoginUrl(origin, token);
     const expiresAt = new Date(
       Date.now() + MAGIC_LOGIN_EXPIRES_DAYS * 24 * 60 * 60 * 1000,
     ).toISOString();
 
     return NextResponse.json({
+      token,
       loginUrl,
       expiresAt,
       expiresInDays: MAGIC_LOGIN_EXPIRES_DAYS,

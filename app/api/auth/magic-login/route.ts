@@ -32,9 +32,15 @@ export async function POST(request: NextRequest) {
       where: { id: payload.userId },
     });
 
+    if (!user || user.isDeleted) {
+      return NextResponse.json(
+        { error: "This login link is no longer valid." },
+        { status: 401 },
+      );
+    }
+
     if (
-      !user ||
-      user.isDeleted ||
+      payload.email &&
       user.email.toLowerCase() !== payload.email.toLowerCase()
     ) {
       return NextResponse.json(

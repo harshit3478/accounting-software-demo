@@ -244,10 +244,14 @@ export default function UserManagementTab({
         throw new Error(data.error || "Failed to create login link");
       }
 
+      const token = typeof data.token === "string" ? data.token : "";
+      const url = token
+        ? `${window.location.origin}/login?token=${encodeURIComponent(token)}`
+        : (data.loginUrl as string);
       const modal = {
         name: formatUserDisplayName(user),
         email: user.email,
-        url: data.loginUrl as string,
+        url,
         expiresInDays: Number(data.expiresInDays) || 7,
       };
       setLoginLinkModal(modal);
@@ -1032,8 +1036,9 @@ export default function UserManagementTab({
                 OTP.
               </p>
               <p className="text-xs text-gray-500">
-                The link expires in {loginLinkModal.expiresInDays} days. Do not
-                open it yourself — send it to this user.
+                The link expires in {loginLinkModal.expiresInDays} days. Copy
+                the full URL and send it to this user. Do not open it in this
+                browser.
               </p>
               <div className="flex gap-2">
                 <input
