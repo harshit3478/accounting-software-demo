@@ -44,6 +44,11 @@ export function middleware(request: NextRequest) {
     path === "/forgot-password" ||
     path.startsWith("/reset-password")
   ) {
+    // Shared login links must be able to replace an existing/stale session.
+    if (path === "/login" && request.nextUrl.searchParams.get("token")) {
+      return NextResponse.next();
+    }
+
     // If already logged in, redirect to home
     if (token) {
       try {

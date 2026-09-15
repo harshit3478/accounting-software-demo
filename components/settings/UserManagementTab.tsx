@@ -5,7 +5,7 @@ import Link from "next/link";
 import ConfirmModal from "../ConfirmModal";
 import SensitiveActionOtpModal from "../SensitiveActionOtpModal";
 import Pagination from "../Pagination";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, Copy, Link2 } from "lucide-react";
 import { formatUserDisplayName } from "../../lib/user-display";
 import { useAuth } from "../../lib/AuthContext";
 import { formatBusinessDate } from "../../lib/business-date";
@@ -64,6 +64,14 @@ export default function UserManagementTab({
     action: (otp: string) => Promise<void>;
   } | null>(null);
   const [otpLoading, setOtpLoading] = useState(false);
+  const [generatingLinkId, setGeneratingLinkId] = useState<number | null>(null);
+  const [loginLinkModal, setLoginLinkModal] = useState<{
+    name: string;
+    email: string;
+    url: string;
+    expiresInDays: number;
+  } | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
   const [emailFilterInput, setEmailFilterInput] = useState("");
   const [emailFilter, setEmailFilter] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
@@ -210,6 +218,47 @@ export default function UserManagementTab({
         }
       },
     );
+  };
+
+  const copyLoginLink = async (url: string) => {
+    try {
+      await navigator.clipboard.writeText(url);
+      setLinkCopied(true);
+      showSuccess("Login link copied. Share it with this user.");
+    } catch {
+      showError("Could not copy automatically. Select the link and copy it.");
+    }
+  };
+
+  const handleGenerateLoginLink = async (user: User) => {
+    setGeneratingLinkId(user.id);
+    setLinkCopied(false);
+    try {
+      const res = await fetch("/api/auth/magic-login/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to create login link");
+      }
+
+      const modal = {
+        name: formatUserDisplayName(user),
+        email: user.email,
+        url: data.loginUrl as string,
+        expiresInDays: Number(data.expiresInDays) || 7,
+      };
+      setLoginLinkModal(modal);
+      await copyLoginLink(modal.url);
+    } catch (err) {
+      showError(
+        err instanceof Error ? err.message : "Failed to create login link",
+      );
+    } finally {
+      setGeneratingLinkId(null);
+    }
   };
 
   const confirmDelete = async () => {
@@ -643,6 +692,18 @@ export default function UserManagementTab({
                           >
                             Attendance
                           </Link>
+                          {isSuperAdmin && (
+                            <button
+                              type="button"
+                              onClick={() => handleGenerateLoginLink(user)}
+                              disabled={generatingLinkId !== null}
+                              className="px-2.5 py-1 bg-emerald-600 text-white text-xs font-medium rounded hover:bg-emerald-700 transition duration-200 disabled:opacity-50"
+                            >
+                              {generatingLinkId === user.id
+                                ? "Creating..."
+                                : "Login link"}
+                            </button>
+                          )}
                           <button
                             onClick={() =>
                               setDeleteConfirm({ id: user.id, name: user.name })
@@ -937,6 +998,68 @@ export default function UserManagementTab({
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {loginLinkModal && (
+        <div className="fixed inset-0 flex items-center justify-center z-50 backdrop-blur-sm">
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setLoginLinkModal(null)}
+          />
+          <div className="relative bg-white rounded-lg shadow-xl max-w-lg w-full mx-4">
+            <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Link2 className="h-5 w-5 text-emerald-600" />
+                <h2 className="text-lg font-semibold text-gray-800">
+                  Login link
+                </h2>
+              </div>
+              <button
+                onClick={() => setLoginLinkModal(null)}
+                className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
+              >
+                &times;
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-gray-700">
+                Share this link with{" "}
+                <span className="font-medium">{loginLinkModal.name}</span> (
+                {loginLinkModal.email}). They can open it and sign in without
+                OTP.
+              </p>
+              <p className="text-xs text-gray-500">
+                The link expires in {loginLinkModal.expiresInDays} days. Do not
+                open it yourself — send it to this user.
+              </p>
+              <div className="flex gap-2">
+                <input
+                  readOnly
+                  value={loginLinkModal.url}
+                  onFocus={(e) => e.target.select()}
+                  className="flex-1 px-3 py-2 text-xs border border-gray-300 rounded-md bg-gray-50 text-gray-800"
+                />
+                <button
+                  type="button"
+                  onClick={() => copyLoginLink(loginLinkModal.url)}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-600 text-white text-sm font-medium rounded-md hover:bg-emerald-700"
+                >
+                  <Copy className="h-4 w-4" />
+                  {linkCopied ? "Copied" : "Copy"}
+                </button>
+              </div>
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setLoginLinkModal(null)}
+                  className="bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium px-5 py-2 rounded-lg"
+                >
+                  Done
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -1,8 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { syncAuthCookie } from "@/lib/auth-session";
 
 export default function LoginPage() {
@@ -11,8 +9,50 @@ export default function LoginPage() {
   const [otp, setOtp] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [magicLoginPending, setMagicLoginPending] = useState(false);
 
-  // To handle retry timer or similar if needed, but keeping it simple for now
+  useEffect(() => {
+    const token = new URLSearchParams(window.location.search).get("token");
+    if (!token) return;
+
+    let cancelled = false;
+    setMagicLoginPending(true);
+    setError("");
+
+    void fetch("/api/auth/magic-login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token }),
+    })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (cancelled) return;
+
+        if (!res.ok || !data.token) {
+          throw new Error(
+            data.error ||
+              "This login link is invalid. Ask the superadmin for a new one.",
+          );
+        }
+
+        localStorage.setItem("token", data.token);
+        syncAuthCookie(data.token);
+        window.location.replace("/");
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setError(
+          err instanceof Error
+            ? err.message
+            : "This login link is invalid. Ask the superadmin for a new one.",
+        );
+        setMagicLoginPending(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -79,13 +119,24 @@ export default function LoginPage() {
             Sign in to FinanceFlow
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
-            {step === "email"
-              ? "Enter your email to receive a login code"
-              : `Code sent to ${email}`}
+            {magicLoginPending
+              ? "Signing you in from your login link..."
+              : step === "email"
+                ? "Enter your email to receive a login code"
+                : `Code sent to ${email}`}
           </p>
         </div>
 
-        {step === "email" ? (
+        {magicLoginPending ? (
+          <div className="mt-8 space-y-4">
+            {error && (
+              <div className="text-red-500 text-sm text-center">{error}</div>
+            )}
+            <div className="text-center text-sm text-gray-500">
+              Please wait...
+            </div>
+          </div>
+        ) : step === "email" ? (
           <form className="mt-8 space-y-6" onSubmit={handleSendOtp}>
             <div>
               <label htmlFor="email" className="sr-only">
