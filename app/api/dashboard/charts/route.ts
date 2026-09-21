@@ -241,7 +241,10 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error: any) {
-    console.error("Chart data error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const status = error.message === "Unauthorized" ? 401 : 500;
+    if (status !== 401) {
+      console.error("Chart data error:", error);
+    }
+    return NextResponse.json({ error: error.message }, { status });
   }
 }

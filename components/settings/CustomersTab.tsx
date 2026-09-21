@@ -1,16 +1,17 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { formatBusinessDate } from "../../lib/business-date";
 import {
-  Plus,
-  Search,
-  Eye,
-  Edit2,
-  Trash2,
+  Banknote,
   Download,
+  Edit2,
+  Eye,
+  Plus,
   Receipt,
+  Search,
+  Trash2,
 } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { formatBusinessDate } from "../../lib/business-date";
 import ConfirmModal from "../ConfirmModal";
 
 interface CustomerStats {
@@ -65,9 +66,11 @@ interface CustomerFull extends CustomerDetail {
     isAbandonReversal?: boolean;
   }[];
   refundHistory?: {
-    id: number;
-    invoiceId: number;
+    id: number | string;
+    invoiceId: number | null;
     invoiceNumber: string;
+    amount?: number | null;
+    paymentCode?: string | null;
     reason: string;
     proofUrl: string;
     proofFileName: string | null;
@@ -170,6 +173,18 @@ export default function CustomersTab({
   >(null);
   const [processingFeeAmount, setProcessingFeeAmount] = useState(0);
   const [processingFeeSubmitting, setProcessingFeeSubmitting] = useState(false);
+
+  const [showRefundModal, setShowRefundModal] = useState(false);
+  const [refundAmount, setRefundAmount] = useState("");
+  const [refundReason, setRefundReason] = useState("");
+  const [refundProof, setRefundProof] = useState<{
+    dataUrl: string;
+    fileName: string;
+    mimeType: string;
+  } | null>(null);
+  const [refundCreditTxId, setRefundCreditTxId] = useState<number | null>(null);
+  const [refundMaxAmount, setRefundMaxAmount] = useState(0);
+  const [refundSubmitting, setRefundSubmitting] = useState(false);
 
   const fetchCustomers = useCallback(async () => {
     setLoading(true);
@@ -315,6 +330,114 @@ export default function CustomersTab({
       }
     } finally {
       setProcessingFeeSubmitting(false);
+    }
+  };
+
+  const openRefundModal = (options?: {
+    creditTransactionId?: number;
+    maxAmount?: number;
+  }) => {
+    if (!viewingCustomer) return;
+    const available = Number(viewingCustomer.storeCredit || 0);
+    const maxAmount = Math.min(
+      Number(options?.maxAmount ?? available),
+      available,
+    );
+    setRefundCreditTxId(options?.creditTransactionId ?? null);
+    setRefundMaxAmount(maxAmount);
+    setRefundAmount(maxAmount > 0 ? maxAmount.toFixed(2) : "");
+    setRefundReason("");
+    setRefundProof(null);
+    setShowRefundModal(true);
+  };
+
+  const handleRefundProofChange = (file: File | null) => {
+    if (!file) {
+      setRefundProof(null);
+      return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      showError("Refund proof must be an image");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const result = reader.result;
+      if (typeof result !== "string") {
+        setRefundProof(null);
+        return;
+      }
+      setRefundProof({
+        dataUrl: result,
+        fileName: file.name,
+        mimeType: file.type || "image/jpeg",
+      });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRefundStoreCredit = async () => {
+    if (!viewingCustomer) return;
+
+    const amount = parseFloat(refundAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      showError("Enter a refund amount greater than 0");
+      return;
+    }
+    if (amount > refundMaxAmount + 0.001) {
+      showError(
+        `Amount cannot exceed available store credit (${formatCurrency(refundMaxAmount)})`,
+      );
+      return;
+    }
+    if (!refundReason.trim()) {
+      showError("Reason is required");
+      return;
+    }
+    if (!refundProof) {
+      showError("Please upload refund proof image");
+      return;
+    }
+
+    setRefundSubmitting(true);
+    try {
+      const res = await fetch(
+        `/api/customers/${viewingCustomer.id}/refund-store-credit`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            amount,
+            reason: refundReason.trim(),
+            refundProofDataUrl: refundProof.dataUrl,
+            refundProofFileName: refundProof.fileName,
+            refundProofMimeType: refundProof.mimeType,
+            ...(refundCreditTxId
+              ? { creditTransactionId: refundCreditTxId }
+              : {}),
+          }),
+        },
+      );
+      const data = await res.json();
+      if (res.ok) {
+        showSuccess(
+          `${formatCurrency(amount)} refunded from store credit${
+            data.refundPaymentCode ? ` (${data.refundPaymentCode})` : ""
+          }`,
+        );
+        setShowRefundModal(false);
+        const refreshed = await fetch(`/api/customers/${viewingCustomer.id}`);
+        if (refreshed.ok) {
+          setViewingCustomer(await refreshed.json());
+        }
+        fetchCustomers();
+      } else {
+        showError(data.error || "Failed to refund store credit");
+      }
+    } finally {
+      setRefundSubmitting(false);
     }
   };
 
@@ -926,16 +1049,31 @@ export default function CustomersTab({
                         </p>
                       </div>
                       <div className="bg-amber-50 rounded-lg p-3 border border-amber-100 col-span-2 sm:col-span-4">
-                        <p className="text-xs text-amber-700 font-semibold uppercase">
-                          Store Credit
-                        </p>
-                        <p className="text-lg font-bold text-amber-900 mt-1">
-                          {formatCurrency(viewingCustomer.storeCredit || 0)}
-                        </p>
-                        <p className="text-xs text-amber-700 mt-1">
-                          This credit is tied to this customer and can only be
-                          applied to their invoices.
-                        </p>
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <p className="text-xs text-amber-700 font-semibold uppercase">
+                              Store Credit
+                            </p>
+                            <p className="text-lg font-bold text-amber-900 mt-1">
+                              {formatCurrency(viewingCustomer.storeCredit || 0)}
+                            </p>
+                            <p className="text-xs text-amber-700 mt-1">
+                              This credit is tied to this customer and can only
+                              be applied to their invoices or refunded with
+                              proof.
+                            </p>
+                          </div>
+                          {(viewingCustomer.storeCredit || 0) > 0.009 && (
+                            <button
+                              type="button"
+                              onClick={() => openRefundModal()}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
+                            >
+                              <Banknote size={14} />
+                              Refund
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
 
@@ -1021,19 +1159,36 @@ export default function CustomersTab({
                                   <td className="px-3 py-2 text-right">
                                     {tx.type === "credit" &&
                                       !tx.isVoid &&
-                                      (tx.availableAmount ?? tx.amount) >
-                                        0 && (
-                                        <button
-                                          type="button"
-                                          onClick={() =>
-                                            openProcessingFeeModal(tx)
-                                          }
-                                          className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-amber-800 bg-amber-100 hover:bg-amber-200 rounded-md transition-colors"
-                                          title="Apply this credit as a credit card processing fee on an invoice"
-                                        >
-                                          <Receipt size={12} />
-                                          Credit Card Fee
-                                        </button>
+                                      (tx.availableAmount ?? tx.amount) > 0 && (
+                                        <div className="inline-flex items-center gap-1">
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              openRefundModal({
+                                                creditTransactionId: tx.id,
+                                                maxAmount:
+                                                  tx.availableAmount ??
+                                                  Number(tx.amount),
+                                              })
+                                            }
+                                            className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-red-800 bg-red-100 hover:bg-red-200 rounded-md transition-colors"
+                                            title="Refund this available store credit"
+                                          >
+                                            <Banknote size={12} />
+                                            Refund
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              openProcessingFeeModal(tx)
+                                            }
+                                            className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-amber-800 bg-amber-100 hover:bg-amber-200 rounded-md transition-colors"
+                                            title="Apply this credit as a credit card processing fee on an invoice"
+                                          >
+                                            <Receipt size={12} />
+                                            Credit Card Fee
+                                          </button>
+                                        </div>
                                       )}
                                   </td>
                                 </tr>
@@ -1064,9 +1219,14 @@ export default function CustomersTab({
                               <div className="flex flex-wrap items-center justify-between gap-2">
                                 <div>
                                   <p className="font-semibold text-red-900">
-                                    {refund.invoiceNumber}
+                                    {formatCurrency(Number(refund.amount || 0))}
+                                    {refund.paymentCode
+                                      ? ` · ${refund.paymentCode}`
+                                      : ""}
                                   </p>
                                   <p className="text-xs text-red-700">
+                                    {refund.invoiceNumber}
+                                    {" · "}
                                     {new Date(
                                       refund.createdAt,
                                     ).toLocaleString()}
@@ -1224,6 +1384,139 @@ export default function CustomersTab({
                 </>
               )
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Refund Store Credit Modal */}
+      {showRefundModal && viewingCustomer && (
+        <div className="fixed inset-0 flex items-center justify-center z-[60] backdrop-blur-sm">
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => !refundSubmitting && setShowRefundModal(false)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape" && !refundSubmitting) {
+                setShowRefundModal(false);
+              }
+            }}
+            role="button"
+            tabIndex={-1}
+            aria-label="Close refund modal"
+          />
+          <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-1">
+              Refund Store Credit
+            </h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Move available store credit to a refund. This removes the amount
+              from the customer balance and records a refund payment with proof.
+            </p>
+
+            <div className="space-y-4">
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase mb-1">
+                  Available store credit
+                </p>
+                <p className="text-sm text-gray-800">
+                  {formatCurrency(refundMaxAmount)}
+                </p>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="store-credit-refund-amount"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Amount to refund <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">
+                    $
+                  </span>
+                  <input
+                    id="store-credit-refund-amount"
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    max={refundMaxAmount}
+                    value={refundAmount}
+                    onChange={(e) => setRefundAmount(e.target.value)}
+                    className="w-full pl-7 pr-3 py-2 border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setRefundAmount(refundMaxAmount.toFixed(2))}
+                  className="mt-1 text-xs font-medium text-red-700 hover:underline"
+                >
+                  Use full available amount
+                </button>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="store-credit-refund-reason"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Reason <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  id="store-credit-refund-reason"
+                  value={refundReason}
+                  onChange={(e) => setRefundReason(e.target.value)}
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                  placeholder="Why is this store credit being refunded?"
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="store-credit-refund-proof"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Refund proof image <span className="text-red-500">*</span>
+                </label>
+                <input
+                  id="store-credit-refund-proof"
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) =>
+                    handleRefundProofChange(e.target.files?.[0] || null)
+                  }
+                  className="block w-full text-sm text-gray-700 file:mr-4 file:rounded-lg file:border-0 file:bg-gray-900 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-gray-800"
+                />
+                {refundProof && (
+                  <p className="mt-2 text-xs text-gray-500">
+                    Selected: {refundProof.fileName}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                type="button"
+                onClick={() => setShowRefundModal(false)}
+                disabled={refundSubmitting}
+                className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleRefundStoreCredit}
+                disabled={
+                  refundSubmitting ||
+                  !refundProof ||
+                  !refundReason.trim() ||
+                  !(parseFloat(refundAmount) > 0)
+                }
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors disabled:opacity-50"
+              >
+                {refundSubmitting ? "Refunding..." : "Refund store credit"}
+              </button>
+            </div>
           </div>
         </div>
       )}

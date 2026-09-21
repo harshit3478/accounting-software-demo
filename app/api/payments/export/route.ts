@@ -65,6 +65,11 @@ export async function GET(request: NextRequest) {
             name: true,
           },
         },
+        customer: {
+          select: {
+            name: true,
+          },
+        },
         user: {
           select: {
             name: true,
@@ -97,6 +102,7 @@ export async function GET(request: NextRequest) {
       const clientName =
         payment.invoice?.clientName ||
         payment.paymentMatches?.[0]?.invoice.clientName ||
+        payment.customer?.name ||
         null;
 
       return {

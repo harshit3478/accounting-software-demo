@@ -34,3 +34,18 @@ export function getAuthCookieOptions() {
 export function setAuthTokenCookie(response: NextResponse, token: string) {
   response.cookies.set("token", token, getAuthCookieOptions());
 }
+
+export function clearAuthTokenCookie(response: NextResponse) {
+  response.cookies.set("token", "", {
+    ...getAuthCookieOptions(),
+    maxAge: 0,
+  });
+}
+
+export function verifyAuthToken(token: string): AuthTokenPayload | null {
+  try {
+    return jwt.verify(token, process.env.JWT_SECRET!) as AuthTokenPayload;
+  } catch {
+    return null;
+  }
+}

@@ -515,6 +515,7 @@ export function usePayments(): UsePaymentsReturn {
         const client =
           payment.invoice?.clientName ||
           payment.paymentMatches?.[0]?.invoice.clientName ||
+          payment.customer?.name ||
           "N/A";
         const amount = `$${payment.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
         const method = payment.method?.name || "Unknown";

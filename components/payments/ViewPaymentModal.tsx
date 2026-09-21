@@ -5,6 +5,7 @@ import Modal from "../invoices/Modal";
 import LucideIcon from "../LucideIcon";
 import { formatUserDisplayName } from "../../lib/user-display";
 import { formatBusinessDate } from "../../lib/business-date";
+import { getPaymentClientName } from "../../lib/payment-display-status";
 
 interface ViewPaymentModalProps {
   isOpen: boolean;
@@ -52,6 +53,11 @@ interface ViewPaymentModalProps {
       clientName: string;
       amount: number;
     } | null;
+    customer?: {
+      id: number;
+      name: string;
+      email?: string | null;
+    } | null;
   } | null;
 }
 
@@ -63,6 +69,8 @@ export default function ViewPaymentModal({
   const receiptRef = useRef<HTMLDivElement>(null);
 
   if (!payment) return null;
+
+  const clientName = getPaymentClientName(payment);
 
   const handleDownloadPDF = async () => {
     const { generatePaymentReceiptPDF } = await import(
@@ -81,7 +89,14 @@ export default function ViewPaymentModal({
             amount: payment.invoice.amount,
             paidAmount: payment.amount, // current payment is the latest
           }
-        : null,
+        : clientName
+          ? {
+              invoiceNumber: "Store credit",
+              clientName,
+              amount: payment.amount,
+              paidAmount: payment.amount,
+            }
+          : null,
     });
   };
 
@@ -187,22 +202,37 @@ export default function ViewPaymentModal({
             </div>
           ) : (
             <div className="border border-gray-200 rounded-lg p-5 bg-gray-50">
-              <p className="text-sm text-gray-600 flex items-center">
-                <svg
-                  className="w-5 h-5 mr-2 text-gray-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
-                No invoice associated with this payment (standalone payment)
-              </p>
+              {clientName ? (
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Client Name:</span>
+                    <span className="font-medium text-gray-900">
+                      {clientName}
+                    </span>
+                  </div>
+                  <p className="text-gray-500">
+                    No invoice associated with this payment (store credit
+                    refund).
+                  </p>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-600 flex items-center">
+                  <svg
+                    className="w-5 h-5 mr-2 text-gray-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                  No invoice associated with this payment (standalone payment)
+                </p>
+              )}
             </div>
           )}
 

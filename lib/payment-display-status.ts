@@ -84,3 +84,22 @@ export function buildPaymentStatusWhere(
     ],
   };
 }
+
+export function getPaymentClientName(payment: {
+  invoice?: { clientName?: string | null } | null;
+  paymentMatches?: Array<{
+    invoice?: { clientName?: string | null } | null;
+  }> | null;
+  customer?: { name?: string | null } | null;
+}): string | null {
+  const fromInvoice = payment.invoice?.clientName?.trim();
+  if (fromInvoice) return fromInvoice;
+
+  const fromMatch = payment.paymentMatches
+    ?.map((match) => match.invoice?.clientName?.trim())
+    .find(Boolean);
+  if (fromMatch) return fromMatch;
+
+  const fromCustomer = payment.customer?.name?.trim();
+  return fromCustomer || null;
+}

@@ -10,6 +10,7 @@ import type { Payment } from "../../hooks/usePayments";
 import {
   getPaymentDisplayStatus,
   getPaymentDisplayStatusLabel,
+  getPaymentClientName,
 } from "../../lib/payment-display-status";
 import { formatBusinessDate } from "../../lib/business-date";
 
@@ -65,7 +66,7 @@ export default function PaymentTableRow({
       date: payment.paymentDate,
       notes: payment.notes,
       method: payment.method,
-      invoice: payment.invoice
+            invoice: payment.invoice
         ? {
             invoiceNumber: payment.invoice.invoiceNumber,
             clientName: payment.invoice.clientName,
@@ -79,7 +80,14 @@ export default function PaymentTableRow({
               amount: payment.paymentMatches[0].invoice.amount,
               paidAmount: payment.paymentMatches[0].invoice.amount,
             }
-          : null,
+          : clientName
+            ? {
+                invoiceNumber: "Store credit",
+                clientName,
+                amount: payment.amount,
+                paidAmount: payment.amount,
+              }
+            : null,
     });
   };
 
@@ -90,6 +98,7 @@ export default function PaymentTableRow({
   const displayStatus =
     payment.displayStatus ?? getPaymentDisplayStatus(payment);
   const statusLabel = getPaymentDisplayStatusLabel(displayStatus);
+  const clientName = getPaymentClientName(payment);
 
   const getStatusBadgeClass = () => {
     switch (displayStatus) {
@@ -186,6 +195,10 @@ export default function PaymentTableRow({
               </span>
             ))}
           </div>
+        ) : clientName ? (
+          <span className="break-words line-clamp-2" title={clientName}>
+            {clientName}
+          </span>
         ) : (
           <span className="text-gray-400">-</span>
         )}

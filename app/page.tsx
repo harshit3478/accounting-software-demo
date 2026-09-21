@@ -835,7 +835,9 @@ function DashboardContent() {
                         <p className="text-sm text-gray-900">
                           Payment received from{" "}
                           <span className="font-semibold">
-                            {payment.invoice?.clientName || "Unknown Client"}
+                            {payment.invoice?.clientName ||
+                              payment.customer?.name ||
+                              "Unknown Client"}
                           </span>{" "}
                           - ${payment.amount.toLocaleString()}
                         </p>

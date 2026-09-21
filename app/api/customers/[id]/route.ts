@@ -1,11 +1,72 @@
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "../../../../lib/prisma";
 import { requireAuth, requireSettingPermission } from "../../../../lib/auth";
 import {
   assertCustomerEmailAvailable,
   customerEmailErrorResponse,
 } from "../../../../lib/customer-email";
+import { formatPaymentCode } from "../../../../lib/payment-code";
+import prisma from "../../../../lib/prisma";
 import { enrichCreditTransactions } from "../../../../lib/store-credit-display";
+
+function toIsoDate(value: any): string {
+  if (value?.toISOString) return value.toISOString();
+  return value || "";
+}
+
+function buildRefundHistory(
+  invoices: any[] = [],
+  refundPayments: any[] = [],
+) {
+  const invoiceRefunds = invoices.flatMap((invoice: any) =>
+    (invoice.editHistory || [])
+      .filter((entry: any) => entry.changes?.refundProof?.url)
+      .map((entry: any) => ({
+        id: `history-${entry.id}`,
+        invoiceId: invoice.id,
+        invoiceNumber: invoice.invoiceNumber,
+        amount:
+          Number(entry.changes?.storeCreditRefunded?.from) ||
+          Number(entry.changes?.movedAmount?.to) ||
+          null,
+        paymentCode:
+          Array.isArray(entry.changes?.refundPaymentCodes?.to) &&
+          entry.changes.refundPaymentCodes.to[0]
+            ? entry.changes.refundPaymentCodes.to[0]
+            : null,
+        reason: entry.reason,
+        proofUrl: entry.changes.refundProof.url,
+        proofFileName: entry.changes.refundProof.fileName || null,
+        createdAt: toIsoDate(entry.createdAt),
+      })),
+  );
+
+  const seenProofs = new Set(
+    invoiceRefunds.map((entry) => entry.proofUrl).filter(Boolean),
+  );
+
+  const paymentRefunds = refundPayments
+    .filter(
+      (payment: any) =>
+        payment.refundProofUrl && !seenProofs.has(payment.refundProofUrl),
+    )
+    .map((payment: any) => ({
+      id: `payment-${payment.id}`,
+      invoiceId: payment.invoiceId ?? null,
+      invoiceNumber: payment.invoice?.invoiceNumber || "Store credit",
+      amount: payment.amount?.toNumber
+        ? payment.amount.toNumber()
+        : Number(payment.amount),
+      paymentCode: payment.paymentCode || formatPaymentCode(payment.id),
+      reason: payment.abandonReason || payment.notes || "Store credit refund",
+      proofUrl: payment.refundProofUrl,
+      proofFileName: payment.refundProofFileName || null,
+      createdAt: toIsoDate(payment.createdAt),
+    }));
+
+  return [...invoiceRefunds, ...paymentRefunds].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  );
+}
 
 function isStoreCreditCompatibilityError(error: any): boolean {
   const message = String(error?.message || "");
@@ -156,6 +217,29 @@ export async function GET(
       );
     }
 
+    const refundPayments = await prisma.payment.findMany({
+      where: {
+        customerId: id,
+        isAbandoned: true,
+        refundProofUrl: { not: null },
+      },
+      select: {
+        id: true,
+        invoiceId: true,
+        amount: true,
+        paymentCode: true,
+        notes: true,
+        abandonReason: true,
+        refundProofUrl: true,
+        refundProofFileName: true,
+        createdAt: true,
+        invoice: {
+          select: { invoiceNumber: true },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
     // Compute financial stats
     const now = new Date();
     let totalRevenue = 0;
@@ -218,21 +302,7 @@ export async function GET(
         ? (customer as any).storeCredit.toNumber()
         : ((customer as any).storeCredit ?? 0),
       creditTransactions: enrichCreditTransactions(customer.creditTransactions || []),
-      refundHistory: (customer.invoices || []).flatMap((invoice: any) =>
-        (invoice.editHistory || [])
-          .filter((entry: any) => entry.changes?.refundProof?.url)
-          .map((entry: any) => ({
-            id: entry.id,
-            invoiceId: invoice.id,
-            invoiceNumber: invoice.invoiceNumber,
-            reason: entry.reason,
-            proofUrl: entry.changes.refundProof.url,
-            proofFileName: entry.changes.refundProof.fileName || null,
-            createdAt: entry.createdAt?.toISOString
-              ? entry.createdAt.toISOString()
-              : entry.createdAt,
-          })),
-      ),
+      refundHistory: buildRefundHistory(customer.invoices || [], refundPayments),
       stats: {
         totalRevenue,
         totalPaid,

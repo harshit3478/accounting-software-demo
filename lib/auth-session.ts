@@ -40,7 +40,7 @@ export function clearClientAuthSession() {
   document.cookie = "token=; path=/; max-age=0; samesite=lax";
 }
 
-export function forceLogoutAndRedirect() {
+export async function forceLogoutAndRedirect() {
   if (typeof window === "undefined" || isLoggingOut) return;
 
   const path = window.location.pathname;
@@ -55,7 +55,15 @@ export function forceLogoutAndRedirect() {
   isLoggingOut = true;
   clearClientAuthSession();
 
-  void fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+  try {
+    await fetch("/api/auth/logout", {
+      method: "POST",
+      credentials: "same-origin",
+      cache: "no-store",
+    });
+  } catch {
+    // Still send the user to login even if logout cannot complete.
+  }
 
   window.location.replace("/login");
 }

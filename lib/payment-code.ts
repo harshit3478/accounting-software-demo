@@ -41,6 +41,7 @@ export function buildPaymentSearchConditions(search: string) {
         ],
       },
     },
+    { customer: { name: { contains: trimmed } } },
   ];
 
   const paymentId = parsePaymentIdFromSearch(trimmed);
