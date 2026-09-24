@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { allocationExceedsRemaining } from "@/lib/cheque-vault-allocation";
 import {
   resolveInvoiceDate,
   resolveLiveTypeLabel,
@@ -152,6 +153,9 @@ export default function InvoiceSearchModal({
     );
   };
 
+  const lineExceedsBalance = (alloc: AllocationEntry) =>
+    allocationExceedsRemaining(alloc.allocatedAmount, alloc.remaining);
+  const hasBalanceError = allocations.some(lineExceedsBalance);
   const isOverAllocated = totalAllocated > chequeAmount + 0.01;
   const isUnderAllocated =
     totalAllocated < chequeAmount - 0.01 && allocations.length > 0;
@@ -309,52 +313,66 @@ export default function InvoiceSearchModal({
             <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
               Selected Invoices
             </p>
-            {allocations.map((alloc) => (
-              <div key={alloc.invoiceId} className="flex items-center gap-3">
-                <div className="flex-1 min-w-0">
-                  <span className="text-sm font-medium text-gray-900">
-                    {alloc.invoiceNumber}
-                  </span>
-                  <span className="text-xs text-gray-500 ml-2">
-                    {alloc.clientName}
-                  </span>
-                  <span className="text-xs text-gray-400 ml-1">
-                    (bal: ${alloc.remaining.toFixed(2)})
-                  </span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <span className="text-xs text-gray-500">$</span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={alloc.allocatedAmount}
-                    onChange={(e) =>
-                      handleAmountChange(alloc.invoiceId, e.target.value)
-                    }
-                    className="w-24 px-2 py-1 border border-gray-300 rounded text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <button
-                  onClick={() => handleRemove(alloc.invoiceId)}
-                  className="text-gray-400 hover:text-red-500 transition-colors"
-                >
-                  <svg
-                    className="w-4 h-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M6 18L18 6M6 6l12 12"
+            {allocations.map((alloc) => {
+              const overBalance = lineExceedsBalance(alloc);
+              return (
+                <div key={alloc.invoiceId} className="flex items-center gap-3">
+                  <div className="flex-1 min-w-0">
+                    <span className="text-sm font-medium text-gray-900">
+                      {alloc.invoiceNumber}
+                    </span>
+                    <span className="text-xs text-gray-500 ml-2">
+                      {alloc.clientName}
+                    </span>
+                    <span className="text-xs text-gray-400 ml-1">
+                      (bal: ${alloc.remaining.toFixed(2)})
+                    </span>
+                    {overBalance && (
+                      <p className="text-xs text-red-600 mt-0.5">
+                        Exceeds balance of ${alloc.remaining.toFixed(2)}. Leave
+                        the extra unallocated for store credit.
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs text-gray-500">$</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max={alloc.remaining}
+                      value={alloc.allocatedAmount}
+                      onChange={(e) =>
+                        handleAmountChange(alloc.invoiceId, e.target.value)
+                      }
+                      className={`w-24 px-2 py-1 border rounded text-sm text-right focus:outline-none focus:ring-2 ${
+                        overBalance
+                          ? "border-red-400 focus:ring-red-500"
+                          : "border-gray-300 focus:ring-blue-500"
+                      }`}
                     />
-                  </svg>
-                </button>
-              </div>
-            ))}
+                  </div>
+                  <button
+                    onClick={() => handleRemove(alloc.invoiceId)}
+                    className="text-gray-400 hover:text-red-500 transition-colors"
+                  >
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                </div>
+              );
+            })}
           </div>
         )}
 
@@ -362,7 +380,7 @@ export default function InvoiceSearchModal({
         <div className="px-6 py-3 border-t border-gray-200 flex items-center justify-between">
           <div className="text-sm">
             <span
-              className={`font-semibold ${isOverAllocated ? "text-red-600" : isUnderAllocated ? "text-amber-600" : "text-gray-700"}`}
+              className={`font-semibold ${isOverAllocated || hasBalanceError ? "text-red-600" : isUnderAllocated ? "text-amber-600" : "text-gray-700"}`}
             >
               Allocated: ${totalAllocated.toFixed(2)}
             </span>
@@ -374,9 +392,14 @@ export default function InvoiceSearchModal({
                 Over by ${(totalAllocated - chequeAmount).toFixed(2)}
               </span>
             )}
-            {isUnderAllocated && (
+            {isUnderAllocated && !hasBalanceError && (
               <span className="ml-2 text-xs text-amber-600">
                 ${(chequeAmount - totalAllocated).toFixed(2)} unallocated
+              </span>
+            )}
+            {hasBalanceError && (
+              <span className="ml-2 text-xs text-red-600 font-medium">
+                An invoice allocation is above its balance
               </span>
             )}
           </div>
@@ -389,7 +412,9 @@ export default function InvoiceSearchModal({
             </button>
             <button
               onClick={() => onConfirm(allocations)}
-              disabled={allocations.length === 0 || isOverAllocated}
+              disabled={
+                allocations.length === 0 || isOverAllocated || hasBalanceError
+              }
               className="px-4 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               Confirm ({allocations.length} invoice

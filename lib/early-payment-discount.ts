@@ -109,11 +109,32 @@ export async function creditEarlyDiscountOverpaymentAsStoreCredit(input: {
     input.reason ||
     `Early payment discount overpayment on ${input.invoiceNumber}`;
 
-  await prisma.$transaction(async (tx) => {
+  const creditedAmount = await prisma.$transaction(async (tx) => {
+    const priorCredits = await (tx as any).customerCreditTransaction.findMany({
+      where: {
+        invoiceId: input.invoiceId,
+        reason: { contains: `overpayment on ${input.invoiceNumber}` },
+      },
+      select: { amount: true, type: true },
+    });
+    const alreadyCredited = roundMoney(
+      (priorCredits as Array<{ amount: unknown; type: string }>).reduce(
+        (sum, row) => {
+          const amount = Number(row.amount ?? 0);
+          return row.type === "debit" ? sum - amount : sum + amount;
+        },
+        0,
+      ),
+    );
+    const remaining = roundMoney(safeAmount - Math.max(alreadyCredited, 0));
+    if (remaining <= 0.01) {
+      return 0;
+    }
+
     const creditPayment = await tx.payment.create({
       data: {
         invoiceId: null,
-        amount: safeAmount,
+        amount: remaining,
         paymentDate: new Date(),
         methodId: input.methodId,
         notes,
@@ -129,7 +150,7 @@ export async function creditEarlyDiscountOverpaymentAsStoreCredit(input: {
       where: { id: input.customerId },
       data: {
         storeCredit: {
-          increment: safeAmount,
+          increment: remaining,
         },
       },
     });
@@ -137,7 +158,7 @@ export async function creditEarlyDiscountOverpaymentAsStoreCredit(input: {
     await (tx as any).customerCreditTransaction.create({
       data: {
         customerId: input.customerId,
-        amount: safeAmount,
+        amount: remaining,
         type: "credit",
         reason,
         paymentId: creditPayment.id,
@@ -145,9 +166,11 @@ export async function creditEarlyDiscountOverpaymentAsStoreCredit(input: {
         createdById: null,
       },
     });
+
+    return remaining;
   });
 
-  return safeAmount;
+  return creditedAmount;
 }
 
 export async function maybeApplyEarlyPaymentDiscount(

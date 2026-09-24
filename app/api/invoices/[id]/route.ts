@@ -582,6 +582,17 @@ export async function PUT(
     const shippingDiscountAmount = Number(
       shippingDiscountOffer?.creditAmount || 0,
     );
+    const appliedUnitDiscount = Number(
+      existingInvoiceAny.unitDiscountAmount?.toNumber?.() ??
+        existingInvoiceAny.unitDiscountAmount ??
+        0,
+    );
+    const amountAfterDiscounts = Number(
+      Math.max(
+        totalAmount - shippingDiscountAmount - appliedUnitDiscount,
+        0,
+      ).toFixed(2),
+    );
 
     const nextData = {
       clientName: normalizedClientName,
@@ -592,7 +603,7 @@ export async function PUT(
       shippingFee: shippingFeeAmount,
       insuranceAmount: insuranceFeeAmount,
       layawayFee: layawayFeeAmount,
-      amount: Number((totalAmount - shippingDiscountAmount).toFixed(2)),
+      amount: amountAfterDiscounts,
       invoiceDate: invoiceDateValue,
       dueDate: dueDateValue,
       dueDateReason: requiresDueDateReason ? normalizedDueDateReason : null,
@@ -606,7 +617,7 @@ export async function PUT(
       liveTypeId: resolvedLiveTypeId,
       liveTypeSnapshot: resolvedLiveTypeSnapshot,
       customerId: resolvedCustomerId,
-      unitDiscountAmount: 0,
+      unitDiscountAmount: appliedUnitDiscount,
       unitDiscountOffer: toUnitDiscountOfferJson(
         await buildUnitDiscountOfferForInvoice({
           items: normalizedItems,

@@ -1,11 +1,15 @@
-import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { type NextRequest, NextResponse } from "next/server";
 import { requireChequeVaultApprove } from "@/lib/auth";
-import { stampPaymentCode } from "@/lib/payment-code";
-import { updateInvoiceAfterPayment } from "@/lib/invoice-utils";
 import { invalidateDashboard, invalidatePayments } from "@/lib/cache-helpers";
-import { sendChequeStatusNotification } from "@/lib/email";
+import {
+  allocationExceedsInvoiceBalance,
+  invoiceOverAllocationMessage,
+} from "@/lib/cheque-vault-allocation";
 import { getChequeVaultUnallocatedAmount } from "@/lib/cheque-vault-store-credit";
+import { sendChequeStatusNotification } from "@/lib/email";
+import { updateInvoiceAfterPayment } from "@/lib/invoice-utils";
+import { stampPaymentCode } from "@/lib/payment-code";
+import prisma from "@/lib/prisma";
 
 export async function PUT(
   request: NextRequest,
@@ -76,16 +80,33 @@ export async function PUT(
       );
     }
 
-    // Check for overpayment per invoice
+    const overBalanceErrors: string[] = [];
     for (const alloc of cheque.invoiceAllocations) {
-      const invoiceBalance =
-        Number(alloc.invoice.amount) - Number(alloc.invoice.paidAmount);
-      const allocated = Number(alloc.allocatedAmount);
-      if (allocated > invoiceBalance + 0.01) {
-        warnings.push(
-          `Cheque allocation ($${allocated.toFixed(2)}) exceeds remaining balance on ${alloc.invoice.invoiceNumber} ($${invoiceBalance.toFixed(2)})`,
+      const invoiceAmount = Number(alloc.invoice.amount);
+      const paidAmount = Number(alloc.invoice.paidAmount);
+      const allocatedAmount = Number(alloc.allocatedAmount);
+      if (
+        allocationExceedsInvoiceBalance(
+          allocatedAmount,
+          invoiceAmount,
+          paidAmount,
+        )
+      ) {
+        overBalanceErrors.push(
+          invoiceOverAllocationMessage({
+            invoiceNumber: alloc.invoice.invoiceNumber,
+            allocatedAmount,
+            invoiceAmount,
+            paidAmount,
+          }),
         );
       }
+    }
+    if (overBalanceErrors.length > 0) {
+      return NextResponse.json(
+        { error: overBalanceErrors.join(" ") },
+        { status: 400 },
+      );
     }
 
     await prisma.$transaction(async (tx) => {

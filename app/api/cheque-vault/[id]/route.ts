@@ -1,6 +1,16 @@
-import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { type NextRequest, NextResponse } from "next/server";
 import { hasPermission, isSuperAdmin, requireAuth } from "@/lib/auth";
+import { startOfBusinessDay } from "@/lib/business-date";
+import {
+  allocationExceedsInvoiceBalance,
+  invoiceOverAllocationMessage,
+} from "@/lib/cheque-vault-allocation";
+import {
+  chequeVaultInvoiceAllocationInclude,
+  chequeVaultStoreCreditMoveInclude,
+  chequeVaultUserInclude,
+  serializeChequeVaultRecord,
+} from "@/lib/cheque-vault-include";
 import {
   canDeleteChequeRequest,
   canEditChequeRequest,
@@ -8,14 +18,8 @@ import {
   isChequeRequestReadOnly,
 } from "@/lib/cheque-vault-permissions";
 import { isLinkableInvoiceStatus } from "@/lib/invoice-linkable-status";
+import prisma from "@/lib/prisma";
 import { deleteFromR2 } from "@/lib/r2-client";
-import {
-  chequeVaultInvoiceAllocationInclude,
-  chequeVaultStoreCreditMoveInclude,
-  chequeVaultUserInclude,
-  serializeChequeVaultRecord,
-} from "@/lib/cheque-vault-include";
-import { startOfBusinessDay } from "@/lib/business-date";
 
 export async function GET(
   request: NextRequest,
@@ -180,10 +184,17 @@ export async function PATCH(
         invoices;
 
       if (allocationList.length > 0) {
+        const overBalanceErrors: string[] = [];
         for (const alloc of allocationList) {
           const inv = await prisma.invoice.findUnique({
             where: { id: alloc.invoiceId },
-            select: { id: true, status: true },
+            select: {
+              id: true,
+              status: true,
+              amount: true,
+              paidAmount: true,
+              invoiceNumber: true,
+            },
           });
           if (!inv) {
             return NextResponse.json(
@@ -199,6 +210,31 @@ export async function PATCH(
               { status: 400 },
             );
           }
+          const invoiceAmount = Number(inv.amount);
+          const paidAmount = Number(inv.paidAmount);
+          const allocatedAmount = Number(alloc.allocatedAmount);
+          if (
+            allocationExceedsInvoiceBalance(
+              allocatedAmount,
+              invoiceAmount,
+              paidAmount,
+            )
+          ) {
+            overBalanceErrors.push(
+              invoiceOverAllocationMessage({
+                invoiceNumber: inv.invoiceNumber,
+                allocatedAmount,
+                invoiceAmount,
+                paidAmount,
+              }),
+            );
+          }
+        }
+        if (overBalanceErrors.length > 0) {
+          return NextResponse.json(
+            { error: overBalanceErrors.join(" ") },
+            { status: 400 },
+          );
         }
 
         await prisma.$transaction([
