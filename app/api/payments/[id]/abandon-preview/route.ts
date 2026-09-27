@@ -1,18 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "../../../../../lib/prisma";
 import { requireAuth } from "../../../../../lib/auth";
+import { formatUserDisplayName } from "../../../../../lib/user-display";
 import { formatPaymentCode } from "../../../../../lib/payment-code";
 import {
   buildAbandonPaymentPreview,
   fetchStoreCreditApplicationsForPayment,
 } from "../../../../../lib/abandon-payment-preview";
+import { previewChequeRejectionOnAbandon } from "../../../../../lib/cheque-vault-reject-on-abandon";
 
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    await requireAuth();
+    const user = await requireAuth();
     const { id } = await params;
     const paymentId = parseInt(id, 10);
 
@@ -84,6 +86,15 @@ export async function GET(
       );
 
     const preview = buildAbandonPaymentPreview(payment, storeCreditApplications);
+    const chequeRejection = await previewChequeRejectionOnAbandon(prisma, {
+      paymentId,
+      paymentSource: payment.source,
+      paymentNotes: payment.notes,
+      abandonedByName: formatUserDisplayName(user),
+    });
+    if (chequeRejection) {
+      preview.summary.push(chequeRejection);
+    }
 
     return NextResponse.json(preview);
   } catch (error: unknown) {

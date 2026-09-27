@@ -1743,18 +1743,64 @@ export async function DELETE(
                   });
                 }
 
+                const refundedSlicePaymentIds: number[] = [];
+
                 for (const paymentId of matchedAmountByPaymentId.keys()) {
                   const refundAmount = refundAllocations.get(paymentId) ?? 0;
-                  await tx.payment.update({
+                  const existingPayment = await tx.payment.findUnique({
                     where: { id: paymentId },
-                    data: {
-                      ...refundPaymentUpdate,
-                      amount: new Prisma.Decimal(refundAmount),
-                    },
                   });
+                  if (!existingPayment || refundAmount <= 0.009) continue;
+
+                  const remainingAmount =
+                    Math.round(
+                      (existingPayment.amount.toNumber() - refundAmount) * 100,
+                    ) / 100;
+
+                  if (remainingAmount > 0.009) {
+                    await tx.payment.update({
+                      where: { id: paymentId },
+                      data: {
+                        amount: new Prisma.Decimal(remainingAmount),
+                      },
+                    });
+
+                    const refundedSlice = await tx.payment.create({
+                      data: {
+                        invoiceId: null,
+                        customerId: existingPayment.customerId,
+                        amount: new Prisma.Decimal(refundAmount),
+                        paymentDate: new Date(),
+                        methodId: existingPayment.methodId,
+                        notes: refundReason,
+                        userId: user.id,
+                        isMatched: false,
+                        isAbandoned: true,
+                        abandonedAt: new Date(),
+                        abandonedBy: user.id,
+                        abandonReason: refundReason,
+                        refundProofUrl,
+                        refundProofFileName: storedRefundProofFileName,
+                        source: existingPayment.source,
+                      },
+                    });
+                    await stampPaymentCode(tx, refundedSlice.id);
+                    refundedSlicePaymentIds.push(refundedSlice.id);
+                  } else {
+                    await tx.payment.update({
+                      where: { id: paymentId },
+                      data: {
+                        ...refundPaymentUpdate,
+                        amount: new Prisma.Decimal(refundAmount),
+                      },
+                    });
+                  }
                 }
 
-                refundPaymentIds = refundAllocationItems.map((item) => item.id);
+                refundPaymentIds = [
+                  ...refundAllocationItems.map((item) => item.id),
+                  ...refundedSlicePaymentIds,
+                ];
               }
 
               for (const pid of affectedPaymentIds) {
@@ -1773,7 +1819,16 @@ export async function DELETE(
                   });
                 }
 
-                if (!payment.invoiceId && payment.paymentMatches.length === 0) {
+                const remainingPaymentAmount = payment.amount.toNumber();
+                const keepUnspentStoreCredit =
+                  payment.source === "store_credit_excess" &&
+                  remainingPaymentAmount > 0.009;
+
+                if (
+                  !payment.invoiceId &&
+                  payment.paymentMatches.length === 0 &&
+                  !keepUnspentStoreCredit
+                ) {
                   const abandonedAt = payment.abandonedAt || new Date();
                   if (!payment.isAbandoned) {
                     await tx.payment.update({

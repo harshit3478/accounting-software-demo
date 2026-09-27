@@ -7,6 +7,8 @@ import {
   cleanupAbandonedStoreCreditPayment,
   collectInvoiceIdsAffectedByPaymentAbandon,
 } from "../../../../../lib/abandoned-store-credit-cleanup";
+import { rejectChequeVaultWhenPaymentFullyAbandoned } from "../../../../../lib/cheque-vault-reject-on-abandon";
+import { formatUserDisplayName } from "../../../../../lib/user-display";
 
 export async function PUT(
   request: NextRequest,
@@ -86,6 +88,14 @@ export async function PUT(
       for (const invoiceId of cleanup.affectedInvoiceIds) {
         affectedInvoiceIds.add(invoiceId);
       }
+
+      await rejectChequeVaultWhenPaymentFullyAbandoned(tx, {
+        paymentSource: existingPayment.source,
+        paymentNotes: existingPayment.notes,
+        reason: reason.trim(),
+        userId: user.id,
+        abandonedByName: formatUserDisplayName(user),
+      });
 
       return updatedPayment;
     });
