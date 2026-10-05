@@ -94,8 +94,9 @@ export default function RestockingFeeTab({
       <div className="mb-6">
         <h2 className="text-xl font-semibold text-gray-900">Restocking Fee</h2>
         <p className="text-gray-600 text-sm">
-          Configure a single restocking fee for abandoned layaway invoices. The
-          fee can be a fixed amount or a percentage of the invoice total.
+          Configure a single restocking fee for abandoned layaway invoices. A
+          percentage is applied to each unit price. A fixed amount is charged
+          per unit.
         </p>
       </div>
 

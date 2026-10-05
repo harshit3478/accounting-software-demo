@@ -1053,6 +1053,8 @@ export async function DELETE(
       | "none"
       | undefined;
     const customFeeAmount = Number(body?.customFeeAmount ?? 0);
+    const requestedLateFeeAmount =
+      Math.round(Math.max(Number(body?.lateFeeAmount ?? 0), 0) * 100) / 100;
     const nonRefundableReason =
       typeof body?.nonRefundableReason === "string"
         ? body.nonRefundableReason.trim()
@@ -1209,13 +1211,22 @@ export async function DELETE(
             (sum, m) => sum + m.amount.toNumber(),
             0,
           );
-          const invoiceTotal = existingInvoice.amount.toNumber();
-          const depositFeeTotal = Array.isArray(existingInvoice.items)
-            ? existingInvoice.items.reduce((sum: number, item: any) => {
-                const fee = Number(item?.depositFee || 0);
-                return sum + (Number.isFinite(fee) ? fee : 0);
-              }, 0)
-            : 0;
+          const invoiceItems = Array.isArray(existingInvoice.items)
+            ? existingInvoice.items
+            : [];
+          const storedDepositFeeTotal = invoiceItems.reduce(
+            (sum: number, item: any) => {
+              const fee = Number(item?.depositFee || 0);
+              return sum + (Number.isFinite(fee) ? fee : 0);
+            },
+            0,
+          );
+          const depositFeeRules = await getConfiguredDepositFeeRules();
+          const recalculatedDepositFee = invoiceItems.reduce(
+            (sum: number, item: any) =>
+              sum + calculateDepositFeeForItem(item, depositFeeRules),
+            0,
+          );
 
           const restockingSetting = await (
             tx as any
@@ -1226,14 +1237,19 @@ export async function DELETE(
           });
 
           const calculatedRestockingFee = calculateRestockingFeeAmount(
-            invoiceTotal,
+            invoiceItems,
             {
               amount: Number(restockingSetting?.amount || 0),
               isPercentage: !!restockingSetting?.isPercentage,
               isActive: !!restockingSetting?.isActive,
             },
           );
-          const calculatedDepositFee = Number(depositFeeTotal.toFixed(2));
+          const calculatedDepositFee = Number(
+            (depositFeeRules.length > 0
+              ? recalculatedDepositFee
+              : storedDepositFeeTotal
+            ).toFixed(2),
+          );
           paymentTotal = Math.round((directTotal + matchedTotal) * 100) / 100;
 
           const snapshotPaymentIds = [
@@ -1283,57 +1299,42 @@ export async function DELETE(
             }
           }
 
-          const storedLateFee = Number(
-            existingInvoice.lateFee?.toNumber?.() ??
-              existingInvoice.lateFee ??
-              0,
-          );
-          const legacyLateFee = realDirectPayments
-            .filter((payment) => payment.source === "late_fee")
-            .reduce((sum, payment) => sum + payment.amount.toNumber(), 0);
-          const chargedLateFee =
-            Math.round(
-              (storedLateFee > 0.009 ? storedLateFee : legacyLateFee) * 100,
-            ) / 100;
-          if (paymentTotal > 0.009 && chargedLateFee > 0.009) {
-            lateFeeRetainedAmount = Math.min(chargedLateFee, paymentTotal);
-          }
-          // Late fee is kept even when another fee is selected. "All payments
-          // non-refundable" already includes it, so don't add it twice.
-          const selectablePaymentTotal =
-            normalizedFeeAction === "all"
-              ? paymentTotal
-              : Math.max(
-                  Math.round((paymentTotal - lateFeeRetainedAmount) * 100) /
-                    100,
-                  0,
-                );
+          const selectablePaymentTotal = paymentTotal;
 
           if (normalizedFeeAction === "both") {
             const roundedRestockingFee =
               Math.round(calculatedRestockingFee * 100) / 100;
             const roundedDepositFee =
               Math.round(calculatedDepositFee * 100) / 100;
+            const latePortion =
+              paymentTotal > 0.009
+                ? Math.min(requestedLateFeeAmount, paymentTotal)
+                : requestedLateFeeAmount;
+            const afterLateFee =
+              paymentTotal > 0.009
+                ? Math.max(
+                    Math.round((paymentTotal - latePortion) * 100) / 100,
+                    0,
+                  )
+                : roundedRestockingFee + roundedDepositFee;
 
             if (paymentTotal > 0) {
-              restockingFeeAmount = Math.min(
-                roundedRestockingFee,
-                selectablePaymentTotal,
-              );
-              const remainingAfterRestocking = Math.max(
-                selectablePaymentTotal - restockingFeeAmount,
-                0,
-              );
+              restockingFeeAmount = Math.min(roundedRestockingFee, afterLateFee);
               depositFeeAmount = Math.min(
                 roundedDepositFee,
-                remainingAfterRestocking,
+                Math.max(
+                  Math.round((afterLateFee - restockingFeeAmount) * 100) / 100,
+                  0,
+                ),
               );
             } else {
               restockingFeeAmount = roundedRestockingFee;
               depositFeeAmount = roundedDepositFee;
             }
 
-            feeAmount = restockingFeeAmount + depositFeeAmount;
+            feeAmount =
+              Math.round((restockingFeeAmount + depositFeeAmount) * 100) / 100;
+            lateFeeRetainedAmount = latePortion;
           } else if (normalizedFeeAction === "restocking") {
             const roundedCalculatedFee =
               Math.round(calculatedRestockingFee * 100) / 100;
@@ -1368,14 +1369,33 @@ export async function DELETE(
             }
             feeAmount = paymentTotal;
           } else if (normalizedFeeAction === "late") {
-            if (lateFeeRetainedAmount <= 0.009) {
-              throw new Error("There is no collected late fee to retain.");
-            }
             feeAmount = 0;
           } else {
             feeAmount = 0;
           }
-          if (normalizedFeeAction !== "all" && lateFeeRetainedAmount > 0.009) {
+          if (
+            normalizedFeeAction === "late" ||
+            normalizedFeeAction === "both"
+          ) {
+            if (requestedLateFeeAmount <= 0.009) {
+              throw new Error("Enter the late fee amount to retain.");
+            }
+            const roomForLateFee =
+              paymentTotal > 0.009
+                ? Math.max(
+                    Math.round((paymentTotal - feeAmount) * 100) / 100,
+                    0,
+                  )
+                : requestedLateFeeAmount;
+            lateFeeRetainedAmount = Math.min(
+              requestedLateFeeAmount,
+              roomForLateFee,
+            );
+            if (lateFeeRetainedAmount <= 0.009) {
+              throw new Error(
+                "The paid amount is already retained by the other fees.",
+              );
+            }
             feeAmount =
               Math.round((feeAmount + lateFeeRetainedAmount) * 100) / 100;
           }

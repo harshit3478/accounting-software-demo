@@ -344,6 +344,7 @@ function InvoicesPageContent() {
               paymentAction: payload.paymentAction,
               feeAction: payload.feeAction,
               customFeeAmount: payload.customFeeAmount,
+              lateFeeAmount: payload.lateFeeAmount,
               nonRefundableReason: payload.nonRefundableReason,
               feeMethodId: payload.feeMethodId,
               targetInvoiceId: payload.targetInvoiceId || null,

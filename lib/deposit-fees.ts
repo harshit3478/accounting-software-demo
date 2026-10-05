@@ -15,6 +15,7 @@ export interface DepositFeeItemLike {
   quantity?: number | string | null;
   unit?: string | null;
   price?: number | string | null;
+  pricePerItem?: number | string | null;
 }
 
 function normalizeUnitName(unit: string | null | undefined) {
@@ -51,6 +52,22 @@ export function normalizeDepositFeeRules<T extends DepositFeeRuleLike>(
   });
 }
 
+function depositIncludedInUnitPrice(
+  quantity: number,
+  unitPrice: number,
+  percent: number,
+): number {
+  const rate = Number(percent || 0);
+  if (!Number.isFinite(rate) || rate <= 0) return 0;
+  if (!Number.isFinite(unitPrice) || unitPrice <= 0) return 0;
+  if (!Number.isFinite(quantity) || quantity <= 0) return 0;
+
+  // The unit price already contains the required deposit. Take that included
+  // portion out instead of adding the percentage on top of the full price.
+  const deposit = ((unitPrice * rate) / (100 + rate)) * quantity;
+  return Number(Math.max(deposit, 0).toFixed(2));
+}
+
 export function calculateFlatDepositFee(
   quantity: number,
   unitPrice: number,
@@ -60,8 +77,7 @@ export function calculateFlatDepositFee(
   if (!Number.isFinite(fee) || fee < 0) return 0;
 
   if (rule.isPercentage) {
-    const lineTotal = unitPrice * quantity;
-    return Number(((lineTotal * fee) / 100).toFixed(2));
+    return depositIncludedInUnitPrice(quantity, unitPrice, fee);
   }
 
   return Number((fee * quantity).toFixed(2));
@@ -93,8 +109,7 @@ export function calculateDepositFeeFromRules(
     if (minOk && maxOk) {
       const fee = Number(rule.fee || 0);
       if (rule.isPercentage) {
-        const lineTotal = Number(unitPrice || 0) * quantity;
-        return Number(((lineTotal * fee) / 100).toFixed(2));
+        return depositIncludedInUnitPrice(quantity, Number(unitPrice || 0), fee);
       }
       return Number(fee.toFixed(2));
     }
@@ -111,7 +126,7 @@ export function calculateDepositFeeForItem(
     Number(item.quantity || 0),
     item.unit,
     rules,
-    Number(item.price || 0),
+    Number(item.price ?? item.pricePerItem ?? 0),
   );
 }
 
@@ -120,7 +135,7 @@ export function formatDepositFeeRuleSummary(rule: DepositFeeRuleLike): string {
 
   if (isFlatDepositFeeRule(rule)) {
     if (rule.isPercentage) {
-      return `${Number(rule.fee || 0)}% of line total per ${unit}`;
+      return `${Number(rule.fee || 0)}% included in each ${unit} price`;
     }
     return `$${Number(rule.fee || 0).toFixed(2)} per ${unit}`;
   }
@@ -137,7 +152,7 @@ export function formatDepositFeeRuleSummary(rule: DepositFeeRuleLike): string {
           : `${unit} ${min} - ${max}`;
 
   if (rule.isPercentage) {
-    return `${rangeLabel} · ${Number(rule.fee || 0)}% of line total`;
+    return `${rangeLabel} · ${Number(rule.fee || 0)}% included in the unit price`;
   }
   return `${rangeLabel} · $${Number(rule.fee || 0).toFixed(2)} flat fee`;
 }

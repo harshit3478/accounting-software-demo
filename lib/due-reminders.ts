@@ -1,6 +1,7 @@
 import prisma from "./prisma";
 import { sendDuePaymentReminderEmail } from "./email";
 import { daysBetweenBusiness } from "./business-date";
+import { calculateRestockingFeeAmount } from "./restocking-fee";
 
 export interface DueReminderSettingSnapshot {
   daysAfterDueDate: number;
@@ -61,20 +62,18 @@ export async function getRestockingFeeSnapshot(): Promise<RestockingFeeSnapshot>
 }
 
 export function formatRestockingFeeNotice(
-  invoiceAmount: number,
+  items: unknown,
   restocking: RestockingFeeSnapshot,
 ): string | null {
   if (!restocking.isActive || restocking.amount <= 0) {
     return "Please be advised that continued non-payment may result in a restocking fee and cancellation of your order, per our terms and conditions.";
   }
 
-  const feeAmount = restocking.isPercentage
-    ? (invoiceAmount * restocking.amount) / 100
-    : restocking.amount;
+  const feeAmount = calculateRestockingFeeAmount(items, restocking);
 
   const feeLabel = restocking.isPercentage
-    ? `${restocking.amount}% ($${feeAmount.toFixed(2)})`
-    : `$${feeAmount.toFixed(2)}`;
+    ? `${restocking.amount}% per unit ($${feeAmount.toFixed(2)})`
+    : `$${restocking.amount.toFixed(2)} per unit ($${feeAmount.toFixed(2)})`;
 
   return `Please be advised that if payment is not received, a restocking fee of ${feeLabel} may apply and your order may be cancelled, per our terms and conditions.`;
 }
@@ -225,7 +224,7 @@ export async function processDueReminderEmails(options?: {
     const remaining = getInvoiceRemaining(invoice);
     const restockingNotice =
       decision.reminderNumber === 3
-        ? formatRestockingFeeNotice(Number(invoice.amount), restocking)
+        ? formatRestockingFeeNotice(invoice.items, restocking)
         : null;
 
     const emailResult = await sendDuePaymentReminderEmail({

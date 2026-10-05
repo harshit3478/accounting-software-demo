@@ -478,7 +478,7 @@ export default function DepositFeeRulesTab({
                     }))
                   }
                 />
-                Percentage of line total
+                Percentage included in the unit price
               </label>
             </div>
 

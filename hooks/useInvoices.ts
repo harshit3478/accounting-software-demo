@@ -227,6 +227,7 @@ interface UseInvoicesReturn {
       | "all"
       | "none";
     customFeeAmount?: number;
+    lateFeeAmount?: number;
     nonRefundableReason?: string;
     feeMethodId?: number;
     targetInvoiceId?: number | null;
@@ -645,6 +646,7 @@ export function useInvoices(
       | "all"
       | "none";
     customFeeAmount?: number;
+    lateFeeAmount?: number;
     nonRefundableReason?: string;
     feeMethodId?: number;
     targetInvoiceId?: number | null;
@@ -679,6 +681,7 @@ export function useInvoices(
           paymentAction: options?.paymentAction,
           feeAction: options?.feeAction,
           customFeeAmount: options?.customFeeAmount,
+          lateFeeAmount: options?.lateFeeAmount,
           nonRefundableReason: options?.nonRefundableReason,
           feeMethodId: options?.feeMethodId,
           targetInvoiceId: options?.targetInvoiceId ?? null,
