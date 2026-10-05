@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { formatPaymentCode } from "./payment-code";
 
 type CreditTxLike = {
@@ -11,6 +12,167 @@ type CreditTxLike = {
 type PaymentMatchLike = {
   invoiceId: number;
 };
+
+function roundMoney(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+/** Source payment named in a store_credit_applied note. */
+export function parseStoreCreditSourceRef(notes: string | null | undefined): {
+  paymentCode: string | null;
+  paymentId: number | null;
+} {
+  if (!notes) {
+    return { paymentCode: null, paymentId: null };
+  }
+
+  const codeMatch = notes.match(/From payment (PAY-\d+)(?!\d)/i);
+  const hashMatch = notes.match(/From payment #(\d+)(?!\d)/i);
+  const paymentCode = codeMatch?.[1]?.toUpperCase() ?? null;
+  const paymentIdFromHash = hashMatch ? parseInt(hashMatch[1], 10) : null;
+  const paymentIdFromCode = paymentCode
+    ? parseInt(paymentCode.replace(/^PAY-/i, ""), 10)
+    : null;
+
+  const paymentId = paymentIdFromHash || paymentIdFromCode;
+  return {
+    paymentCode,
+    paymentId: paymentId && paymentId > 0 ? paymentId : null,
+  };
+}
+
+/** True when an active applied-payment note is the visible row for this excess payment. */
+export function storeCreditAppliedNotesReferenceSource(
+  notes: string | null | undefined,
+  source: { id: number; paymentCode?: string | null },
+): boolean {
+  if (!notes) {
+    return false;
+  }
+
+  const code = source.paymentCode || formatPaymentCode(source.id);
+  const escapedCode = code.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if (new RegExp(`From payment ${escapedCode}(?!\\d)`, "i").test(notes)) {
+    return true;
+  }
+
+  return new RegExp(`From payment #${source.id}(?!\\d)`, "i").test(notes);
+}
+
+/**
+ * Abandoning a store_credit_applied row only marks that copy abandoned.
+ * The invoice match and the customer debit live on the source excess payment.
+ * Drop this invoice's match and put the amount back on the customer balance.
+ */
+export async function releaseAbandonedStoreCreditApplication(
+  tx: any,
+  input: {
+    appliedAmount: number;
+    invoiceId?: number | null;
+    customerId?: number | null;
+    notes?: string | null;
+    userId: number;
+    reason: string;
+  },
+): Promise<{ affectedInvoiceIds: Set<number> }> {
+  const affectedInvoiceIds = new Set<number>();
+  const invoiceId = input.invoiceId ?? null;
+  if (invoiceId) {
+    affectedInvoiceIds.add(invoiceId);
+  }
+
+  const appliedAmount = roundMoney(input.appliedAmount);
+  if (appliedAmount <= 0 || !invoiceId) {
+    return { affectedInvoiceIds };
+  }
+
+  const sourceRef = parseStoreCreditSourceRef(input.notes);
+  if (!sourceRef.paymentId && !sourceRef.paymentCode) {
+    throw new Error(
+      "Store credit application is missing its source payment reference.",
+    );
+  }
+
+  const source = sourceRef.paymentId
+    ? await tx.payment.findUnique({ where: { id: sourceRef.paymentId } })
+    : await tx.payment.findUnique({
+        where: { paymentCode: sourceRef.paymentCode },
+      });
+
+  if (!source) {
+    throw new Error("Source store credit payment was not found.");
+  }
+
+  const match = await tx.paymentInvoiceMatch.findUnique({
+    where: {
+      paymentId_invoiceId: {
+        paymentId: source.id,
+        invoiceId,
+      },
+    },
+  });
+
+  if (match) {
+    const matchAmount = roundMoney(Number(match.amount));
+    const removed = roundMoney(Math.min(matchAmount, appliedAmount));
+    if (matchAmount - removed <= 0.009) {
+      await tx.paymentInvoiceMatch.delete({ where: { id: match.id } });
+    } else {
+      await tx.paymentInvoiceMatch.update({
+        where: { id: match.id },
+        data: {
+          amount: { decrement: new Prisma.Decimal(removed.toFixed(2)) },
+        },
+      });
+    }
+  }
+
+  const remainingMatches = await tx.paymentInvoiceMatch.findMany({
+    where: { paymentId: source.id },
+    select: { amount: true },
+  });
+  const matchedTotal = roundMoney(
+    remainingMatches.reduce(
+      (sum: number, row: { amount: { toNumber?: () => number } | number }) =>
+        sum + Number(row.amount),
+      0,
+    ),
+  );
+  const sourceAmount = roundMoney(Number(source.amount));
+  const fullyMatched = matchedTotal + 0.001 >= sourceAmount;
+  if (fullyMatched !== Boolean(source.isMatched)) {
+    await tx.payment.update({
+      where: { id: source.id },
+      data: { isMatched: fullyMatched },
+    });
+  }
+
+  const customerId = input.customerId ?? source.customerId ?? null;
+  if (customerId) {
+    await tx.customer.update({
+      where: { id: customerId },
+      data: {
+        storeCredit: {
+          increment: new Prisma.Decimal(appliedAmount.toFixed(2)),
+        },
+      },
+    });
+
+    await tx.customerCreditTransaction.create({
+      data: {
+        customerId,
+        amount: new Prisma.Decimal(appliedAmount.toFixed(2)),
+        type: "credit",
+        reason: `Reversed store credit application because the applied payment was abandoned. ${input.reason}`,
+        paymentId: source.id,
+        invoiceId,
+        createdById: input.userId,
+      },
+    });
+  }
+
+  return { affectedInvoiceIds };
+}
 
 /**
  * Collect every invoice that should be recalculated when a payment is abandoned.
@@ -163,7 +325,8 @@ export async function repairAbandonedStoreCreditPayment(
   },
   userId: number,
 ): Promise<Set<number>> {
-  const reason = payment.abandonReason || "Repair abandoned store credit payment";
+  const reason =
+    payment.abandonReason || "Repair abandoned store credit payment";
   const cleanup = await cleanupAbandonedStoreCreditPayment(tx, {
     paymentId: payment.id,
     paymentCode: payment.paymentCode,

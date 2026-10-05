@@ -639,6 +639,29 @@ function getAbandonedMoneyOverrides(
   };
 }
 
+function appendRetainedAndLateFeeDeductions(
+  deductions: AbandonedInvoiceDeduction[],
+  retainedAmount: number,
+  lateFeeRetained: number,
+) {
+  const safeRetained = Math.max(retainedAmount, 0);
+  const latePortion = Math.min(Math.max(lateFeeRetained, 0), safeRetained);
+  const otherPortion = Number((safeRetained - latePortion).toFixed(2));
+
+  if (latePortion > 0.009) {
+    deductions.push({
+      label: "Late Fee:",
+      amount: Number(latePortion.toFixed(2)),
+    });
+  }
+  if (otherPortion > 0.009) {
+    deductions.push({
+      label: "Non-Refundable Amount:",
+      amount: otherPortion,
+    });
+  }
+}
+
 function getAbandonedFinalAmountLabel(
   disposition: string | null | undefined,
 ): string {
@@ -690,16 +713,21 @@ export function getAbandonedInvoicePaymentBreakdown(invoice: {
     ).toFixed(2),
   );
 
-  // Prefer live fee payment rows, then correction overrides, then original abandon snapshot.
-  // Never let a stale feeAmount override corrected live fee rows (PDF blunder).
+  const recordedFeeAmount =
+    overrides.feeAmount != null && overrides.feeAmount > 0.009
+      ? Number(overrides.feeAmount.toFixed(2))
+      : Number(history?.feeAmount?.to ?? 0);
+
+  // Prefer live fee payment rows, then a complete correction breakdown, then the
+  // recorded fee total. A late-fee line alone must not shrink a larger retained total.
   let totalRetained =
     liveFeeTotal > 0.009
       ? liveFeeTotal
-      : correctionFeeTotal > 0.009
+      : correctionFeeTotal > 0.009 &&
+          (recordedFeeAmount <= 0.009 ||
+            correctionFeeTotal + 0.009 >= recordedFeeAmount)
         ? correctionFeeTotal
-        : overrides.feeAmount != null && overrides.feeAmount > 0.009
-          ? Number(overrides.feeAmount.toFixed(2))
-          : Number(history?.feeAmount?.to ?? 0);
+        : recordedFeeAmount;
 
   if (
     overrides.correctedPaidAmount != null &&
@@ -789,12 +817,11 @@ export function getAbandonedInvoicePaymentBreakdown(invoice: {
     if (liveDepositFee > 0) {
       deductions.push({ label: "Deposit Fee:", amount: liveDepositFee });
     }
-    if (liveRetainedFee > 0) {
-      deductions.push({
-        label: "Non-Refundable Amount:",
-        amount: liveRetainedFee,
-      });
-    }
+    appendRetainedAndLateFeeDeductions(
+      deductions,
+      liveRetainedFee,
+      lateFromHistory,
+    );
   } else if (feeType === "both") {
     if (restockingFromHistory > 0) {
       deductions.push({
@@ -807,17 +834,16 @@ export function getAbandonedInvoicePaymentBreakdown(invoice: {
     }
     if (lateFromHistory > 0) {
       deductions.push({
-        label: "Non-Refundable Amount:",
+        label: "Late Fee:",
         amount: lateFromHistory,
       });
     }
   } else if (feeType === "all") {
-    if (totalRetained > 0) {
-      deductions.push({
-        label: "Non-Refundable Amount:",
-        amount: totalRetained,
-      });
-    }
+    appendRetainedAndLateFeeDeductions(
+      deductions,
+      totalRetained,
+      lateFromHistory,
+    );
   } else if (correctionFeeTotal > 0.009) {
     if ((overrides.restockingFeeAmount || 0) > 0) {
       deductions.push({
@@ -833,8 +859,26 @@ export function getAbandonedInvoicePaymentBreakdown(invoice: {
     }
     if ((overrides.lateFeeRetained || 0) > 0) {
       deductions.push({
-        label: "Non-Refundable Amount:",
+        label: "Late Fee:",
         amount: Number(overrides.lateFeeRetained),
+      });
+    }
+    const explainedFee =
+      Math.max(overrides.restockingFeeAmount || 0, 0) +
+      Math.max(overrides.depositFeeAmount || 0, 0) +
+      Math.max(overrides.lateFeeRetained || 0, 0);
+    const unexplainedFee = Number((totalRetained - explainedFee).toFixed(2));
+    if (unexplainedFee > 0.009) {
+      deductions.push({
+        label:
+          feeType === "restocking"
+            ? "Restocking Fee:"
+            : feeType === "deposit"
+              ? "Deposit Fee:"
+              : feeType === "late"
+                ? "Late Fee:"
+                : "Non-Refundable Amount:",
+        amount: unexplainedFee,
       });
     }
   } else if (totalRetained > 0) {
@@ -953,10 +997,12 @@ export function getAbandonedRetainedFeeDisplay(invoice: {
     | {
         feeType?: { to?: string | null };
         feeAmount?: { to?: number | null };
+        lateFeeRetained?: { to?: number | null };
       }
     | undefined;
   const feeType = changes?.feeType?.to;
   const feeAmountFromHistory = Number(changes?.feeAmount?.to || 0);
+  const lateFeeRetained = Number(changes?.lateFeeRetained?.to || 0);
 
   if (invoice.isLayaway) {
     const combinedFromPayments =
@@ -988,7 +1034,11 @@ export function getAbandonedRetainedFeeDisplay(invoice: {
         };
       }
       return {
-        label: "Non-Refundable Amount:",
+        label:
+          lateFeeRetained > 0.009 &&
+          Math.abs(retainedFromPayments - lateFeeRetained) <= 0.02
+            ? "Late Fee:"
+            : "Non-Refundable Amount:",
         amount: Number(retainedFromPayments.toFixed(2)),
       };
     }
@@ -1026,9 +1076,13 @@ export function getAbandonedRetainedFeeDisplay(invoice: {
             : 0;
   if (amount <= 0) return null;
 
+  const retainedIsLateFee =
+    lateFeeRetained > 0.009 && Math.abs(amount - lateFeeRetained) <= 0.02;
+
   return {
-    label:
-      retainedFromPayments > 0 || feeType === "other" || feeType === "all"
+    label: retainedIsLateFee
+      ? "Late Fee:"
+      : retainedFromPayments > 0 || feeType === "other" || feeType === "all"
         ? "Non-Refundable Amount:"
         : "Deposit Fee:",
     amount: Number(amount.toFixed(2)),
@@ -1217,6 +1271,7 @@ export function getInvoicePaymentsForPdf(invoice: {
 
 export function getInvoicePdfPaymentLabel(payment: {
   source?: string;
+  notes?: string | null;
   paymentDate?: string;
   date?: string;
   isRefund?: boolean;
@@ -1229,6 +1284,9 @@ export function getInvoicePdfPaymentLabel(payment: {
     return "Deposit fee retained:";
   }
   if (payment.source === "retained_fee") {
+    if ((payment.notes || "").startsWith("Late fee retained")) {
+      return "Late fee retained:";
+    }
     return "Non-refundable amount retained:";
   }
   if (payment.source === "restocking_fee") {

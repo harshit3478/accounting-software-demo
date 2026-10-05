@@ -140,6 +140,7 @@ export async function applyStoreCreditAsProcessingFee(
   let creditPaymentId: number | null = null;
   let methodId: number | null = null;
   let paymentDate = new Date();
+  let reusedCreditPayment = false;
 
   if (input.creditTransactionId) {
     const creditTx = await tx.customerCreditTransaction.findFirst({
@@ -157,7 +158,11 @@ export async function applyStoreCreditAsProcessingFee(
             paymentDate: true,
             source: true,
             isAbandoned: true,
+            invoiceId: true,
             notes: true,
+            paymentMatches: {
+              select: { amount: true },
+            },
           },
         },
       },
@@ -188,22 +193,75 @@ export async function applyStoreCreditAsProcessingFee(
         throw new Error("This store credit payment has been abandoned");
       }
 
+      if (creditTx.payment.invoiceId) {
+        throw new Error(
+          "This store credit payment is already allocated to an invoice",
+        );
+      }
+
+      const paymentAmount = Number(
+        creditTx.payment.amount?.toNumber?.() ?? creditTx.payment.amount ?? 0,
+      );
+      const matchedAmount = (creditTx.payment.paymentMatches || []).reduce(
+        (
+          sum: number,
+          match: { amount: { toNumber?: () => number } | number },
+        ) => {
+          const rawAmount = match.amount;
+          const matchValue =
+            typeof rawAmount === "number"
+              ? rawAmount
+              : Number(rawAmount.toNumber?.() ?? 0);
+          return sum + matchValue;
+        },
+        0,
+      );
+      const availableOnPayment =
+        Math.round((paymentAmount - matchedAmount) * 100) / 100;
+
+      if (safeAmount > availableOnPayment + 0.001) {
+        throw new Error(
+          `Amount exceeds the unallocated balance on this store credit payment ($${availableOnPayment.toFixed(2)})`,
+        );
+      }
+
       creditPaymentId = creditTx.payment.id;
       methodId = creditTx.payment.methodId;
       paymentDate = creditTx.payment.paymentDate;
 
-      await tx.payment.update({
-        where: { id: creditTx.payment.id },
-        data: {
-          isMatched: true,
-          notes: [
-            creditTx.payment.notes || "",
-            `Reclassified as credit card processing fee on ${invoice.invoiceNumber}`,
-          ]
-            .filter(Boolean)
-            .join(" | "),
-        },
-      });
+      const feeNote = `Reclassified as credit card processing fee on ${invoice.invoiceNumber}`;
+      const existingNotes = creditTx.payment.notes || "";
+      const notes = existingNotes.includes(feeNote)
+        ? existingNotes
+        : [existingNotes, feeNote].filter(Boolean).join(" | ");
+      const coversWholePayment =
+        matchedAmount <= 0.001 &&
+        Math.abs(safeAmount - paymentAmount) <= 0.001;
+
+      if (coversWholePayment) {
+        await tx.payment.update({
+          where: { id: creditTx.payment.id },
+          data: {
+            invoiceId: invoice.id,
+            customerId: input.customerId,
+            source: "processing_fee",
+            isMatched: true,
+            notes,
+          },
+        });
+        reusedCreditPayment = true;
+      } else {
+        const remaining =
+          Math.round((paymentAmount - safeAmount) * 100) / 100;
+        await tx.payment.update({
+          where: { id: creditTx.payment.id },
+          data: {
+            amount: remaining,
+            isMatched: matchedAmount + 0.001 >= remaining,
+            notes,
+          },
+        });
+      }
     }
   }
 
@@ -221,14 +279,20 @@ export async function applyStoreCreditAsProcessingFee(
     methodId = fallbackMethod.id;
   }
 
-  await createProcessingFeePayment(tx, {
-    invoiceId: input.invoiceId,
-    methodId,
-    paymentDate,
-    amount: safeAmount,
-    userId: input.userId,
-    notes: `Credit card processing fee from store credit on ${invoice.invoiceNumber}`,
-  });
+  if (!reusedCreditPayment) {
+    if (!methodId) {
+      throw new Error("No active payment method found");
+    }
+
+    await createProcessingFeePayment(tx, {
+      invoiceId: input.invoiceId,
+      methodId,
+      paymentDate,
+      amount: safeAmount,
+      userId: input.userId,
+      notes: `Credit card processing fee from store credit on ${invoice.invoiceNumber}`,
+    });
+  }
 
   await tx.invoice.update({
     where: { id: input.invoiceId },

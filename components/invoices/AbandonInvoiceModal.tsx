@@ -34,6 +34,7 @@ interface InvoiceLike {
   customerId?: number | null;
   amount: number;
   paidAmount: number;
+  lateFee?: number | string | null;
   isLayaway?: boolean;
   items?: Array<{
     depositFee?: number | string | null;
@@ -54,7 +55,14 @@ interface AbandonInvoiceModalProps {
   onConfirm: (payload: {
     editReason: string;
     paymentAction: "credit" | "transfer" | "refund" | "none";
-    feeAction: "restocking" | "deposit" | "both" | "other" | "all" | "none";
+    feeAction:
+      | "restocking"
+      | "deposit"
+      | "both"
+      | "late"
+      | "other"
+      | "all"
+      | "none";
     customFeeAmount?: number;
     nonRefundableReason?: string;
     targetInvoiceId?: number;
@@ -76,7 +84,13 @@ export default function AbandonInvoiceModal({
     "credit" | "transfer" | "refund" | "none"
   >("credit");
   const [feeAction, setFeeAction] = useState<
-    "restocking" | "deposit" | "both" | "other" | "all" | "none"
+    | "restocking"
+    | "deposit"
+    | "both"
+    | "late"
+    | "other"
+    | "all"
+    | "none"
   >("none");
   const [customFeeAmount, setCustomFeeAmount] = useState("");
   const [targetInvoiceId, setTargetInvoiceId] = useState<number | null>(null);
@@ -99,6 +113,13 @@ export default function AbandonInvoiceModal({
   const paidAmount = invoice?.paidAmount || 0;
   const hasPayments = paidAmount > 0;
   const isLayaway = !!invoice?.isLayaway;
+  const chargedLateFee = Math.max(Number(invoice?.lateFee || 0), 0);
+  const retainedLateFee = hasPayments
+    ? Math.min(chargedLateFee, paidAmount)
+    : 0;
+  const paidAfterLateFee = hasPayments
+    ? Math.max(paidAmount - retainedLateFee, 0)
+    : 0;
   const depositFeeTotal = (invoice?.items || []).reduce((sum, item) => {
     const fee = Number(item.depositFee || 0);
     return sum + (Number.isFinite(fee) ? fee : 0);
@@ -109,15 +130,16 @@ export default function AbandonInvoiceModal({
       : restockingFeeSetting.amount
     : 0;
   const effectiveRestockingFee = hasPayments
-    ? Math.min(restockingFeeAmount, paidAmount)
+    ? Math.min(restockingFeeAmount, paidAfterLateFee)
     : restockingFeeAmount;
   const effectiveDepositFee = hasPayments
-    ? Math.min(depositFeeTotal, paidAmount)
+    ? Math.min(depositFeeTotal, paidAfterLateFee)
     : depositFeeTotal;
   const canApplyRestocking =
     isLayaway && !!restockingFeeSetting?.isActive && effectiveRestockingFee > 0;
   const canApplyDeposit = effectiveDepositFee > 0;
   const canApplyBoth = canApplyRestocking && canApplyDeposit;
+  const canApplyLateFee = retainedLateFee > 0.009;
   const canApplyOther = !isLayaway && hasPayments;
   const canApplyAllPayments = hasPayments;
   const showFeeHandling = isLayaway
@@ -127,28 +149,35 @@ export default function AbandonInvoiceModal({
   const effectiveOtherFee =
     Number.isFinite(parsedCustomFee) && parsedCustomFee > 0
       ? hasPayments
-        ? Math.min(parsedCustomFee, paidAmount)
+        ? Math.min(parsedCustomFee, paidAfterLateFee)
         : parsedCustomFee
       : 0;
   const bothFeeAmounts = (() => {
     if (!hasPayments) {
+      const restocking = restockingFeeAmount;
+      const deposit = depositFeeTotal;
+      const late = chargedLateFee;
       return {
-        restocking: restockingFeeAmount,
-        deposit: depositFeeTotal,
-        total: restockingFeeAmount + depositFeeTotal,
+        restocking,
+        deposit,
+        late,
+        total: restocking + deposit + late,
       };
     }
 
-    const restockingPart = Math.min(restockingFeeAmount, paidAmount);
+    const restockingPart = Math.min(restockingFeeAmount, paidAfterLateFee);
     const depositPart = Math.min(
       depositFeeTotal,
-      Math.max(paidAmount - restockingPart, 0),
+      Math.max(paidAfterLateFee - restockingPart, 0),
     );
 
     return {
       restocking: restockingPart,
       deposit: depositPart,
-      total: restockingPart + depositPart,
+      late: retainedLateFee,
+      total: Number(
+        (restockingPart + depositPart + retainedLateFee).toFixed(2),
+      ),
     };
   })();
   const selectedFeeAmount =
@@ -157,18 +186,27 @@ export default function AbandonInvoiceModal({
       : feeAction === "deposit"
         ? effectiveDepositFee
         : feeAction === "both"
-          ? bothFeeAmounts.total
+          ? Number(
+              (bothFeeAmounts.restocking + bothFeeAmounts.deposit).toFixed(2),
+            )
+          : feeAction === "late"
+            ? 0
           : feeAction === "other"
             ? effectiveOtherFee
             : feeAction === "all"
               ? paidAmount
               : 0;
+  const retainedTotal =
+    feeAction === "all"
+      ? paidAmount
+      : Number((selectedFeeAmount + retainedLateFee).toFixed(2));
   const refundableBalance = hasPayments
-    ? Math.max(paidAmount - selectedFeeAmount, 0)
+    ? Math.max(paidAmount - retainedTotal, 0)
     : 0;
   const canRefund = refundableBalance > 0.009;
   const requiresNonRefundableReason = feeAction === "other";
-  const showPaymentHandling = hasPayments && feeAction !== "all";
+  const showPaymentHandling =
+    hasPayments && feeAction !== "all" && refundableBalance > 0.009;
   const usesSingleAbandonReason = feeAction === "all";
 
   useEffect(() => {
@@ -365,7 +403,13 @@ export default function AbandonInvoiceModal({
       return;
     }
 
+    if (feeAction === "late" && retainedLateFee <= 0.009) {
+      setError("There is no collected late fee to retain.");
+      return;
+    }
+
     if (
+      !hasPayments &&
       feeAction !== "none" &&
       feeAction !== "all" &&
       selectedFeeAmount > 0 &&
@@ -460,6 +504,21 @@ export default function AbandonInvoiceModal({
               {isLayaway ? "Fee Handling" : "Non-Refundable Amount"}
             </label>
 
+            {retainedLateFee > 0.009 && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                Late fee of ${chargedLateFee.toFixed(2)} stays retained
+                {retainedLateFee + 0.009 < chargedLateFee
+                  ? ` ($${retainedLateFee.toFixed(2)} collected)`
+                  : ""}
+                . It is not refunded or moved to store credit
+                {feeAction === "all"
+                  ? ", and is included in the non-refundable payments."
+                  : paidAfterLateFee > 0.009
+                    ? `. $${paidAfterLateFee.toFixed(2)} remains for other fees, credit, transfer, or refund.`
+                    : ". Nothing remains to credit, transfer, or refund."}
+              </div>
+            )}
+
             {canApplyRestocking && (
               <label className="flex items-start gap-2 text-sm text-gray-700">
                 <input
@@ -472,7 +531,16 @@ export default function AbandonInvoiceModal({
                 Apply restocking fee
                 <span className="text-xs text-gray-500">
                   {restockingFeeSetting?.isPercentage
-                    ? `${restockingFeeSetting.amount}% of invoice total (~$${effectiveRestockingFee.toFixed(2)}${hasPayments ? `, up to $${paidAmount.toFixed(2)} paid` : ""})`
+                    ? `${restockingFeeSetting.amount}% of invoice total ($${restockingFeeAmount.toFixed(2)}${
+                        hasPayments &&
+                        restockingFeeAmount - effectiveRestockingFee > 0.009
+                          ? `, kept at $${effectiveRestockingFee.toFixed(2)} ${
+                              retainedLateFee > 0.009
+                                ? "after the late fee"
+                                : "of the paid amount"
+                            }`
+                          : ""
+                      })`
                     : `$${effectiveRestockingFee.toFixed(2)} fixed`}
                 </span>
               </label>
@@ -491,8 +559,12 @@ export default function AbandonInvoiceModal({
                   : "Deduct deposit fees from invoice items"}
                 <span className="text-xs text-gray-500">
                   (${effectiveDepositFee.toFixed(2)}
-                  {hasPayments && depositFeeTotal > paidAmount
-                    ? ` of $${depositFeeTotal.toFixed(2)}, capped by paid amount`
+                  {hasPayments && depositFeeTotal > paidAfterLateFee
+                    ? ` of $${depositFeeTotal.toFixed(2)}, capped by ${
+                        retainedLateFee > 0.009
+                          ? "the amount left after the late fee"
+                          : "paid amount"
+                      }`
                     : ""}
                   )
                 </span>
@@ -509,7 +581,8 @@ export default function AbandonInvoiceModal({
                 />
                 Deduct other non-refundable amount
                 <span className="text-xs text-gray-500">
-                  (up to ${paidAmount.toFixed(2)} paid)
+                  (up to ${paidAfterLateFee.toFixed(2)}
+                  {retainedLateFee > 0.009 ? " after late fee" : " paid"})
                 </span>
               </label>
             )}
@@ -526,7 +599,7 @@ export default function AbandonInvoiceModal({
                   <input
                     type="number"
                     min="0.01"
-                    max={paidAmount}
+                    max={hasPayments ? paidAfterLateFee : undefined}
                     step="0.01"
                     value={customFeeAmount}
                     onChange={(e) => setCustomFeeAmount(e.target.value)}
@@ -541,6 +614,25 @@ export default function AbandonInvoiceModal({
                   </p>
                 )}
               </div>
+            )}
+
+            {canApplyLateFee && (
+              <label className="flex items-start gap-2 text-sm text-gray-700">
+                <input
+                  type="radio"
+                  checked={feeAction === "late"}
+                  onChange={() => setFeeAction("late")}
+                  className="mt-0.5"
+                />
+                Apply late fee
+                <span className="text-xs text-gray-500">
+                  (${retainedLateFee.toFixed(2)} retained
+                  {paidAfterLateFee > 0.009
+                    ? ` — $${paidAfterLateFee.toFixed(2)} remains for credit, transfer, or refund`
+                    : ""}
+                  )
+                </span>
+              </label>
             )}
 
             {canApplyAllPayments && (
@@ -575,14 +667,16 @@ export default function AbandonInvoiceModal({
                   onChange={() => setFeeAction("both")}
                   className="mt-0.5"
                 />
-                Apply both restocking and deposit fees
+                Apply restocking, deposit, and late fees
                 <span className="text-xs text-gray-500">
-                  (restocking ${bothFeeAmounts.restocking.toFixed(2)} + deposit
-                  ${bothFeeAmounts.deposit.toFixed(2)} = $
+                  (restocking ${bothFeeAmounts.restocking.toFixed(2)}
+                  {restockingFeeAmount - bothFeeAmounts.restocking > 0.009
+                    ? ` of $${restockingFeeAmount.toFixed(2)}`
+                    : ""}{" "}
+                  + deposit ${bothFeeAmounts.deposit.toFixed(2)} + late fee $
+                  {bothFeeAmounts.late.toFixed(2)} = $
                   {bothFeeAmounts.total.toFixed(2)}
-                  {hasPayments
-                    ? `, capped by $${paidAmount.toFixed(2)} paid`
-                    : ""}
+                  {hasPayments ? `, capped by $${paidAmount.toFixed(2)} paid` : ""}
                   )
                 </span>
               </label>
@@ -595,7 +689,9 @@ export default function AbandonInvoiceModal({
                 onChange={() => setFeeAction("none")}
                 className="mt-0.5"
               />
-              {getInvoiceAbandonWithoutFeeLabel(invoice.isLayaway)}
+              {retainedLateFee > 0.009
+                ? "Abandon without an additional fee"
+                : getInvoiceAbandonWithoutFeeLabel(invoice.isLayaway)}
             </label>
 
             {requiresNonRefundableReason && (
@@ -616,7 +712,8 @@ export default function AbandonInvoiceModal({
 
             {feeAction !== "none" &&
               feeAction !== "all" &&
-              selectedFeeAmount > 0 && (
+              selectedFeeAmount > 0 &&
+              !hasPayments && (
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">
                   Fee Payment Method
@@ -641,25 +738,70 @@ export default function AbandonInvoiceModal({
                 <p className="mt-1 text-xs text-gray-500">
                   {feeAction === "both" ? (
                     <>
-                      Restocking fee (${bothFeeAmounts.restocking.toFixed(2)})
-                      and deposit fee (${bothFeeAmounts.deposit.toFixed(2)})
-                      payments totaling ${selectedFeeAmount.toFixed(2)} will be
-                      linked to this {invoiceReference}.
+                      Restocking fee (${bothFeeAmounts.restocking.toFixed(2)}),
+                      deposit fee (${bothFeeAmounts.deposit.toFixed(2)}), and
+                      late fee (${bothFeeAmounts.late.toFixed(2)}) totaling $
+                      {bothFeeAmounts.total.toFixed(2)} will be recorded on this{" "}
+                      {invoiceReference}.
                     </>
                   ) : feeAction === "other" ? (
                     <>
                       A non-refundable amount of ${selectedFeeAmount.toFixed(2)}{" "}
-                      will be linked to this {invoiceReference}.
+                      will be recorded on this {invoiceReference}.
                     </>
                   ) : (
                     <>
                       A {feeAction === "restocking" ? "restocking" : "deposit"}{" "}
                       fee payment of ${selectedFeeAmount.toFixed(2)} will be
-                      linked to this {invoiceReference}.
+                      recorded on this {invoiceReference}.
                     </>
                   )}
                 </p>
               </div>
+            )}
+
+            {hasPayments &&
+              feeAction !== "none" &&
+              feeAction !== "all" &&
+              (selectedFeeAmount > 0.009 || retainedLateFee > 0.009) && (
+              <p className="text-xs text-gray-500">
+                {feeAction === "both" ? (
+                  <>
+                    Restocking fee (${bothFeeAmounts.restocking.toFixed(2)}),
+                    deposit fee (${bothFeeAmounts.deposit.toFixed(2)}), and late
+                    fee (${bothFeeAmounts.late.toFixed(2)}) totaling $
+                    {bothFeeAmounts.total.toFixed(2)} stay on the payments
+                    already recorded on this {invoiceReference}.
+                  </>
+                ) : feeAction === "late" ? (
+                  <>
+                    Late fee of ${retainedLateFee.toFixed(2)} stays on the
+                    payments already recorded on this {invoiceReference}.
+                    {refundableBalance > 0.009 && (
+                      <>
+                        {" "}
+                        ${refundableBalance.toFixed(2)} remains for credit,
+                        transfer, or refund.
+                      </>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {feeAction === "other"
+                      ? `A non-refundable amount of $${selectedFeeAmount.toFixed(2)}`
+                      : `A ${feeAction === "restocking" ? "restocking" : "deposit"} fee of $${selectedFeeAmount.toFixed(2)}`}{" "}
+                    stays on the payments already recorded on this{" "}
+                    {invoiceReference}.
+                    {retainedLateFee > 0.009 && (
+                      <>
+                        {" "}
+                        Late fee of ${retainedLateFee.toFixed(2)} stays retained
+                        with it.
+                      </>
+                    )}
+                  </>
+                )}
+              </p>
             )}
 
             {feeAction === "all" && selectedFeeAmount > 0 && (
@@ -687,10 +829,10 @@ export default function AbandonInvoiceModal({
                 disabled={!invoice.customerId}
                 className="mt-0.5"
               />
-              {selectedFeeAmount > 0
+              {retainedTotal > 0
                 ? "Add remaining payments to customer Store Credit"
                 : "Add all invoice payments to customer Store Credit"}
-              {selectedFeeAmount > 0 && (
+              {retainedTotal > 0 && (
                 <span className="text-xs text-gray-500">
                   (${refundableBalance.toFixed(2)} after fees)
                 </span>
@@ -705,10 +847,10 @@ export default function AbandonInvoiceModal({
                 disabled={!invoice.customerId}
                 className="mt-0.5"
               />
-              {selectedFeeAmount > 0
+              {retainedTotal > 0
                 ? "Move remaining payments to another invoice of the same customer"
                 : "Move all invoice payments to another invoice of the same customer"}
-              {selectedFeeAmount > 0 && (
+              {retainedTotal > 0 && (
                 <span className="text-xs text-gray-500">
                   (${refundableBalance.toFixed(2)} after fees)
                 </span>

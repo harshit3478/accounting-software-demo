@@ -1047,6 +1047,7 @@ export async function DELETE(
       | "restocking"
       | "deposit"
       | "both"
+      | "late"
       | "other"
       | "all"
       | "none"
@@ -1126,12 +1127,15 @@ export async function DELETE(
       | "restocking"
       | "deposit"
       | "both"
+      | "late"
       | "other"
       | "all"
       | "none" = feeAction ?? "none";
     let feePaymentId: number | null = null;
     let restockingFeePaymentId: number | null = null;
     let depositFeePaymentId: number | null = null;
+    let lateFeePaymentId: number | null = null;
+    let lateFeeRetainedAmount = 0;
     let restockingFeeAmount = 0;
     let depositFeeAmount = 0;
     let refundPaymentIds: number[] = [];
@@ -1279,6 +1283,32 @@ export async function DELETE(
             }
           }
 
+          const storedLateFee = Number(
+            existingInvoice.lateFee?.toNumber?.() ??
+              existingInvoice.lateFee ??
+              0,
+          );
+          const legacyLateFee = realDirectPayments
+            .filter((payment) => payment.source === "late_fee")
+            .reduce((sum, payment) => sum + payment.amount.toNumber(), 0);
+          const chargedLateFee =
+            Math.round(
+              (storedLateFee > 0.009 ? storedLateFee : legacyLateFee) * 100,
+            ) / 100;
+          if (paymentTotal > 0.009 && chargedLateFee > 0.009) {
+            lateFeeRetainedAmount = Math.min(chargedLateFee, paymentTotal);
+          }
+          // Late fee is kept even when another fee is selected. "All payments
+          // non-refundable" already includes it, so don't add it twice.
+          const selectablePaymentTotal =
+            normalizedFeeAction === "all"
+              ? paymentTotal
+              : Math.max(
+                  Math.round((paymentTotal - lateFeeRetainedAmount) * 100) /
+                    100,
+                  0,
+                );
+
           if (normalizedFeeAction === "both") {
             const roundedRestockingFee =
               Math.round(calculatedRestockingFee * 100) / 100;
@@ -1288,10 +1318,10 @@ export async function DELETE(
             if (paymentTotal > 0) {
               restockingFeeAmount = Math.min(
                 roundedRestockingFee,
-                paymentTotal,
+                selectablePaymentTotal,
               );
               const remainingAfterRestocking = Math.max(
-                paymentTotal - restockingFeeAmount,
+                selectablePaymentTotal - restockingFeeAmount,
                 0,
               );
               depositFeeAmount = Math.min(
@@ -1309,14 +1339,14 @@ export async function DELETE(
               Math.round(calculatedRestockingFee * 100) / 100;
             feeAmount =
               paymentTotal > 0
-                ? Math.min(roundedCalculatedFee, paymentTotal)
+                ? Math.min(roundedCalculatedFee, selectablePaymentTotal)
                 : roundedCalculatedFee;
           } else if (normalizedFeeAction === "deposit") {
             const roundedCalculatedFee =
               Math.round(calculatedDepositFee * 100) / 100;
             feeAmount =
               paymentTotal > 0
-                ? Math.min(roundedCalculatedFee, paymentTotal)
+                ? Math.min(roundedCalculatedFee, selectablePaymentTotal)
                 : roundedCalculatedFee;
           } else if (normalizedFeeAction === "other") {
             const roundedCustomFee =
@@ -1328,7 +1358,7 @@ export async function DELETE(
             }
             feeAmount =
               paymentTotal > 0
-                ? Math.min(roundedCustomFee, paymentTotal)
+                ? Math.min(roundedCustomFee, selectablePaymentTotal)
                 : roundedCustomFee;
           } else if (normalizedFeeAction === "all") {
             if (paymentTotal <= 0.009) {
@@ -1337,8 +1367,17 @@ export async function DELETE(
               );
             }
             feeAmount = paymentTotal;
+          } else if (normalizedFeeAction === "late") {
+            if (lateFeeRetainedAmount <= 0.009) {
+              throw new Error("There is no collected late fee to retain.");
+            }
+            feeAmount = 0;
           } else {
             feeAmount = 0;
+          }
+          if (normalizedFeeAction !== "all" && lateFeeRetainedAmount > 0.009) {
+            feeAmount =
+              Math.round((feeAmount + lateFeeRetainedAmount) * 100) / 100;
           }
           movedAmount = Math.max(
             Math.round((paymentTotal - feeAmount) * 100) / 100,
@@ -1887,11 +1926,21 @@ export async function DELETE(
             return feePayment.id;
           };
 
-          if (
+          const selectedFeePortion =
+            normalizedFeeAction === "all"
+              ? 0
+              : Math.max(
+                  Math.round((feeAmount - lateFeeRetainedAmount) * 100) / 100,
+                  0,
+                );
+          const shouldCreateSelectedFee =
             normalizedFeeAction !== "none" &&
             normalizedFeeAction !== "all" &&
-            feeAmount > 0.009
-          ) {
+            selectedFeePortion > 0.009;
+          const shouldCreateLateFeePayment =
+            normalizedFeeAction !== "all" && lateFeeRetainedAmount > 0.009;
+
+          if (shouldCreateSelectedFee || shouldCreateLateFeePayment) {
             if (
               paymentTotal <= 0.009 &&
               !Number.isFinite(requestedFeeMethodId as number)
@@ -1906,7 +1955,7 @@ export async function DELETE(
               );
             }
 
-            if (normalizedFeeAction === "both") {
+            if (shouldCreateSelectedFee && normalizedFeeAction === "both") {
               if (restockingFeeAmount > 0.009) {
                 restockingFeePaymentId = await createRetainedFeePayment(
                   restockingFeeAmount,
@@ -1925,7 +1974,7 @@ export async function DELETE(
                   feePaymentId = depositFeePaymentId;
                 }
               }
-            } else {
+            } else if (shouldCreateSelectedFee) {
               const feeLabel =
                 normalizedFeeAction === "restocking"
                   ? "Restocking fee"
@@ -1939,10 +1988,21 @@ export async function DELETE(
                     ? "retained_fee"
                     : "deposit_fee";
               feePaymentId = await createRetainedFeePayment(
-                feeAmount,
+                selectedFeePortion,
                 feeSource,
                 feeLabel,
               );
+            }
+
+            if (shouldCreateLateFeePayment) {
+              lateFeePaymentId = await createRetainedFeePayment(
+                lateFeeRetainedAmount,
+                "retained_fee",
+                "Late fee",
+              );
+              if (!feePaymentId) {
+                feePaymentId = lateFeePaymentId;
+              }
             }
           }
         }
@@ -2006,6 +2066,26 @@ export async function DELETE(
                           nonRefundableReason: {
                             from: null,
                             to: nonRefundableReason,
+                          },
+                        }
+                      : {}),
+                    ...(lateFeeRetainedAmount > 0.009
+                      ? {
+                          lateFeeRetained: {
+                            from: 0,
+                            to: lateFeeRetainedAmount,
+                          },
+                        }
+                      : {}),
+                    ...(lateFeePaymentId
+                      ? {
+                          lateFeePaymentId: {
+                            from: null,
+                            to: lateFeePaymentId,
+                          },
+                          lateFeePaymentCode: {
+                            from: null,
+                            to: formatPaymentCode(lateFeePaymentId),
                           },
                         }
                       : {}),

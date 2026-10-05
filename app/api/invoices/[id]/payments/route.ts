@@ -1,7 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server";
-import prisma from "../../../../../lib/prisma";
+import { storeCreditAppliedNotesReferenceSource } from "../../../../../lib/abandoned-store-credit-cleanup";
 import { requireAuth } from "../../../../../lib/auth";
 import { formatPaymentCode } from "../../../../../lib/payment-code";
+import prisma from "../../../../../lib/prisma";
 import { formatUserDisplayName } from "../../../../../lib/user-display";
 
 type PaymentMethodLike = {
@@ -84,9 +85,9 @@ export async function GET(
       },
     });
 
-    const hasStoreCreditApplied = directPayments.some(
-      (payment) => payment.source === "store_credit_applied",
-    );
+    const activeAppliedNotes = directPayments
+      .filter((payment) => payment.source === "store_credit_applied")
+      .map((payment) => payment.notes);
 
     // Fetch matched payments (through PaymentInvoiceMatch table)
     const matchedPayments = await prisma.paymentInvoiceMatch.findMany({
@@ -130,10 +131,13 @@ export async function GET(
         continue;
       }
 
-      // Store credit applications are shown via store_credit_applied rows above.
+      // Hide only the excess match that still has an active applied row.
+      // Another applied payment on the same invoice must not hide this one.
       if (
         match.payment.source === "store_credit_excess" &&
-        hasStoreCreditApplied
+        activeAppliedNotes.some((notes) =>
+          storeCreditAppliedNotesReferenceSource(notes, match.payment),
+        )
       ) {
         continue;
       }

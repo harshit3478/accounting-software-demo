@@ -60,7 +60,11 @@ type PreviewPayment = {
     invoiceId?: number | null;
     paymentId?: number | null;
     amount: { toNumber: () => number };
-    customer?: { id: number; name: string; storeCredit: { toNumber: () => number } };
+    customer?: {
+      id: number;
+      name: string;
+      storeCredit: { toNumber: () => number };
+    };
   }>;
 };
 
@@ -194,6 +198,12 @@ export function buildAbandonPaymentPreview(
   if (isStoreCreditPayment && appliedFromPayment > 0.01) {
     summary.push(
       `$${appliedFromPayment.toFixed(2)} already applied to invoices will no longer count toward those invoice totals.`,
+    );
+  }
+
+  if (payment.source === "store_credit_applied") {
+    summary.push(
+      `Return $${payment.amount.toNumber().toFixed(2)} store credit to the customer and remove it from the invoice balance.`,
     );
   }
 

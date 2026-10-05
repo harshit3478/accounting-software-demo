@@ -1081,7 +1081,13 @@ export default function ViewInvoiceModal({
       } else if (payment.source === "deposit_fee") {
         rows.push({ payment, role: "deposit_fee" });
       } else if (payment.source === "retained_fee") {
-        rows.push({ payment, role: "retained_fee" });
+        const isLateFeeRetained = (payment.notes || "").startsWith(
+          "Late fee retained",
+        );
+        rows.push({
+          payment,
+          role: isLateFeeRetained ? "late_fee" : "retained_fee",
+        });
       } else if (payment.source === "restocking_fee") {
         rows.push({ payment, role: "restocking_fee" });
       }
@@ -1268,9 +1274,11 @@ export default function ViewInvoiceModal({
       const feeLabel =
         feeType === "restocking"
           ? "Restocking fee"
-          : feeType === "other" || feeType === "all"
-            ? "Non-refundable amount"
-            : "Deposit fee";
+          : feeType === "late"
+            ? "Late fee"
+            : feeType === "other" || feeType === "all"
+              ? "Non-refundable amount"
+              : "Deposit fee";
       parts.push(`${feeLabel} payment: ${feeCode}`);
     } else if (feeType === "all") {
       const receivedCodes = (

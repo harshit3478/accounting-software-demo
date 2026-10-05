@@ -1,13 +1,14 @@
-import { NextRequest, NextResponse } from "next/server";
-import prisma from "../../../../../lib/prisma";
-import { requireAuth } from "../../../../../lib/auth";
-import { invalidateDashboard } from "../../../../../lib/cache-helpers";
-import { updateInvoiceAfterPayment } from "../../../../../lib/invoice-utils";
+import { type NextRequest, NextResponse } from "next/server";
 import {
   cleanupAbandonedStoreCreditPayment,
   collectInvoiceIdsAffectedByPaymentAbandon,
+  releaseAbandonedStoreCreditApplication,
 } from "../../../../../lib/abandoned-store-credit-cleanup";
+import { requireAuth } from "../../../../../lib/auth";
+import { invalidateDashboard } from "../../../../../lib/cache-helpers";
 import { rejectChequeVaultWhenPaymentFullyAbandoned } from "../../../../../lib/cheque-vault-reject-on-abandon";
+import { updateInvoiceAfterPayment } from "../../../../../lib/invoice-utils";
+import prisma from "../../../../../lib/prisma";
 import { formatUserDisplayName } from "../../../../../lib/user-display";
 
 export async function PUT(
@@ -55,9 +56,8 @@ export async function PUT(
       );
     }
 
-    const affectedInvoiceIds = collectInvoiceIdsAffectedByPaymentAbandon(
-      existingPayment,
-    );
+    const affectedInvoiceIds =
+      collectInvoiceIdsAffectedByPaymentAbandon(existingPayment);
 
     // Start transaction to ensure consistency
     const result = await prisma.$transaction(async (tx) => {
@@ -75,6 +75,21 @@ export async function PUT(
           creditTransactions: true,
         },
       });
+
+      if (existingPayment.source === "store_credit_applied") {
+        const released = await releaseAbandonedStoreCreditApplication(tx, {
+          appliedAmount: Number(existingPayment.amount),
+          invoiceId: existingPayment.invoiceId,
+          customerId: existingPayment.customerId,
+          notes: existingPayment.notes,
+          userId: user.id,
+          reason: reason.trim(),
+        });
+
+        for (const invoiceId of released.affectedInvoiceIds) {
+          affectedInvoiceIds.add(invoiceId);
+        }
+      }
 
       const cleanup = await cleanupAbandonedStoreCreditPayment(tx, {
         paymentId,

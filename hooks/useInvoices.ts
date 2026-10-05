@@ -218,7 +218,14 @@ interface UseInvoicesReturn {
     editReason?: string;
     targetStatus?: "abandoned" | "inactive" | "reactivate";
     paymentAction?: "credit" | "transfer" | "refund" | "none";
-    feeAction?: "restocking" | "deposit" | "both" | "other" | "all" | "none";
+    feeAction?:
+      | "restocking"
+      | "deposit"
+      | "both"
+      | "late"
+      | "other"
+      | "all"
+      | "none";
     customFeeAmount?: number;
     nonRefundableReason?: string;
     feeMethodId?: number;
@@ -629,7 +636,14 @@ export function useInvoices(
     editReason?: string;
     targetStatus?: "abandoned" | "inactive" | "reactivate";
     paymentAction?: "credit" | "transfer" | "refund" | "none";
-    feeAction?: "restocking" | "deposit" | "both" | "other" | "all" | "none";
+    feeAction?:
+      | "restocking"
+      | "deposit"
+      | "both"
+      | "late"
+      | "other"
+      | "all"
+      | "none";
     customFeeAmount?: number;
     nonRefundableReason?: string;
     feeMethodId?: number;
