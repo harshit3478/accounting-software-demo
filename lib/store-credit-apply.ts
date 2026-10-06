@@ -16,7 +16,7 @@ export async function recordStoreCreditApplication(
     customerId: number;
     userId: number;
   },
-): Promise<void> {
+): Promise<{ id: number; paymentCode: string; amount: number }> {
   const amountToLink = new Prisma.Decimal(input.amount);
 
   const payment = await tx.payment.findUnique({
@@ -53,7 +53,7 @@ export async function recordStoreCreditApplication(
     },
   });
 
-  await stampPaymentCode(tx, creditAppliedPayment.id);
+  const paymentCode = await stampPaymentCode(tx, creditAppliedPayment.id);
 
   const invoiceLabel = input.invoiceNumber || `#${input.invoiceId}`;
 
@@ -75,6 +75,12 @@ export async function recordStoreCreditApplication(
       createdById: input.userId,
     },
   });
+
+  return {
+    id: creditAppliedPayment.id,
+    paymentCode,
+    amount: roundMoney(amountToLink.toNumber()),
+  };
 }
 
 export async function linkStoreCreditPaymentToInvoice(
@@ -87,7 +93,7 @@ export async function linkStoreCreditPaymentToInvoice(
     customerId: number;
     userId: number;
   },
-): Promise<void> {
+): Promise<{ id: number; paymentCode: string; amount: number }> {
   const amountToLink = new Prisma.Decimal(input.amount);
 
   const payment = await tx.payment.findUnique({
@@ -141,7 +147,7 @@ export async function linkStoreCreditPaymentToInvoice(
     });
   }
 
-  await recordStoreCreditApplication(tx, input);
+  return recordStoreCreditApplication(tx, input);
 }
 
 export async function applyAvailableStoreCreditToInvoice(
@@ -153,10 +159,13 @@ export async function applyAvailableStoreCreditToInvoice(
     maxAmount: number;
     userId: number;
   },
-): Promise<{ appliedAmount: number }> {
+): Promise<{
+  appliedAmount: number;
+  payments: Array<{ id: number; paymentCode: string; amount: number }>;
+}> {
   const maxToApply = roundMoney(Math.max(input.maxAmount, 0));
   if (maxToApply <= 0) {
-    return { appliedAmount: 0 };
+    return { appliedAmount: 0, payments: [] };
   }
 
   const customer = await tx.customer.findUnique({
@@ -169,7 +178,7 @@ export async function applyAvailableStoreCreditToInvoice(
   );
 
   if (balance <= 0) {
-    return { appliedAmount: 0 };
+    return { appliedAmount: 0, payments: [] };
   }
 
   let remaining = roundMoney(Math.min(maxToApply, balance));
@@ -187,6 +196,8 @@ export async function applyAvailableStoreCreditToInvoice(
   });
 
   let totalApplied = 0;
+  const payments: Array<{ id: number; paymentCode: string; amount: number }> =
+    [];
 
   for (const payment of creditPayments) {
     if (remaining <= 0.001) {
@@ -206,7 +217,7 @@ export async function applyAvailableStoreCreditToInvoice(
 
     const linkAmount = roundMoney(Math.min(available, remaining));
 
-    await linkStoreCreditPaymentToInvoice(tx, {
+    const appliedPayment = await linkStoreCreditPaymentToInvoice(tx, {
       paymentId: payment.id,
       invoiceId: input.invoiceId,
       invoiceNumber: input.invoiceNumber,
@@ -214,10 +225,11 @@ export async function applyAvailableStoreCreditToInvoice(
       customerId: input.customerId,
       userId: input.userId,
     });
+    payments.push(appliedPayment);
 
     remaining = roundMoney(remaining - linkAmount);
     totalApplied = roundMoney(totalApplied + linkAmount);
   }
 
-  return { appliedAmount: totalApplied };
+  return { appliedAmount: totalApplied, payments };
 }

@@ -12,6 +12,7 @@ interface InvoiceTableProps {
   onEdit: (invoice: Invoice) => void;
   onPay: (invoice: Invoice) => void;
   onLink?: (invoice: Invoice) => void;
+  onApplyStoreCredit?: (invoice: Invoice) => void;
   onDelete: (invoice: Invoice) => void;
   onToggleHold?: (invoice: Invoice) => void;
   onShip: (invoice: Invoice) => void;
@@ -40,6 +41,7 @@ export default function InvoiceTable({
   onEdit,
   onPay,
   onLink,
+  onApplyStoreCredit,
   onDelete,
   onToggleHold,
   onShip,
@@ -229,6 +231,7 @@ export default function InvoiceTable({
                 onEdit={onEdit}
                 onPay={onPay}
                 onLink={onLink}
+                onApplyStoreCredit={onApplyStoreCredit}
                 onDelete={onDelete}
                 onToggleHold={onToggleHold}
                 onShip={onShip}

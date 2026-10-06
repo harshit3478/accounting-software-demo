@@ -8,6 +8,7 @@ import {
   Edit3,
   DollarSign,
   Link2,
+  Wallet,
   Package,
   XCircle,
   RotateCcw,
@@ -33,6 +34,7 @@ interface InvoiceTableRowProps {
   onEdit: (invoice: Invoice) => void;
   onPay: (invoice: Invoice) => void;
   onLink?: (invoice: Invoice) => void;
+  onApplyStoreCredit?: (invoice: Invoice) => void;
   onDelete: (invoice: Invoice) => void;
   onToggleHold?: (invoice: Invoice) => void;
   onShip?: (invoice: Invoice) => void;
@@ -49,6 +51,7 @@ export default function InvoiceTableRow({
   onEdit,
   onPay,
   onLink,
+  onApplyStoreCredit,
   onDelete,
   onToggleHold,
   onShip,
@@ -318,6 +321,18 @@ export default function InvoiceTableRow({
                   Link Payment
                 </button>
               )}
+              {canPay && onApplyStoreCredit && invoice.customer?.id && (
+                  <button
+                    onClick={() => {
+                      setShowActionsMenu(false);
+                      onApplyStoreCredit(invoice);
+                    }}
+                    className="flex items-center gap-2 px-3 py-2 text-sm text-emerald-700 hover:bg-emerald-50 rounded-md text-left"
+                  >
+                    <Wallet className="h-4 w-4" />
+                    Apply Store Credit
+                  </button>
+                )}
               <button
                 onClick={() => {
                   setShowActionsMenu(false);

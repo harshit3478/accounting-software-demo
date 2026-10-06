@@ -157,6 +157,7 @@ interface Invoice {
     email?: string | null;
     phone?: string | null;
     address?: string | null;
+    storeCredit?: number | null;
   } | null;
   layawayPlan?: LayawayPlan | null;
   editHistory?: Array<{
@@ -189,12 +190,16 @@ interface ViewInvoiceModalProps {
   isOpen: boolean;
   onClose: () => void;
   invoice: Invoice | null;
+  onApplyStoreCredit?: (invoice: Invoice) => void;
+  storeCreditRefreshKey?: number;
 }
 
 export default function ViewInvoiceModal({
   isOpen,
   onClose,
   invoice,
+  onApplyStoreCredit,
+  storeCreditRefreshKey = 0,
 }: ViewInvoiceModalProps) {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [abandonmentRefunds, setAbandonmentRefunds] = useState<Payment[]>([]);
@@ -779,6 +784,12 @@ export default function ViewInvoiceModal({
       setIsLoadingPayments(false);
     }
   };
+
+  useEffect(() => {
+    if (!isOpen || !invoice || storeCreditRefreshKey === 0) return;
+    fetchPayments();
+    fetchLayawayPlan();
+  }, [storeCreditRefreshKey]);
 
   const canRemoveLateFees =
     !!invoice?.isLayaway &&
@@ -2358,6 +2369,26 @@ export default function ViewInvoiceModal({
               <h4 className="text-lg font-semibold text-gray-900">
                 Payment History
               </h4>
+              <div className="flex items-center gap-3">
+                {onApplyStoreCredit &&
+                  invoice.customer?.id &&
+                  amountDue > 0.009 &&
+                  invoice.status !== "inactive" && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onApplyStoreCredit({
+                          ...invoice,
+                          paidAmount: localPaidAmount,
+                          amount: localInvoiceAmount,
+                          lateFee: localLateFee,
+                        })
+                      }
+                      className="text-sm px-3 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700"
+                    >
+                      Apply Store Credit
+                    </button>
+                  )}
               {isLoadingPayments && (
                 <div className="flex items-center text-sm text-gray-500">
                   <svg
@@ -2382,6 +2413,7 @@ export default function ViewInvoiceModal({
                   Loading...
                 </div>
               )}
+              </div>
             </div>
 
             {paymentHistoryDisplay.length > 0 ? (

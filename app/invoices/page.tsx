@@ -12,6 +12,7 @@ import {
   ShipInvoiceModal,
   ShipmentDetailsModal,
   LinkPaymentModal,
+  ApplyStoreCreditModal,
 } from "../../components/invoices";
 import { ToastProvider, useToastContext } from "../../components/ToastContext";
 import Pagination from "../../components/Pagination";
@@ -110,10 +111,19 @@ function InvoicesPageContent() {
   // Link Payment Modal State
   const [showLinkModal, setShowLinkModal] = useState(false);
   const [linkingInvoice, setLinkingInvoice] = useState<any>(null);
+  const [showApplyStoreCreditModal, setShowApplyStoreCreditModal] =
+    useState(false);
+  const [storeCreditInvoice, setStoreCreditInvoice] = useState<any>(null);
+  const [storeCreditRefreshKey, setStoreCreditRefreshKey] = useState(0);
 
   const handleOpenLinkModal = (invoice: any) => {
     setLinkingInvoice(invoice);
     setShowLinkModal(true);
+  };
+
+  const handleOpenApplyStoreCredit = (invoice: any) => {
+    setStoreCreditInvoice(invoice);
+    setShowApplyStoreCreditModal(true);
   };
 
   const handleShipAction = (invoice: any) => {
@@ -233,6 +243,7 @@ function InvoicesPageContent() {
             onEdit={handleEditInvoice}
             onPay={handleOpenPaymentModal}
             onLink={handleOpenLinkModal}
+            onApplyStoreCredit={handleOpenApplyStoreCredit}
             onDelete={handleDeleteClick}
             onToggleHold={handleToggleHold}
             onShip={handleShipAction}
@@ -297,6 +308,8 @@ function InvoicesPageContent() {
           setShowViewModal(false);
           setViewingInvoice(null);
         }}
+        onApplyStoreCredit={handleOpenApplyStoreCredit}
+        storeCreditRefreshKey={storeCreditRefreshKey}
         invoice={viewingInvoice}
       />
 
@@ -380,6 +393,38 @@ function InvoicesPageContent() {
         onSuccess={() => {
           fetchInvoices();
           showSuccess("Payment linked successfully!");
+        }}
+      />
+
+      <ApplyStoreCreditModal
+        isOpen={showApplyStoreCreditModal}
+        onClose={() => {
+          setShowApplyStoreCreditModal(false);
+          setStoreCreditInvoice(null);
+        }}
+        invoice={storeCreditInvoice}
+        onSuccess={(message, result) => {
+          fetchInvoices();
+          showSuccess(message);
+          if (
+            viewingInvoice &&
+            storeCreditInvoice &&
+            viewingInvoice.id === storeCreditInvoice.id
+          ) {
+            setViewingInvoice({
+              ...viewingInvoice,
+              paidAmount: result.invoice.paidAmount,
+              status: result.invoice.status || viewingInvoice.status,
+              amount: result.invoice.amount,
+              customer: viewingInvoice.customer
+                ? {
+                    ...viewingInvoice.customer,
+                    storeCredit: result.storeCredit,
+                  }
+                : viewingInvoice.customer,
+            });
+            setStoreCreditRefreshKey((key) => key + 1);
+          }
         }}
       />
 

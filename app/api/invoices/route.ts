@@ -352,6 +352,7 @@ export async function GET(request: NextRequest) {
           email: true,
           phone: true,
           address: true,
+          storeCredit: true,
         },
       },
       editHistory: {

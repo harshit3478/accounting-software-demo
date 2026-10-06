@@ -12,3 +12,4 @@ export * from "./types";
 export { default as ShipInvoiceModal } from "./ShipInvoiceModal";
 export { default as ShipmentDetailsModal } from "./ShipmentDetailsModal";
 export { default as LinkPaymentModal } from "./LinkPaymentModal";
+export { default as ApplyStoreCreditModal } from "./ApplyStoreCreditModal";
