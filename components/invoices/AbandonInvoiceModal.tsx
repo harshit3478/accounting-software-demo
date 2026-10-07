@@ -40,8 +40,10 @@ interface InvoiceLike {
   amount: number;
   paidAmount: number;
   lateFee?: number | string | null;
+  layawayFee?: number | string | null;
   isLayaway?: boolean;
   items?: Array<{
+    name?: string | null;
     depositFee?: number | string | null;
     quantity?: number | string | null;
     price?: number | string | null;
@@ -153,6 +155,7 @@ export default function AbandonInvoiceModal({
       isPercentage: false,
       isActive: false,
     },
+    invoice?.layawayFee,
   );
   const effectiveRestockingFee = hasPayments
     ? Math.min(restockingFeeAmount, paidAmount)
@@ -576,7 +579,7 @@ export default function AbandonInvoiceModal({
                 Apply restocking fee
                 <span className="text-xs text-gray-500">
                   {restockingFeeSetting?.isPercentage
-                    ? `${restockingFeeSetting.amount}% per unit ($${restockingFeeAmount.toFixed(2)}${
+                    ? `${restockingFeeSetting.amount}% of item amount and layaway fee ($${restockingFeeAmount.toFixed(2)}${
                         hasPayments &&
                         restockingFeeAmount - effectiveRestockingFee > 0.009
                           ? `, kept at $${effectiveRestockingFee.toFixed(2)} of the paid amount`

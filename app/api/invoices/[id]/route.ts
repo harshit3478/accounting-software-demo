@@ -1243,6 +1243,11 @@ export async function DELETE(
               isPercentage: !!restockingSetting?.isPercentage,
               isActive: !!restockingSetting?.isActive,
             },
+            Number(
+              existingInvoice.layawayFee?.toNumber?.() ??
+                existingInvoice.layawayFee ??
+                0,
+            ),
           );
           const calculatedDepositFee = Number(
             (depositFeeRules.length > 0

@@ -64,12 +64,17 @@ export async function getRestockingFeeSnapshot(): Promise<RestockingFeeSnapshot>
 export function formatRestockingFeeNotice(
   items: unknown,
   restocking: RestockingFeeSnapshot,
+  layawayFee?: number | string | null,
 ): string | null {
   if (!restocking.isActive || restocking.amount <= 0) {
     return "Please be advised that continued non-payment may result in a restocking fee and cancellation of your order, per our terms and conditions.";
   }
 
-  const feeAmount = calculateRestockingFeeAmount(items, restocking);
+  const feeAmount = calculateRestockingFeeAmount(
+    items,
+    restocking,
+    layawayFee,
+  );
 
   const feeLabel = restocking.isPercentage
     ? `${restocking.amount}% per unit ($${feeAmount.toFixed(2)})`
@@ -216,19 +221,24 @@ export async function processDueReminderEmails(options?: {
     }
 
     const decision = shouldSendDueReminder(invoice, setting, now);
-    if (!decision.send || !decision.reminderNumber) {
+    const reminderNumber = decision.reminderNumber;
+    if (!decision.send || reminderNumber == null) {
       skipped += 1;
       continue;
     }
 
     const remaining = getInvoiceRemaining(invoice);
     const restockingNotice =
-      decision.reminderNumber === 3
-        ? formatRestockingFeeNotice(invoice.items, restocking)
+      reminderNumber === 3
+        ? formatRestockingFeeNotice(
+            invoice.items,
+            restocking,
+            Number(invoice.layawayFee ?? 0),
+          )
         : null;
 
     const emailResult = await sendDuePaymentReminderEmail({
-      reminderNumber: decision.reminderNumber,
+      reminderNumber,
       customer: {
         name: invoice.customer?.name || invoice.clientName,
         email: customerEmail,
@@ -249,14 +259,14 @@ export async function processDueReminderEmails(options?: {
         await tx.invoice.update({
           where: { id: invoice.id },
           data: {
-            dueReminderCount: decision.reminderNumber,
+            dueReminderCount: reminderNumber,
             lastDueReminderAt: now,
           },
         });
         await (tx as any).invoiceDueReminderLog.create({
           data: {
             invoiceId: invoice.id,
-            reminderNumber: decision.reminderNumber,
+            reminderNumber,
             recipientEmail: customerEmail,
             success: true,
           },
@@ -266,14 +276,14 @@ export async function processDueReminderEmails(options?: {
       details.push({
         invoiceId: invoice.id,
         invoiceNumber: invoice.invoiceNumber,
-        reminderNumber: decision.reminderNumber,
+        reminderNumber,
         status: "sent",
       });
     } else {
       await (prisma as any).invoiceDueReminderLog.create({
         data: {
           invoiceId: invoice.id,
-          reminderNumber: decision.reminderNumber,
+          reminderNumber,
           recipientEmail: customerEmail,
           success: false,
           errorMessage: String(emailResult.error || "Failed to send email"),
@@ -283,7 +293,7 @@ export async function processDueReminderEmails(options?: {
       details.push({
         invoiceId: invoice.id,
         invoiceNumber: invoice.invoiceNumber,
-        reminderNumber: decision.reminderNumber,
+        reminderNumber,
         status: "failed",
         error: String(emailResult.error || "Failed to send email"),
       });
